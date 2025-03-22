@@ -184,6 +184,7 @@ where
 }
 
 
+// NOTE: PG_TYPE
 
 pub type Types = BTreeMap<u32,HashMap<String,String>>;
 
@@ -210,3 +211,45 @@ impl Collector for PgTypeCollector {
     }
 }
 
+
+// NOTE: PG_RANGE
+
+#[derive(Debug)]
+#[allow(dead_code)]
+pub struct Range {
+    pub rngtypid: String,
+    pub rngsubtype: String,
+    pub rngmultitypid: String,
+    pub rngsubopc: String,
+    pub rngcanonical: String,
+    pub rngsubdiff: String,
+}
+
+#[derive(Debug)]
+pub struct PgRangeCollector {
+    pub ranges: Vec<Range>,
+}
+
+impl PgRangeCollector {
+    pub fn parser(source: &str) -> Result<Parser<'_, Self>> {
+        Parser::new(source, Self { ranges: <_>::default() })
+    }
+}
+
+impl Collector for PgRangeCollector {
+    fn add_map(&mut self, mut map: Map) -> Result<()> {
+        let range = Range {
+            rngtypid: map.remove("rngtypid").with_context(||format!("missing `rngtypid`"))?,
+            rngsubtype: map.remove("rngsubtype").with_context(||format!("missing `rngsubtype`"))?,
+            rngmultitypid: map.remove("rngmultitypid").with_context(||format!("missing `rngmultitypid`"))?,
+            rngsubopc: map.remove("rngsubopc").with_context(||format!("missing `rngsubopc`"))?,
+            rngcanonical: map.remove("rngcanonical").with_context(||format!("missing `rngcanonical`"))?,
+            rngsubdiff: map.remove("rngsubdiff").with_context(||format!("missing `rngsubdiff`"))?,
+        };
+        if let Some((k,v)) = map.into_iter().next() {
+            bail!("unexpected `{k}: {v}`");
+        }
+        self.ranges.push(range);
+        Ok(())
+    }
+}

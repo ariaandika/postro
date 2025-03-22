@@ -6,4 +6,5 @@ edition = "2024"
 [dependencies]
 
 [workspace]
-members = ["postgres-protocol"]
+members = [ "codegen","postgres-protocol"]
+default-members = [ ".","postgres-protocol"]

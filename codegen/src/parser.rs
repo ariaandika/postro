@@ -5,26 +5,31 @@ use std::{
     str::CharIndices,
 };
 
+pub trait Collector {
+    fn add_map(&mut self, map: Map) -> Result<()>;
+}
+
 enum ParseState {
     Root { comma: bool },
     Object { comma: bool },
 }
 
-pub type Types = BTreeMap<u32,HashMap<String,String>>;
+pub type Map = HashMap<String,String>;
 
-pub struct Parser<'a> {
+pub struct Parser<'a,C> {
     source: &'a str,
     current_ch: (usize,char),
     iter: CharIndices<'a>,
     state: ParseState,
 
     current_type: HashMap<String,String>,
-    types: Types,
+    collector: C,
 }
 
-impl<'a> Parser<'a> {
+impl<'a,C> Parser<'a,C> {
     pub fn new(
         source: &'a str,
+        collector: C,
     ) -> Result<Self> {
         Ok(Self {
             source,
@@ -32,11 +37,16 @@ impl<'a> Parser<'a> {
             iter: source.char_indices(),
             state: ParseState::Root { comma: true },
             current_type: <_>::default(),
-            types: <_>::default(),
+            collector,
         })
     }
+}
 
-    pub fn parse(mut self) -> Result<Types> {
+impl<C> Parser<'_,C>
+where
+    C: Collector,
+{
+    pub fn parse(mut self) -> Result<C> {
         self.skip_wh();
         if self.current_ch.1 != '[' {
             bail!("expected `[`")
@@ -77,13 +87,7 @@ impl<'a> Parser<'a> {
                         (false,ch) if ch.is_alphabetic() => return self.bail("expected `,`"),
                         (false,',') => self.state = ParseState::Object { comma: true },
                         (_,'}') => {
-                            let mut current = mem::take(&mut self.current_type);
-                            let oid = current
-                                .remove("oid")
-                                .context("missing `oid`")?
-                                .parse()
-                                .context("oid not an integer")?;
-                            self.types.insert(oid, current);
+                            self.collector.add_map(mem::take(&mut self.current_type))?;
                             self.state = ParseState::Root { comma: false };
                         }
                         (_,ch) => bail!("unexpected `{ch}`")
@@ -99,7 +103,7 @@ impl<'a> Parser<'a> {
             panic!("leftover type")
         }
 
-        Ok(self.types)
+        Ok(self.collector)
     }
 
     fn source_left(&self) -> &str {
@@ -176,6 +180,33 @@ impl<'a> Parser<'a> {
         };
         self.try_next()?;
         Ok(output)
+    }
+}
+
+
+
+pub type Types = BTreeMap<u32,HashMap<String,String>>;
+
+#[derive(Debug)]
+pub struct PgTypeCollector {
+    pub types: Types,
+}
+
+impl PgTypeCollector {
+    pub fn parser(source: &str) -> Result<Parser<'_, Self>> {
+        Parser::new(source, Self { types: <_>::default() })
+    }
+}
+
+impl Collector for PgTypeCollector {
+    fn add_map(&mut self, mut map: Map) -> Result<()> {
+        let oid = map
+            .remove("oid")
+            .context("missing `oid`")?
+            .parse()
+            .context("oid not an integer")?;
+        self.types.insert(oid, map);
+        Ok(())
     }
 }
 

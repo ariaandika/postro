@@ -1,4 +1,6 @@
-use errcode::ErrCodeParser;
+use std::io::BufWriter;
+
+use errcode::{ErrCodeGen, ErrCodeParser};
 use parser::{PgRangeCollector, PgTypeCollector};
 
 mod parser;
@@ -11,6 +13,10 @@ const ERRCODES: &str = include_str!("../errcodes.txt");
 fn main() -> anyhow::Result<()> {
     let _pg_type = PgTypeCollector::parser(PG_TYPE)?.parse()?;
     let _pg_range = PgRangeCollector::parser(PG_RANGE)?.parse()?;
-    let _errcodes = ErrCodeParser::new(ERRCODES)?.parse()?;
+    let errcodes = ErrCodeParser::new(ERRCODES)?.parse()?;
+
+    let mut source = Vec::new();
+    ErrCodeGen::new(errcodes).codegen(&mut BufWriter::new(&mut source))?;
+    println!("{}", String::from_utf8(source).unwrap());
     Ok(())
 }

@@ -27,10 +27,7 @@ pub struct Parser<'a,C> {
 }
 
 impl<'a,C> Parser<'a,C> {
-    pub fn new(
-        source: &'a str,
-        collector: C,
-    ) -> Result<Self> {
+    pub fn new(source: &'a str, collector: C) -> Result<Self> {
         Ok(Self {
             source,
             current_ch: source.char_indices().next().context("source empty")?,
@@ -239,12 +236,12 @@ impl PgRangeCollector {
 impl Collector for PgRangeCollector {
     fn add_map(&mut self, mut map: Map) -> Result<()> {
         let range = Range {
-            rngtypid: map.remove("rngtypid").with_context(||format!("missing `rngtypid`"))?,
-            rngsubtype: map.remove("rngsubtype").with_context(||format!("missing `rngsubtype`"))?,
-            rngmultitypid: map.remove("rngmultitypid").with_context(||format!("missing `rngmultitypid`"))?,
-            rngsubopc: map.remove("rngsubopc").with_context(||format!("missing `rngsubopc`"))?,
-            rngcanonical: map.remove("rngcanonical").with_context(||format!("missing `rngcanonical`"))?,
-            rngsubdiff: map.remove("rngsubdiff").with_context(||format!("missing `rngsubdiff`"))?,
+            rngtypid: map.remove("rngtypid").context("missing `rngtypid`")?,
+            rngsubtype: map.remove("rngsubtype").context("missing `rngsubtype`")?,
+            rngmultitypid: map.remove("rngmultitypid").context("missing `rngmultitypid`")?,
+            rngsubopc: map.remove("rngsubopc").context("missing `rngsubopc`")?,
+            rngcanonical: map.remove("rngcanonical").context("missing `rngcanonical`")?,
+            rngsubdiff: map.remove("rngsubdiff").context("missing `rngsubdiff`")?,
         };
         if let Some((k,v)) = map.into_iter().next() {
             bail!("unexpected `{k}: {v}`");

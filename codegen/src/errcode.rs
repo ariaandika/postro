@@ -28,7 +28,7 @@ impl PartialEq for Section {
 
 impl PartialOrd for Section {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        self.class.partial_cmp(&other.class)
+        Some(self.class.cmp(&other.class))
     }
 }
 

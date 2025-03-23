@@ -106,7 +106,7 @@ static SQLSTATE_MAP: phf::Map<&'static str, SqlState> = ")?;
         for ErrCode { sqlstate, name, .. } in &self.errcodes {
             map.entry(sqlstate, &format!("SqlState::{name}"));
         }
-        write!(writer, "{};\n", map.build())?;
+        writeln!(writer, "{};", map.build())?;
 
         Ok(())
     }

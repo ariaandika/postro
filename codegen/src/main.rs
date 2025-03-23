@@ -1,12 +1,14 @@
 use anyhow::Context;
 use errcode::{ErrCodeGen, ErrCodeParser};
-use parser::{PgRangeCollector, PgTypeCollector};
+use pg::{PgRangeCollector, PgTypeCollector};
 use std::{
     fs::File,
     io::{BufWriter, Write},
 };
 
 mod parser;
+
+mod pg;
 mod errcode;
 
 const PG_TYPE: &str = include_str!("../pg_type.dat");

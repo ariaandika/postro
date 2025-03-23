@@ -204,7 +204,7 @@ pub async fn connect_tcp<Ws: WithSocket>(
 
     #[cfg(not(feature = "tokio"))]
     {
-        let _ = (host,port,with_socket);
+        drop((host,port,with_socket));
         panic!("runtime disabled")
     }
 }
@@ -228,7 +228,7 @@ pub async fn connect_uds<P: AsRef<std::path::Path>, Ws: WithSocket>(
         }
         #[cfg(not(feature = "tokio"))]
         {
-            let _ = (path,with_socket);
+            drop((path,with_socket));
             panic!("runtime disabled")
         }
     }
@@ -269,8 +269,7 @@ impl Socket for tokio::net::TcpStream {
     }
 }
 
-#[cfg(unix)]
-#[cfg(feature = "tokio")]
+#[cfg(all(feature = "tokio", unix))]
 impl Socket for tokio::net::UnixStream {
     fn try_read(&mut self, mut buf: &mut dyn ReadBuf) -> io::Result<usize> {
         self.try_read_buf(&mut buf)

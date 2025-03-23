@@ -1,4 +1,5 @@
 use std::fmt::Debug;
+
 use crate::type_info::TypeInfo;
 
 pub trait Database: 'static + Sized + Send + Debug {

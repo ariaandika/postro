@@ -1,13 +1,7 @@
 //! Types for working with errors produced by SQLx.
-use std::any::type_name;
-use std::borrow::Cow;
-use std::error::Error as StdError;
-use std::fmt::Display;
-use std::io;
+use std::{any::type_name, borrow::Cow, error::Error as StdError, fmt::Display, io};
 
-use crate::database::Database;
-use crate::type_info::TypeInfo;
-use crate::types::Type;
+use crate::{database::Database, type_info::TypeInfo, types::Type};
 
 /// A specialized `Result` type for SQLx.
 pub type Result<T, E = Error> = ::std::result::Result<T, E>;

@@ -12,11 +12,14 @@ pub mod decode;
 pub mod encode;
 pub mod types;
 pub mod from_row;
+pub mod describe;
+pub mod executor;
 pub mod error;
 
 // NOTE: driver traits
 pub mod database;
 pub mod connection;
+pub mod statement;
 pub mod arguments;
 pub mod type_info;
 pub mod row;

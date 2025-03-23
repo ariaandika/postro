@@ -9,43 +9,15 @@
 ///     note: Some("SQL/MED".into()),
 /// };
 /// ```
-#[derive(Debug, Default)]
-#[allow(dead_code)]
-pub struct Section {
-    pub class: [char;2],
-    pub name: String,
-    pub note: Option<String>,
-}
-
-impl PartialEq for Section {
-    fn eq(&self, other: &Self) -> bool {
-        self.class.eq(&other.class)
-    }
-}
-
-impl PartialOrd for Section {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.class.cmp(&other.class))
-    }
-}
-
-impl Eq for Section { }
-
-impl Ord for Section {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.class.cmp(&other.class)
-    }
-}
-
 #[derive(Debug)]
 #[allow(dead_code)]
-pub struct ErrCode {
+pub struct ErrCode<'a> {
     /// 5 character SQLSTATE conventions
-    pub sqlstate: String,
+    pub sqlstate: &'a str,
     /// E/W/S
-    pub status: String,
-    pub name: String,
-    pub spec_name: Option<String>,
+    pub status: &'a str,
+    pub name: &'a str,
+    pub spec_name: Option<&'a str>,
 }
 
 pub struct ErrCodeParser<'a> {
@@ -57,8 +29,8 @@ impl<'a> ErrCodeParser<'a> {
         Self { source }
     }
 
-    pub fn parse(self) -> Vec<ErrCode> {
-        let mut output = vec![];
+    pub fn parse(self) -> Vec<ErrCode<'a>> {
+        let mut output = Vec::<ErrCode>::new();
 
         for line in self.source.lines() {
             if line.starts_with('#')
@@ -69,11 +41,14 @@ impl<'a> ErrCodeParser<'a> {
             }
 
             let mut it = line.split_whitespace();
-            let sqlstate = it.next().unwrap().to_owned();
-            let status = it.next().unwrap().to_owned();
-            let name = it.next().unwrap().to_owned();
-            let spec_name = it.next().map(str::to_owned);
+            let sqlstate = it.next().unwrap();
+            let status = it.next().unwrap();
+            let name = it.next().unwrap();
+            let spec_name = it.next();
 
+            if let Some(dup_idx) = output.iter().position(|e|e.sqlstate == sqlstate) {
+                output.remove(dup_idx);
+            }
             output.push(ErrCode { sqlstate, status, name, spec_name, });
         }
 
@@ -81,8 +56,8 @@ impl<'a> ErrCodeParser<'a> {
     }
 }
 
-pub struct ErrCodeGen {
-    errcodes: Vec<ErrCode>,
+pub struct ErrCodeGen<'a> {
+    errcodes: Vec<ErrCode<'a>>,
 }
 
 const HEADLINE: &[u8] = b"\
@@ -126,8 +101,8 @@ const INNER_END: &[u8] = b"\
 
 static SQLSTATE_MAP: phf::Map<&'static str, SqlState> = ";
 
-impl ErrCodeGen {
-    pub fn new(errcodes: Vec<ErrCode>) -> Self {
+impl<'a> ErrCodeGen<'a> {
+    pub fn new(errcodes: Vec<ErrCode<'a>>) -> Self {
         Self { errcodes }
     }
 

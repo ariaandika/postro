@@ -1,12 +1,10 @@
 use anyhow::{bail, Context, Result};
-use std::{
-    collections::{BTreeMap, HashMap},
-    mem,
-    str::CharIndices,
-};
+use std::{collections::HashMap, mem, str::CharIndices};
 
 pub trait Collector {
+    type Output;
     fn add_map(&mut self, map: Map) -> Result<()>;
+    fn finish(self) -> Self::Output;
 }
 
 enum ParseState {
@@ -43,7 +41,7 @@ impl<C> Parser<'_,C>
 where
     C: Collector,
 {
-    pub fn parse(mut self) -> Result<C> {
+    pub fn parse(mut self) -> Result<C::Output> {
         self.skip_wh();
         if self.current_ch.1 != '[' {
             bail!("expected `[`")
@@ -100,7 +98,7 @@ where
             panic!("leftover type")
         }
 
-        Ok(self.collector)
+        Ok(self.collector.finish())
     }
 
     fn source_left(&self) -> &str {
@@ -183,11 +181,16 @@ where
 
 // NOTE: PG_TYPE
 
-pub type Types = BTreeMap<u32,HashMap<String,String>>;
+#[derive(Debug)]
+#[allow(dead_code)]
+pub struct Type {
+    pub oid: u32,
+    pub map: HashMap<String,String>,
+}
 
 #[derive(Debug)]
 pub struct PgTypeCollector {
-    pub types: Types,
+    pub types: Vec<Type>,
 }
 
 impl PgTypeCollector {
@@ -197,14 +200,20 @@ impl PgTypeCollector {
 }
 
 impl Collector for PgTypeCollector {
+    type Output = Vec<Type>;
+
     fn add_map(&mut self, mut map: Map) -> Result<()> {
         let oid = map
             .remove("oid")
             .context("missing `oid`")?
             .parse()
             .context("oid not an integer")?;
-        self.types.insert(oid, map);
+        self.types.push(Type { oid, map, });
         Ok(())
+    }
+
+    fn finish(self) -> Self::Output {
+        self.types
     }
 }
 
@@ -234,6 +243,8 @@ impl PgRangeCollector {
 }
 
 impl Collector for PgRangeCollector {
+    type Output = Vec<Range>;
+
     fn add_map(&mut self, mut map: Map) -> Result<()> {
         let range = Range {
             rngtypid: map.remove("rngtypid").context("missing `rngtypid`")?,
@@ -248,5 +259,9 @@ impl Collector for PgRangeCollector {
         }
         self.ranges.push(range);
         Ok(())
+    }
+
+    fn finish(self) -> Self::Output {
+        self.ranges
     }
 }

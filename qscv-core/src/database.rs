@@ -16,6 +16,9 @@ pub trait Database: 'static + Sized + Send + Debug {
     /// The concrete `Row` implementation for this database.
     type Row: Row<Database = Self>;
 
+    /// The concrete `QueryResult` implementation for this database.
+    type QueryResult: 'static + Sized + Send + Sync + Default + Extend<Self::QueryResult>;
+
     /// The concrete `Column` implementation for this database.
     type Column: Column<Database = Self>;
 

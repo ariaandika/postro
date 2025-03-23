@@ -8,16 +8,17 @@
 pub mod ext;
 pub mod io;
 pub mod net;
-pub mod error;
-
-// NOTE: driver traits
 pub mod decode;
 pub mod encode;
 pub mod types;
-pub mod type_info;
+pub mod from_row;
+pub mod error;
+
+// NOTE: driver traits
 pub mod database;
 pub mod connection;
 pub mod arguments;
+pub mod type_info;
 pub mod row;
 pub mod column;
 pub mod value;

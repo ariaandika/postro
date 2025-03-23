@@ -64,7 +64,7 @@ pub struct SqlState(Inner);
 
 impl SqlState {
     /// Create new `SqlState` from error code
-    pub fn from_code(s: &str) -> SqlState {{
+    pub fn from_code(s: &str) -> SqlState {
         match SQLSTATE_MAP.get(s) {
             Some(state) => state.clone(),
             None => SqlState(Inner::Other(s.into())),
@@ -106,7 +106,7 @@ static SQLSTATE_MAP: phf::Map<&'static str, SqlState> = ")?;
         for ErrCode { sqlstate, name, .. } in &self.errcodes {
             map.entry(sqlstate, &format!("SqlState::{name}"));
         }
-        write!(writer, "{}", map.build())?;
+        write!(writer, "{};\n", map.build())?;
 
         Ok(())
     }

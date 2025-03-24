@@ -1,6 +1,7 @@
 
 // modules are separated in 3 categories:
 // - foundations
+// - core
 // - driver traits
 // - toolkit
 
@@ -9,6 +10,9 @@ pub mod ext;
 pub mod io;
 pub mod net;
 pub mod rt;
+pub mod error;
+
+// NOTE: core
 pub mod decode;
 pub mod encode;
 pub mod types;
@@ -17,7 +21,6 @@ pub mod describe;
 pub mod acquire;
 pub mod executor;
 pub mod sync;
-pub mod error;
 
 // NOTE: driver traits
 pub mod database;

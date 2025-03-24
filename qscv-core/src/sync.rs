@@ -60,7 +60,7 @@ impl AsyncSemaphore {
 
         #[cfg(not(feature = "tokio"))]
         {
-            drop(permits);
+            let _ = permits;
             panic!("runtime disabled")
         }
     }
@@ -73,7 +73,7 @@ impl AsyncSemaphore {
 
         #[cfg(not(feature = "tokio"))]
         {
-            drop(permits);
+            let _ = permits;
             panic!("runtime disabled")
         }
     }
@@ -84,7 +84,7 @@ impl AsyncSemaphore {
 
         #[cfg(not(feature = "tokio"))]
         {
-            drop(permits);
+            let _ = permits;
             panic!("runtime disabled")
         }
     }

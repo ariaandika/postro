@@ -166,8 +166,7 @@ impl<DB: Database> PoolConnection<DB> {
         async move {
             if let Some(floating) = floating {
                 // Don't hold the connection forever if it hangs while trying to close
-                #[cfg(feature = "tokio")]
-                tokio::time::timeout(CLOSE_ON_DROP_TIMEOUT, floating.close())
+                crate::rt::timeout(CLOSE_ON_DROP_TIMEOUT, floating.close())
                     .await
                     .ok();
             }

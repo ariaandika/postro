@@ -1,4 +1,6 @@
-//! Provides the connection pool for asynchronous SQLx connections.
+//! asynchronous connection pool
+//!
+//! see [`Pool`] for details
 use inner::PoolInner;
 use std::{
     borrow::Cow,
@@ -8,35 +10,73 @@ use std::{
 };
 
 use crate::{
-    connection::Connection, database::Database, error::Result, transaction::Transaction, Error,
+    connection::Connection,
+    database::Database,
+    transaction::Transaction,
+    Error, Result,
 };
 
 mod options;
-mod executor;
-mod connection;
 mod inner;
+mod connection;
+mod executor;
 mod maybe;
 
 pub use self::{
+    options::{PoolOptions, PoolConnectionMetadata},
     connection::PoolConnection,
     maybe::MaybePoolConnection,
-    options::{PoolConnectionMetadata, PoolOptions},
 };
 
-/// An asynchronous pool of SQLx database connections.
+/// asynchronous connection pool
+///
+/// Constructor:
+/// - [`Pool::connect`]
+/// - [`Pool::connect_with`]
+/// - [`Pool::connect_lazy`]
+/// - [`Pool::connect_lazy_with`]
+///
+/// for available options see [`PoolOptions`]
+///
+/// core traits implementation:
+/// - [`Acquire`][crate::acquire::Acquire], acquire a connection or start a transaction
+/// - [`Executor`][crate::executor::Executor], execute a query
+///
+/// Transaction:
+/// - [`Pool::begin`]
+/// - [`Pool::try_begin`]
+/// - [`Pool::begin_with`]
+/// - [`Pool::try_begin_with`]
+///
+/// Destruction:
+/// - [`Pool::close`]
+///
+/// # Sharing
+///
+/// `Pool` is `Send`, `Sync`, and `Clone`.
+/// It is intended to be created once, and then shared across tasks.
+///
+/// # `Drop` behavior
+///
+/// Due to a lack of async `Drop`, dropping the last `Pool` handle may not immediately clean
+/// up connections by itself. The connections will be dropped locally, which is sufficient for
+/// SQLite, but for client/server databases like MySQL and Postgres, that only closes the
+/// client side of the connection. The server will not know the connection is closed until
+/// potentially much later: this is usually dictated by the TCP keepalive timeout in the server
+/// settings.
+///
+/// Because the connection may not be cleaned up immediately on the server side, you may run
+/// into errors regarding connection limits if you are creating and dropping many pools in short
+/// order.
+///
+/// We recommend calling [`.close().await`] to gracefully close the pool and its connections
+/// when you are done using it. This will also wake any tasks that are waiting on an `.acquire()`
+/// call, so for long-lived applications it's a good idea to call `.close()` during shutdown.
 pub struct Pool<DB: Database>(pub(crate) Arc<PoolInner<DB>>);
 
-/// A future that resolves when the pool is closed.
 impl<DB: Database> Pool<DB> {
     /// Create a new connection pool with a default pool configuration and
     /// the given connection URL, and immediately establish one connection.
-    ///
-    /// Refer to the relevant `ConnectOptions` impl for your database for the expected URL format:
-    ///
-    /// * Postgres: [`PgConnectOptions`][crate::postgres::PgConnectOptions]
-    /// * MySQL: [`MySqlConnectOptions`][crate::mysql::MySqlConnectOptions]
-    /// * SQLite: [`SqliteConnectOptions`][crate::sqlite::SqliteConnectOptions]
-    /// * MSSQL: [`MssqlConnectOptions`][crate::mssql::MssqlConnectOptions]
     ///
     /// The default configuration is mainly suited for testing and light-duty applications.
     /// For production applications, you'll likely want to make at least few tweaks.
@@ -246,8 +286,8 @@ impl<DB: Database> Pool<DB> {
     }
 }
 
-/// Returns a new [Pool] tied to the same shared connection pool.
 impl<DB: Database> Clone for Pool<DB> {
+    /// Returns a new [Pool] tied to the same shared connection pool.
     fn clone(&self) -> Self {
         Self(Arc::clone(&self.0))
     }

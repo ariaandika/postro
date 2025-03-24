@@ -1,15 +1,14 @@
 use futures_core::future::BoxFuture;
 use log::LevelFilter;
-use std::{fmt::Debug, str::FromStr, time::Duration};
+use std::{borrow::Cow, fmt::Debug, str::FromStr, time::Duration};
 
 // use url::Url;
 type Url = std::convert::Infallible;
 
-// TODO: transaction module -> pool module
-// use crate::transaction::{Transaction, TransactionManager};
 use crate::{
     database::{Database, HasStatementCache},
     error::Error,
+    transaction::{Transaction, TransactionManager},
 };
 
 /// Represents a single database connection.
@@ -45,85 +44,85 @@ pub trait Connection: Send {
     /// Checks if a connection to the database is still valid.
     fn ping(&mut self) -> BoxFuture<'_, Result<(), Error>>;
 
-    // /// Begin a new transaction or establish a savepoint within the active transaction.
-    // ///
-    // /// Returns a [`Transaction`] for controlling and tracking the new transaction.
-    // fn begin(&mut self) -> BoxFuture<'_, Result<Transaction<'_, Self::Database>, Error>>
-    // where
-    //     Self: Sized;
+    /// Begin a new transaction or establish a savepoint within the active transaction.
+    ///
+    /// Returns a [`Transaction`] for controlling and tracking the new transaction.
+    fn begin(&mut self) -> BoxFuture<'_, Result<Transaction<'_, Self::Database>, Error>>
+    where
+        Self: Sized;
 
-    // /// Begin a new transaction with a custom statement.
-    // ///
-    // /// Returns a [`Transaction`] for controlling and tracking the new transaction.
-    // ///
-    // /// Returns an error if the connection is already in a transaction or if
-    // /// `statement` does not put the connection into a transaction.
-    // fn begin_with(
-    //     &mut self,
-    //     statement: impl Into<Cow<'static, str>>,
-    // ) -> BoxFuture<'_, Result<Transaction<'_, Self::Database>, Error>>
-    // where
-    //     Self: Sized,
-    // {
-    //     Transaction::begin(self, Some(statement.into()))
-    // }
+    /// Begin a new transaction with a custom statement.
+    ///
+    /// Returns a [`Transaction`] for controlling and tracking the new transaction.
+    ///
+    /// Returns an error if the connection is already in a transaction or if
+    /// `statement` does not put the connection into a transaction.
+    fn begin_with(
+        &mut self,
+        statement: impl Into<Cow<'static, str>>,
+    ) -> BoxFuture<'_, Result<Transaction<'_, Self::Database>, Error>>
+    where
+        Self: Sized,
+    {
+        Transaction::begin(self, Some(statement.into()))
+    }
 
-    // /// Returns `true` if the connection is currently in a transaction.
-    // ///
-    // /// # Note: Automatic Rollbacks May Not Be Counted
-    // /// Certain database errors (such as a serializable isolation failure)
-    // /// can cause automatic rollbacks of a transaction
-    // /// which may not be indicated in the return value of this method.
-    // #[inline]
-    // fn is_in_transaction(&self) -> bool {
-    //     <Self::Database as Database>::TransactionManager::get_transaction_depth(self) != 0
-    // }
+    /// Returns `true` if the connection is currently in a transaction.
+    ///
+    /// # Note: Automatic Rollbacks May Not Be Counted
+    /// Certain database errors (such as a serializable isolation failure)
+    /// can cause automatic rollbacks of a transaction
+    /// which may not be indicated in the return value of this method.
+    #[inline]
+    fn is_in_transaction(&self) -> bool {
+        <Self::Database as Database>::TransactionManager::get_transaction_depth(self) != 0
+    }
 
-    // /// Execute the function inside a transaction.
-    // ///
-    // /// If the function returns an error, the transaction will be rolled back. If it does not
-    // /// return an error, the transaction will be committed.
-    // ///
-    // /// # Example
-    // ///
-    // /// ```rust
-    // /// use sqlx::postgres::{PgConnection, PgRow};
-    // /// use sqlx::Connection;
-    // ///
-    // /// # pub async fn _f(conn: &mut PgConnection) -> sqlx::Result<Vec<PgRow>> {
-    // /// conn.transaction(|txn| Box::pin(async move {
-    // ///     sqlx::query("select * from ..").fetch_all(&mut **txn).await
-    // /// })).await
-    // /// # }
-    // /// ```
-    // fn transaction<'a, F, R, E>(&'a mut self, callback: F) -> BoxFuture<'a, Result<R, E>>
-    // where
-    //     for<'c> F: FnOnce(&'c mut Transaction<'_, Self::Database>) -> BoxFuture<'c, Result<R, E>>
-    //         + 'a
-    //         + Send
-    //         + Sync,
-    //     Self: Sized,
-    //     R: Send,
-    //     E: From<Error> + Send,
-    // {
-    //     Box::pin(async move {
-    //         let mut transaction = self.begin().await?;
-    //         let ret = callback(&mut transaction).await;
-    //
-    //         match ret {
-    //             Ok(ret) => {
-    //                 transaction.commit().await?;
-    //
-    //                 Ok(ret)
-    //             }
-    //             Err(err) => {
-    //                 transaction.rollback().await?;
-    //
-    //                 Err(err)
-    //             }
-    //         }
-    //     })
-    // }
+    /// Execute the function inside a transaction.
+    ///
+    /// If the function returns an error, the transaction will be rolled back. If it does not
+    /// return an error, the transaction will be committed.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use sqlx::postgres::{PgConnection, PgRow};
+    /// use sqlx::Connection;
+    ///
+    /// # pub async fn _f(conn: &mut PgConnection) -> sqlx::Result<Vec<PgRow>> {
+    /// conn.transaction(|txn| Box::pin(async move {
+    ///     sqlx::query("select * from ..").fetch_all(&mut **txn).await
+    /// })).await
+    /// # }
+    /// ```
+    fn transaction<'a, F, R, E>(&'a mut self, callback: F) -> BoxFuture<'a, Result<R, E>>
+    where
+        for<'c> F: FnOnce(&'c mut Transaction<'_, Self::Database>) -> BoxFuture<'c, Result<R, E>>
+            + 'a
+            + Send
+            + Sync,
+        Self: Sized,
+        R: Send,
+        E: From<Error> + Send,
+    {
+        Box::pin(async move {
+            let mut transaction = self.begin().await?;
+            let ret = callback(&mut transaction).await;
+
+            match ret {
+                Ok(ret) => {
+                    transaction.commit().await?;
+
+                    Ok(ret)
+                }
+                Err(err) => {
+                    transaction.rollback().await?;
+
+                    Err(err)
+                }
+            }
+        })
+    }
 
     /// The number of statements currently cached in the connection.
     fn cached_statements_size(&self) -> usize

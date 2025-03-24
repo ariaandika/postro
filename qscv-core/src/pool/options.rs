@@ -1,3 +1,4 @@
+#![allow(clippy::type_complexity)]
 use futures_core::future::BoxFuture;
 use log::LevelFilter;
 use std::{

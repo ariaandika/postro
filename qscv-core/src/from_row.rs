@@ -1,7 +1,6 @@
 use crate::{error::Error, row::Row};
 
 /// A record that can be built from a row returned by the database.
-
 pub trait FromRow<'r, R: Row>: Sized {
     fn from_row(row: &'r R) -> Result<Self, Error>;
 }

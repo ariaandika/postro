@@ -19,6 +19,7 @@ pub struct TryAsyncStream<'a, T> {
     future: Fuse<BoxFuture<'a, Result<(), Error>>>,
 }
 
+#[allow(clippy::needless_lifetimes)]
 impl<'a, T> TryAsyncStream<'a, T> {
     pub fn new<F, Fut>(f: F) -> Self
     where
@@ -93,7 +94,7 @@ impl<T> Yielder<T> {
     }
 }
 
-impl<'a, T> Stream for TryAsyncStream<'a, T> {
+impl<T> Stream for TryAsyncStream<'_, T> {
     type Item = Result<T, Error>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {

@@ -150,6 +150,7 @@ impl Error {
         Error::Configuration(err.into())
     }
 
+    #[allow(dead_code)]
     pub(crate) fn tls(err: impl Into<Box<dyn StdError + Send + Sync + 'static>>) -> Self {
         Error::Tls(err.into())
     }

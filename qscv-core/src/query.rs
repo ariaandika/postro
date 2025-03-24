@@ -1,3 +1,4 @@
+#![allow(clippy::type_complexity)]
 use std::marker::PhantomData;
 
 use either::Either;
@@ -123,7 +124,7 @@ impl<'q, DB: Database> Query<'q, DB, <DB as Database>::Arguments<'q>> {
     }
 }
 
-impl<'q, DB, A> Query<'q, DB, A>
+impl<DB, A> Query<'_, DB, A>
 where
     DB: Database + HasStatementCache,
 {

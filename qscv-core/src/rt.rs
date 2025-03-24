@@ -5,13 +5,13 @@
 use std::time::Duration;
 
 macro_rules! rt_tokio {
-    {($($t1:tt)*),$($tt:tt)*} => {
+    {$t1:expr,$($tt:tt)*} => {
         #[cfg(feature = "tokio")]
         { $($tt)* }
 
         #[cfg(not(feature = "tokio"))]
         {
-            let _ = ($($t1)*);
+            let _ = $t1;
             panic!("runtime disabled")
         }
     };
@@ -28,7 +28,7 @@ pub async fn timeout<F: Future>(duration: Duration, f: F) -> Result<F::Output, T
 
 pub async fn sleep(duration: Duration) {
     rt_tokio! {
-        (duration),
+        duration,
         tokio::time::sleep(duration).await
     }
 }
@@ -45,7 +45,7 @@ where
     F::Output: Send + 'static,
 {
     rt_tokio! {
-        (f),
+        drop(f),
         JoinHandle::Tokio(tokio::task::spawn(f))
     }
 }
@@ -56,7 +56,7 @@ where
     R: Send + 'static,
 {
     rt_tokio! {
-        (f),
+        drop(f),
         JoinHandle::Tokio(tokio::task::spawn_blocking(f))
     }
 }

@@ -91,7 +91,7 @@ where
     }
 }
 
-impl<'c, DB> fmt::Debug for Transaction<'c, DB>
+impl<DB> fmt::Debug for Transaction<'_, DB>
 where
     DB: Database,
 {
@@ -101,7 +101,7 @@ where
     }
 }
 
-impl<'c, DB> std::ops::Deref for Transaction<'c, DB>
+impl<DB> std::ops::Deref for Transaction<'_, DB>
 where
     DB: Database,
 {
@@ -113,7 +113,7 @@ where
     }
 }
 
-impl<'c, DB> std::ops::DerefMut for Transaction<'c, DB>
+impl<DB> std::ops::DerefMut for Transaction<'_, DB>
 where
     DB: Database,
 {

@@ -25,8 +25,8 @@ pub use self::{
 
 /// An asynchronous pool of SQLx database connections.
 pub struct Pool<DB: Database>(pub(crate) Arc<PoolInner<DB>>);
-/// A future that resolves when the pool is closed.
 
+/// A future that resolves when the pool is closed.
 impl<DB: Database> Pool<DB> {
     /// Create a new connection pool with a default pool configuration and
     /// the given connection URL, and immediately establish one connection.

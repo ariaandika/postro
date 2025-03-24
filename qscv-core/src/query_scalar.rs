@@ -56,7 +56,7 @@ impl<'q, DB: Database, O> QueryScalar<'q, DB, O, <DB as Database>::Arguments<'q>
     }
 }
 
-impl<'q, DB, O, A> QueryScalar<'q, DB, O, A>
+impl<DB, O, A> QueryScalar<'_, DB, O, A>
 where
     DB: Database + HasStatementCache,
 {

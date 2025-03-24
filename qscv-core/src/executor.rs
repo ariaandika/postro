@@ -1,3 +1,4 @@
+#![allow(clippy::type_complexity)]
 use either::Either;
 use futures_core::{future::BoxFuture, stream::BoxStream};
 use futures_util::{future, FutureExt, StreamExt, TryFutureExt, TryStreamExt};

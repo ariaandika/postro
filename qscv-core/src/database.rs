@@ -6,6 +6,7 @@ use crate::{
     connection::Connection,
     row::Row,
     statement::Statement,
+    transaction::TransactionManager,
     type_info::TypeInfo,
     value::{Value, ValueRef},
 };
@@ -13,6 +14,9 @@ use crate::{
 pub trait Database: 'static + Sized + Send + Debug {
     /// The concrete `Connection` implementation for this database.
     type Connection: Connection<Database = Self>;
+
+    /// The concrete `TransactionManager` implementation for this database.
+    type TransactionManager: TransactionManager<Database = Self>;
 
     /// The concrete `Row` implementation for this database.
     type Row: Row<Database = Self>;

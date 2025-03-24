@@ -25,7 +25,7 @@ impl AsyncSemaphore {
     #[track_caller]
     pub fn new(fair: bool, permits: usize) -> Self {
         if cfg!(not(feature = "tokio")) {
-            drop((fair, permits));
+            let _ = (fair, permits);
             panic!("runtime disabled")
         }
 

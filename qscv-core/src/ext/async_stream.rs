@@ -119,7 +119,7 @@ impl<'a, T> Stream for TryAsyncStream<'a, T> {
 #[macro_export]
 macro_rules! try_stream {
     ($($block:tt)*) => {
-        $crate::ext::async_stream::TryAsyncStream::new(move |yielder| ::tracing::Instrument::in_current_span(async move {
+        $crate::ext::async_stream::TryAsyncStream::new(move |yielder|async move {
             // Anti-footgun: effectively pins `yielder` to this future to prevent any accidental
             // move to another task, which could deadlock.
             let yielder = &yielder;
@@ -131,7 +131,7 @@ macro_rules! try_stream {
             }
 
             $($block)*
-        }))
+        })
     }
 }
 

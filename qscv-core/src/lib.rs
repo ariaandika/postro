@@ -8,19 +8,21 @@
 pub mod ext;
 pub mod io;
 pub mod net;
+pub mod rt;
 pub mod decode;
 pub mod encode;
 pub mod types;
 pub mod from_row;
 pub mod describe;
+pub mod acquire;
 pub mod executor;
 pub mod sync;
-pub mod rt;
 pub mod error;
 
 // NOTE: driver traits
 pub mod database;
 pub mod connection;
+pub mod transaction;
 pub mod statement;
 pub mod arguments;
 pub mod type_info;
@@ -30,6 +32,7 @@ pub mod value;
 
 // NOTE: toolkit
 pub mod migrate;
+pub mod pool;
 
 pub use error::{Error, Result};
 

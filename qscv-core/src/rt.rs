@@ -22,13 +22,19 @@ pub async fn timeout<F: Future>(duration: Duration, f: F) -> Result<F::Output, T
     }
 }
 
+pub async fn sleep(duration: Duration) {
+    rt_tokio! {
+        tokio::time::sleep(duration).await
+    }
+}
+
 #[derive(Debug, thiserror::Error)]
 #[error("operation timed out")]
 pub struct TimeOutError;
 
 // ===== task =====
 
-pub async fn spawn<F>(f: F) -> JoinHandle<F::Output>
+pub fn spawn<F>(f: F) -> JoinHandle<F::Output>
 where
     F: Future + Send + 'static,
     F::Output: Send + 'static,
@@ -63,9 +69,14 @@ pub enum JoinHandle<T> {
 impl<T> Future for JoinHandle<T> {
     type Output = T;
 
-    fn poll(self: std::pin::Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> std::task::Poll<Self::Output> {
+    fn poll(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Self::Output> {
         match &mut *self {
-            JoinHandle::Tokio(handle) => std::pin::Pin::new(handle).poll(cx),
+            JoinHandle::Tokio(handle) => std::pin::Pin::new(handle)
+                .poll(cx)
+                .map(|res| res.expect("spawned task panicked")),
         }
     }
 }

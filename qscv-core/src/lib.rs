@@ -39,7 +39,8 @@ pub mod column;
 pub mod value;
 
 // NOTE: toolkit
-pub mod migrate;
+#[cfg(feature = "migration")]
+pub mod migration;
 pub mod pool;
 
 pub use error::{Error, Result};

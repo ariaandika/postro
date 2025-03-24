@@ -106,9 +106,9 @@ pub enum Error {
     #[error("attempted to communicate with a crashed background worker")]
     WorkerCrashed,
 
-    #[cfg(feature = "migrate")]
+    #[cfg(feature = "migration")]
     #[error("{0}")]
-    Migrate(#[source] Box<crate::migrate::MigrateError>),
+    Migrate(#[source] Box<crate::migration::MigrateError>),
 
     #[error("attempted to call begin_with at non-zero transaction depth")]
     InvalidSavePointStatement,
@@ -311,10 +311,10 @@ where
     }
 }
 
-#[cfg(feature = "migrate")]
-impl From<crate::migrate::MigrateError> for Error {
+#[cfg(feature = "migration")]
+impl From<crate::migration::MigrateError> for Error {
     #[inline]
-    fn from(error: crate::migrate::MigrateError) -> Self {
+    fn from(error: crate::migration::MigrateError) -> Self {
         Error::Migrate(Box::new(error))
     }
 }

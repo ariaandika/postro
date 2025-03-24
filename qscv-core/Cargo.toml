@@ -11,8 +11,8 @@ futures-util = { version = "0.3.31", default-features = false, features = ["allo
 log = "0.4.26"
 memchr = "2.7.4"
 thiserror = "2.0.12"
-tokio = { version = "1.44.1", optional = true }
+tokio = { version = "1.44.1", optional = true, features = ["io-util","net","sync"] }
 
 [features]
 migrate = []
-tokio = ["dep:tokio","tokio/io-util","tokio/net"]
+tokio = ["dep:tokio"]

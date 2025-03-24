@@ -14,6 +14,7 @@ pub mod types;
 pub mod from_row;
 pub mod describe;
 pub mod executor;
+pub mod sync;
 pub mod error;
 
 // NOTE: driver traits

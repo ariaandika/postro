@@ -1,6 +1,7 @@
 //! asynchronous connection pool
 //!
 //! see [`Pool`] for details
+use close_event::CloseEvent;
 use inner::PoolInner;
 use std::{
     borrow::Cow,
@@ -21,6 +22,7 @@ mod inner;
 mod connection;
 mod executor;
 mod maybe;
+mod close_event;
 
 pub use self::{
     options::{PoolOptions, PoolConnectionMetadata},
@@ -283,6 +285,12 @@ impl<DB: Database> Pool<DB> {
     /// Get the options for this pool
     pub fn options(&self) -> &PoolOptions<DB> {
         &self.0.options
+    }
+}
+
+impl<DB: Database> Pool<DB> {
+    pub fn close_event(&self) -> CloseEvent {
+        self.0.close_event()
     }
 }
 

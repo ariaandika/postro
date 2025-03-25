@@ -1,26 +1,27 @@
-use super::connection::{Floating, Idle, Live};
-use crate::connection::ConnectOptions;
-use crate::connection::Connection;
-use crate::database::Database;
-use crate::error::Error;
-use crate::pool::{deadline_as_timeout, Pool, PoolOptions};
 use crossbeam_queue::ArrayQueue;
-
-use crate::sync::{AsyncSemaphore, AsyncSemaphoreReleaser};
-
-use std::cmp;
-use std::future::Future;
-use std::pin::pin;
-use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
-use std::sync::{Arc, RwLock};
-use std::task::Poll;
-
-// use crate::logger::private_level_filter_to_trace_level;
-use crate::pool::options::PoolConnectionMetadata;
-// use crate::private_tracing_dynamic_event;
 use futures_util::future::{self};
 use futures_util::FutureExt;
-use std::time::{Duration, Instant};
+use std::{
+    cmp,
+    future::Future,
+    pin::pin,
+    sync::{
+        atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering},
+        Arc, RwLock,
+    },
+    task::Poll,
+    time::{Duration, Instant},
+};
+
+use super::close_event::CloseEvent;
+use super::connection::{Floating, Idle, Live};
+use crate::{
+    connection::{ConnectOptions, Connection},
+    database::Database,
+    error::Error,
+    pool::{deadline_as_timeout, options::PoolConnectionMetadata, Pool, PoolOptions},
+    sync::{AsyncSemaphore, AsyncSemaphoreReleaser},
+};
 
 pub(crate) struct PoolInner<DB: Database> {
     pub(super) connect_options: RwLock<Arc<<DB::Connection as Connection>::Options>>,
@@ -29,7 +30,7 @@ pub(crate) struct PoolInner<DB: Database> {
     pub(super) size: AtomicU32,
     pub(super) num_idle: AtomicUsize,
     is_closed: AtomicBool,
-    // pub(super) on_closed: event_listener::Event,
+    pub(super) on_closed: event_listener::Event,
     pub(super) options: PoolOptions<DB>,
     // pub(crate) acquire_time_level: Option<Level>,
     // pub(crate) acquire_slow_level: Option<Level>,
@@ -58,7 +59,7 @@ impl<DB: Database> PoolInner<DB> {
             size: AtomicU32::new(0),
             num_idle: AtomicUsize::new(0),
             is_closed: AtomicBool::new(false),
-            // on_closed: event_listener::Event::new(),
+            on_closed: event_listener::Event::new(),
             // acquire_time_level: private_level_filter_to_trace_level(options.acquire_time_level),
             // acquire_slow_level: private_level_filter_to_trace_level(options.acquire_slow_level),
             options,
@@ -113,11 +114,9 @@ impl<DB: Database> PoolInner<DB> {
         }
     }
 
-    // pub(crate) fn close_event(&self) -> CloseEvent {
-    //     CloseEvent {
-    //         listener: (!self.is_closed()).then(|| self.on_closed.listen()),
-    //     }
-    // }
+    pub(crate) fn close_event(&self) -> CloseEvent {
+        CloseEvent::new((!self.is_closed()).then(|| self.on_closed.listen()))
+    }
 
     /// Attempt to pull a permit from `self.semaphore` or steal one from the parent.
     ///

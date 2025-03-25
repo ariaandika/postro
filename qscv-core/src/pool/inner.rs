@@ -523,49 +523,47 @@ fn spawn_maintenance_tasks<DB: Database>(pool: &Arc<PoolInner<DB>>) {
     };
 
     // Immediately cancel this task if the pool is closed.
-    // let mut close_event = pool.close_event();
+    let mut close_event = pool.close_event();
 
     crate::rt::spawn(async move {
-        // If the last handle to the pool was dropped while we were sleeping
-        while let Some(pool) = pool_weak.upgrade() {
-            if pool.is_closed() {
-                return;
-            }
+        let _ = close_event.do_until(async {
+            // If the last handle to the pool was dropped while we were sleeping
+            while let Some(pool) = pool_weak.upgrade() {
+                if pool.is_closed() {
+                    return;
+                }
 
-            let next_run = Instant::now() + period;
+                let next_run = Instant::now() + period;
 
-            // Go over all idle connections, check for idleness and lifetime,
-            // and if we have fewer than min_connections after reaping a connection,
-            // open a new one immediately. Note that other connections may be popped from
-            // the queue in the meantime - that's fine, there is no harm in checking more
-            for _ in 0..pool.num_idle() {
-                if let Some(conn) = pool.try_acquire() {
-                    if is_beyond_idle_timeout(&conn, &pool.options)
-                        || is_beyond_max_lifetime(&conn, &pool.options)
-                    {
-                        let _ = conn.close().await;
-                        pool.min_connections_maintenance(Some(next_run)).await;
-                    } else {
-                        pool.release(conn.into_live());
+                // Go over all idle connections, check for idleness and lifetime,
+                // and if we have fewer than min_connections after reaping a connection,
+                // open a new one immediately. Note that other connections may be popped from
+                // the queue in the meantime - that's fine, there is no harm in checking more
+                for _ in 0..pool.num_idle() {
+                    if let Some(conn) = pool.try_acquire() {
+                        if is_beyond_idle_timeout(&conn, &pool.options)
+                            || is_beyond_max_lifetime(&conn, &pool.options)
+                        {
+                            let _ = conn.close().await;
+                            pool.min_connections_maintenance(Some(next_run)).await;
+                        } else {
+                            pool.release(conn.into_live());
+                        }
                     }
                 }
-            }
 
-            // Don't hold a reference to the pool while sleeping.
-            drop(pool);
+                // Don't hold a reference to the pool while sleeping.
+                drop(pool);
 
-            if let Some(duration) = next_run.checked_duration_since(Instant::now()) {
-                // `async-std` doesn't have a `sleep_until()`
-                crate::rt::sleep(duration).await;
-            } else {
-                // `next_run` is in the past, just yield.
-                crate::rt::yield_now().await;
+                if let Some(duration) = next_run.checked_duration_since(Instant::now()) {
+                    // `async-std` doesn't have a `sleep_until()`
+                    crate::rt::sleep(duration).await;
+                } else {
+                    // `next_run` is in the past, just yield.
+                    crate::rt::yield_now().await;
+                }
             }
-        }
-        // let _ = close_event
-        //     .do_until(async {
-        //     })
-        //     .await;
+        }).await;
     });
 }
 

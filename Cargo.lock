@@ -334,6 +334,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "qscv-postgres"
+version = "0.1.0"
+dependencies = [
+ "bytes",
+]
+
+[[package]]
 name = "quote"
 version = "1.0.40"
 source = "registry+https://github.com/rust-lang/crates.io-index"

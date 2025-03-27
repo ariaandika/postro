@@ -4,7 +4,7 @@ use crate::{
 };
 
 /// postgres connection options
-#[allow(dead_code)]
+#[derive(Debug)]
 pub struct PgOptions {
     url: ByteStr,
     pub(crate) user: ByteStr,

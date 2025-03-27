@@ -1,8 +1,17 @@
+// Common
 mod common;
-mod rt;
+
+// Driver
+mod protocol;
+
+// Runtime
+mod net;
+
+// Error
 mod error;
 
-mod options;
-mod connection;
+// Postgres
+pub mod postgres;
 
-pub use connection::PgConnection;
+pub use self::error::{Result, Error};
+pub use self::postgres::prelude::*;

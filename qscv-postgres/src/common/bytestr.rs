@@ -38,6 +38,11 @@ impl ByteStr {
         // SAFETY: input is a string and immutable
         unsafe { std::str::from_utf8_unchecked(&self.bytes) }
     }
+
+    /// clone the underlying bytes
+    pub fn bytes(&self) -> Bytes {
+        self.bytes.clone()
+    }
 }
 
 impl std::ops::Deref for ByteStr {
@@ -54,6 +59,12 @@ impl Clone for ByteStr {
     }
 }
 
+impl Default for ByteStr {
+    fn default() -> Self {
+        Self { bytes: Bytes::new() }
+    }
+}
+
 impl std::fmt::Display for ByteStr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         <str as std::fmt::Display>::fmt(self, f)
@@ -66,6 +77,12 @@ impl std::fmt::Debug for ByteStr {
     }
 }
 
+impl PartialEq for ByteStr {
+    fn eq(&self, other: &Self) -> bool {
+        str::eq(self.as_ref(), other.as_ref())
+    }
+}
+
 impl PartialEq<str> for ByteStr {
     fn eq(&self, other: &str) -> bool {
         str::eq(self, other)
@@ -75,6 +92,12 @@ impl PartialEq<str> for ByteStr {
 impl PartialEq<&str> for ByteStr {
     fn eq(&self, other: &&str) -> bool {
         str::eq(self, *other)
+    }
+}
+
+impl<B> From<B> for ByteStr where B: Into<Bytes> {
+    fn from(value: B) -> Self {
+        Self { bytes: value.into() }
     }
 }
 

@@ -10,7 +10,7 @@ pub struct PgOptions {
     pub(crate) user: ByteStr,
     pub(crate) pass: ByteStr,
     pub(crate) host: ByteStr,
-    pub(crate) port: ByteStr,
+    pub(crate) port: u16,
     pub(crate) dbname: ByteStr,
 }
 
@@ -33,7 +33,7 @@ impl PgOptions {
 
         {
             let Some(scheme_idx) = read.find("://") else {
-                parse_err!("invalid url")
+                parse_err!("failed to parse url")
             };
             let scheme = &read[..scheme_idx];
 
@@ -58,7 +58,9 @@ impl PgOptions {
         let user = eat!(':',password);
         let pass = eat!('@',host);
         let host = eat!(':',port);
-        let port = eat!('/',dbname);
+        let Ok(port) = eat!('/',dbname).parse() else {
+            parse_err!("failed to parse port")
+        };
         let dbname = url.slice_ref(read);
 
         Ok(Self {
@@ -84,7 +86,7 @@ mod test {
         assert_eq!(opt.user,"user2");
         assert_eq!(opt.pass,"passwd");
         assert_eq!(opt.host,"localhost");
-        assert_eq!(opt.port,"5432");
+        assert_eq!(opt.port,5432);
         assert_eq!(opt.dbname,"post");
     }
 
@@ -96,7 +98,7 @@ mod test {
         assert_eq!(opt.user,"user2");
         assert_eq!(opt.pass,"");
         assert_eq!(opt.host,"localhost");
-        assert_eq!(opt.port,"5432");
+        assert_eq!(opt.port,5432);
         assert_eq!(opt.dbname,"post");
     }
 }

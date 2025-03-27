@@ -338,6 +338,8 @@ name = "qscv-postgres"
 version = "0.1.0"
 dependencies = [
  "bytes",
+ "thiserror",
+ "tokio",
 ]
 
 [[package]]

@@ -39,9 +39,14 @@ impl BufferedSocket {
         return Ok(D::consume(self.read_buf.split_to(len).freeze())?)
     }
 
-    pub async fn encode<E: ProtocolEncode>(&mut self, message: E) -> Result<()> {
-        message.write(&mut self.write_buf)?;
-        self.socket.write_buf(dbg!(&mut self.write_buf)).await
+    /// write message to a buffer, this does not write to underlying io
+    pub fn encode<E: ProtocolEncode>(&mut self, message: E) -> Result<()> {
+        message.write(&mut self.write_buf).map_err(Into::into)
+    }
+
+    /// write buffered message to underlying io
+    pub async fn flush(&mut self) -> Result<()> {
+        self.socket.write_buf(&mut self.write_buf).await
     }
 
     pub async fn debug_read(&mut self) {

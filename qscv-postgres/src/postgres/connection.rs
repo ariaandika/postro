@@ -11,7 +11,11 @@ impl PgConnection {
         let opt = PgOptions::parse(url)?;
         let mut stream = PgStream::connect(&opt).await?;
 
-        stream.write(Startup { user: opt.user.bytes() }).await?;
+        // https://www.postgresql.org/docs/current/protocol-flow.html#PROTOCOL-FLOW-START-UP
+
+        stream.write(Startup { user: opt.user.bytes() })?;
+
+        stream.flush().await?;
 
         stream.debug_read().await;
 

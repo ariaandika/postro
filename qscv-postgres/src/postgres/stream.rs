@@ -16,12 +16,19 @@ impl PgStream {
         Ok(Self { socket: BufferedSocket::new(socket) })
     }
 
-    pub fn write_msg(&mut self, message: FrontendMessage) -> impl Future<Output = Result<()>> {
+    /// write message to a buffer, this does not write to underlying io
+    pub fn write_msg(&mut self, message: FrontendMessage) -> Result<()> {
         self.socket.encode(message)
     }
 
-    pub fn write(&mut self, message: impl Into<FrontendMessage>) -> impl Future<Output = Result<()>> {
+    /// write message to a buffer, this does not write to underlying io
+    pub fn write(&mut self, message: impl Into<FrontendMessage>) -> Result<()> {
         self.write_msg(message.into())
+    }
+
+    /// write buffered message to underlying io
+    pub fn flush(&mut self) -> impl Future<Output = Result<()>> {
+        self.socket.flush()
     }
 
     pub async fn debug_read(&mut self) {

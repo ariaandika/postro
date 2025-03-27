@@ -42,7 +42,7 @@ pub mod messages {
 
             // Int32
             // Length of message contents in bytes, including self.
-            // len + ver + conten
+            // reserve 4 bytes for length
             buf.put_u32(0);
 
             // Int32(196608)

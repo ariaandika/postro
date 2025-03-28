@@ -41,25 +41,8 @@ macro_rules! err {
         Err(crate::error::Error::$variant(err!($($tt)*).into()))
     };
     ($($tt:tt)*) => {
-        crate::error::GeneralError(format!($($tt)*))
+        crate::common::GeneralError::new(format!($($tt)*))
     };
-}
-
-/// an error which only contain string message
-pub struct GeneralError(pub String);
-
-impl std::error::Error for GeneralError { }
-
-impl std::fmt::Display for GeneralError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        std::fmt::Display::fmt(&self.0, f)
-    }
-}
-
-impl std::fmt::Debug for GeneralError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        std::fmt::Display::fmt(&self.0, f)
-    }
 }
 
 

@@ -1,7 +1,9 @@
-use crate::error::Result;
+use std::io;
 
 /// an either `TcpStream` or `Socket`, which implement
 /// `AsyncRead` and `AsyncWrite` transparently
+///
+/// require `tokio` feature, otherwise panic at runtime
 #[derive(Debug)]
 pub struct Socket {
     kind: Kind,
@@ -16,7 +18,7 @@ enum Kind {
 }
 
 impl Socket {
-    pub async fn connect_tcp(host: &str, port: u16) -> Result<Socket> {
+    pub async fn connect_tcp(host: &str, port: u16) -> io::Result<Socket> {
         #[cfg(feature = "tokio")]
         {
             let socket = tokio::net::TcpStream::connect((host,port)).await?;
@@ -31,21 +33,21 @@ impl Socket {
         }
     }
 
-    pub async fn connect_socket(path: &str) -> Result<Socket> {
-        #[cfg(feature = "tokio")]
+    pub async fn connect_socket(path: &str) -> io::Result<Socket> {
+        #[cfg(all(feature = "tokio", unix))]
         {
             let socket = tokio::net::UnixStream::connect(path).await?;
             Ok(Socket { kind: Kind::TokioUnixSocket(socket) })
         }
 
-        #[cfg(not(feature = "tokio"))]
+        #[cfg(not(all(feature = "tokio", unix)))]
         {
             let _ = path;
             panic!("runtime disabled")
         }
     }
 
-    pub async fn read_buf<'a, B>(&'a mut self, buf: &'a mut B) -> Result<usize>
+    pub async fn read_buf<'a, B>(&'a mut self, buf: &'a mut B) -> io::Result<usize>
     where
         B: bytes::BufMut + ?Sized,
     {
@@ -61,7 +63,7 @@ impl Socket {
         }
     }
 
-    pub async fn write_buf<'a, B>(&'a mut self, buf: &'a mut B) -> Result<()>
+    pub async fn write_all_buf<'a, B>(&'a mut self, buf: &'a mut B) -> io::Result<()>
     where
         B: bytes::Buf,
     {
@@ -88,6 +90,7 @@ impl tokio::io::AsyncRead for Socket {
         use std::pin::Pin;
         match &mut self.kind {
             Kind::TokioTcp(t) => Pin::new(t).poll_read(cx, buf),
+            #[cfg(unix)]
             Kind::TokioUnixSocket(u) => Pin::new(u).poll_read(cx, buf),
         }
     }
@@ -103,6 +106,7 @@ impl tokio::io::AsyncWrite for Socket {
         use std::pin::Pin;
         match &mut self.kind {
             Kind::TokioTcp(t) => Pin::new(t).poll_write(cx, buf),
+            #[cfg(unix)]
             Kind::TokioUnixSocket(u) => Pin::new(u).poll_write(cx, buf),
         }
     }
@@ -114,6 +118,7 @@ impl tokio::io::AsyncWrite for Socket {
         use std::pin::Pin;
         match &mut self.kind {
             Kind::TokioTcp(t) => Pin::new(t).poll_flush(cx),
+            #[cfg(unix)]
             Kind::TokioUnixSocket(u) => Pin::new(u).poll_flush(cx),
         }
     }
@@ -125,6 +130,7 @@ impl tokio::io::AsyncWrite for Socket {
         use std::pin::Pin;
         match &mut self.kind {
             Kind::TokioTcp(t) => Pin::new(t).poll_shutdown(cx),
+            #[cfg(unix)]
             Kind::TokioUnixSocket(u) => Pin::new(u).poll_shutdown(cx),
         }
     }

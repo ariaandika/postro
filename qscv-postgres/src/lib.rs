@@ -1,8 +1,8 @@
-// Common
+// common utility which completely isolated
 mod common;
 
 // Driver
-mod protocol;
+pub mod protocol;
 
 // Runtime
 mod net;

@@ -1,8 +1,11 @@
 use bytes::BytesMut;
-use std::ops::ControlFlow;
+use std::{io, ops::ControlFlow};
 
 use super::Socket;
-use crate::{protocol::{ProtocolDecode, ProtocolEncode}, Result};
+use crate::{
+    protocol::{ProtocolDecode, ProtocolEncode, ProtocolError},
+    Result,
+};
 
 const DEFAULT_BUF_CAPACITY: usize = 1024;
 
@@ -23,30 +26,44 @@ impl BufferedSocket {
         }
     }
 
-    pub async fn decode<D: ProtocolDecode>(&mut self) -> Result<D> {
-        let len = loop {
-            match D::check(&self.read_buf)? {
-                ControlFlow::Continue(expect) => loop {
-                    self.socket.read_buf(&mut self.read_buf).await?;
-                    if self.read_buf.len() >= expect {
-                        break
-                    }
-                },
-                ControlFlow::Break(len) => break len,
-            }
-        };
-
-        return Ok(D::consume(self.read_buf.split_to(len).freeze())?)
-    }
-
     /// write message to a buffer, this does not write to underlying io
-    pub fn encode<E: ProtocolEncode>(&mut self, message: E) -> Result<()> {
-        message.write(&mut self.write_buf).map_err(Into::into)
+    pub fn encode<E: ProtocolEncode>(&mut self, message: E) -> Result<(), ProtocolError> {
+        message.encode(&mut self.write_buf)
     }
 
     /// write buffered message to underlying io
-    pub async fn flush(&mut self) -> Result<()> {
-        self.socket.write_buf(&mut self.write_buf).await
+    pub fn flush(&mut self) -> impl Future<Output = io::Result<()>> {
+        self.socket.write_all_buf(&mut self.write_buf)
+    }
+
+    /// read message from socket
+    pub async fn decode<D: ProtocolDecode>(&mut self) -> Result<D> {
+        loop {
+            let read = self.read_buf.split().freeze();
+            let mut decode = read.clone();
+            match D::decode(&mut decode)? {
+                ControlFlow::Continue(expect) => {
+                    drop(decode);
+                    let Ok(bytes) = read.try_into_mut() else {
+                        panic!("Decoding violation: bytes owned before decode finish");
+                    };
+                    self.read_buf.unsplit(bytes);
+                    loop {
+                        self.socket.read_buf(&mut self.read_buf).await?;
+                        if self.read_buf.len() >= expect {
+                            break
+                        }
+                    }
+                },
+                ControlFlow::Break(m) => {
+                    let Ok(ok) = decode.try_into_mut() else {
+                        panic!("Decoding violation: bytes should be split, instead of cloned");
+                    };
+                    self.read_buf.unsplit(ok);
+                    return Ok(m)
+                }
+            }
+        }
     }
 
     pub async fn debug_read(&mut self) {

@@ -34,14 +34,14 @@ impl std::fmt::Debug for Error {
 /// general error return
 #[macro_export]
 macro_rules! err {
-    ($tt:literal) => {
-        crate::error::GeneralError(format!($tt))
-    };
     ($variant:ident,$source:ident) => {
         Err(crate::error::Error::$variant($source.into()))
     };
-    ($variant:ident,$tt:literal) => {
-        Err(crate::error::Error::$variant(err!($tt).into()))
+    ($variant:ident,$($tt:tt)*) => {
+        Err(crate::error::Error::$variant(err!($($tt)*).into()))
+    };
+    ($($tt:tt)*) => {
+        crate::error::GeneralError(format!($($tt)*))
     };
 }
 

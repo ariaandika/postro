@@ -5,8 +5,8 @@ use crate::{
 
 /// postgres connection options
 #[derive(Debug)]
+#[allow(unused)]
 pub struct PgOptions {
-    pub(crate) url: ByteStr,
     pub(crate) user: ByteStr,
     pub(crate) pass: ByteStr,
     pub(crate) socket: Option<ByteStr>,
@@ -40,8 +40,8 @@ impl PgOptions {
             return err!(Configuration, "expected schema to be `postgres`");
         }
 
-        let Url { url, user, pass, host, port, dbname, .. } = url;
-        Ok(Self { url, user, pass, host, port, dbname, socket: None })
+        let Url { user, pass, host, port, dbname, .. } = url;
+        Ok(Self { user, pass, host, port, dbname, socket: None })
     }
 }
 

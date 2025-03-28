@@ -2,7 +2,6 @@ use super::bytestr::ByteStr;
 
 #[derive(Debug)]
 pub struct Url {
-    pub url: ByteStr,
     pub scheme: ByteStr,
     pub user: ByteStr,
     pub pass: ByteStr,
@@ -43,7 +42,7 @@ impl Url {
             return Err(ParseError::new(format!("failed to parse port")))
         };
 
-        Ok(Self { url, scheme, user, pass, host, port, dbname, })
+        Ok(Self { scheme, user, pass, host, port, dbname, })
     }
 }
 
@@ -67,7 +66,6 @@ mod test {
     fn parse_url() {
         let url = ByteStr::from_static("postgres://user2:passwd@localhost:5432/post");
         let opt = Url::parse(url.clone()).unwrap();
-        assert_eq!(opt.url,url);
         assert_eq!(opt.scheme,"postgres");
         assert_eq!(opt.user,"user2");
         assert_eq!(opt.pass,"passwd");
@@ -80,7 +78,6 @@ mod test {
     fn empty_passwd() {
         let url = ByteStr::from_static("postgres://user2:@localhost:5432/post");
         let opt = Url::parse(url.clone()).unwrap();
-        assert_eq!(opt.url,url);
         assert_eq!(opt.scheme,"postgres");
         assert_eq!(opt.user,"user2");
         assert_eq!(opt.pass,"");

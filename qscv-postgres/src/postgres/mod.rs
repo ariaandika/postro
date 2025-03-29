@@ -1,7 +1,7 @@
 pub mod options;
 pub mod connection;
 
-mod message;
+pub mod message;
 mod stream;
 
 pub use prelude::*;

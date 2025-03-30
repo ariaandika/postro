@@ -1,4 +1,4 @@
-use bytes::{Buf, Bytes};
+use bytes::{Buf, BytesMut};
 use std::ops::ControlFlow;
 
 use super::authentication::Authentication;
@@ -15,6 +15,7 @@ macro_rules! decode {
     };
 }
 
+#[derive(Debug)]
 #[repr(u8)]
 pub enum BackendMessageFormat {
     /// Identifies the message as an authentication request
@@ -40,12 +41,13 @@ impl BackendMessageFormat {
 ///
 /// (this length count includes itself, but not the message-type byte).
 /// The remaining contents of the message are determined by the message type.
+#[derive(Debug)]
 pub enum BackendMessage {
     Authentication(Authentication),
 }
 
 impl ProtocolDecode for BackendMessage {
-    fn decode(buf: &mut Bytes) -> Result<ControlFlow<Self,usize>, ProtocolError> {
+    fn decode(buf: &mut BytesMut) -> Result<ControlFlow<Self,usize>, ProtocolError> {
         let Some(mut header) = buf.get(..5) else {
             return Ok(ControlFlow::Continue(5));
         };
@@ -53,13 +55,14 @@ impl ProtocolDecode for BackendMessage {
         // The first byte of a message identifies the message type
         let format = header.get_u8();
         let Some(format) = BackendMessageFormat::from_u8(format) else {
-            return Err(ProtocolError::new(general!("unsupported {format:?}")));
+            return Err(ProtocolError::new(general!(
+                "unsupported backend message {:?}",
+                bytes::Bytes::copy_from_slice(&[format])
+            )));
         };
 
         let message = match format {
-            BackendMessageFormat::Authentication => {
-                Self::Authentication(decode!(Authentication,buf))
-            },
+            BackendMessageFormat::Authentication => Self::Authentication(decode!(Authentication,buf)),
         };
 
         Ok(ControlFlow::Break(message))

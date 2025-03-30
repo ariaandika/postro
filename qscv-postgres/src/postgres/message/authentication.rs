@@ -1,4 +1,4 @@
-use bytes::Buf;
+use bytes::{Buf, BytesMut};
 use std::ops::ControlFlow;
 
 use crate::{
@@ -7,6 +7,10 @@ use crate::{
 };
 
 /// <https://www.postgresql.org/docs/current/protocol-message-formats.html#PROTOCOL-MESSAGE-FORMATS>
+///
+/// all variant have:
+///
+/// Byte1('R') Identifies the message as an authentication request.
 #[derive(Debug)]
 pub enum Authentication {
     /// Int32(8) Length of message contents in bytes, including self.
@@ -47,46 +51,44 @@ impl Authentication {
 }
 
 impl ProtocolDecode for Authentication {
-    fn decode(buf: &mut bytes::Bytes) -> Result<ControlFlow<Self,usize>, ProtocolError> {
-        let Some(mut header) = buf.get(..5) else {
+    fn decode(buf: &mut BytesMut) -> Result<ControlFlow<Self,usize>, ProtocolError> {
+        const PREFIX: usize = 1 + 4 + 4/* format|len|method */;
+
+        let Some(mut header) = buf.get(..PREFIX) else {
             return Ok(ControlFlow::Continue(5));
         };
 
         let format = header.get_u8();
         if format != Self::FORMAT {
             return Err(ProtocolError::new(general!(
-                "expected Authentication format ({:x}), found {format:x}",
+                "expected Authentication format ({:X}), found {format:X}",
                 Self::FORMAT
             )));
         }
 
         let len = header.get_i32() as _;
+        let auth_method = header.get_i32();
 
-        let body = match buf.get(..len) {
-            Some(mut body) => body.get_i32(),
-            None => return Ok(ControlFlow::Continue(len)),
+        if !buf.get(5..len).is_some() {
+            return Ok(ControlFlow::Continue(len))
         };
 
-        // format + length + body
-        buf.advance(1 + 4 + len);
+        // format + length + method
+        buf.advance(PREFIX);
 
-        let auth = match body {
+        // at this point, `buf` should sufficient
+
+        let auth = match auth_method {
             0 => Authentication::Ok,
             2 => Authentication::KerberosV5,
             3 => Authentication::CleartextPassword,
-            5 => {
-                let salt = match buf.get(..4) {
-                    Some(mut salt) => salt.get_u32(),
-                    _ => return Ok(ControlFlow::Continue(4)),
-                };
-                buf.advance(4);
-                Authentication::MD5Password { salt, }
-            }
+            5 => Authentication::MD5Password { salt: buf.get_u32(), },
             7 => Authentication::GSS,
             9 => Authentication::SSPI,
             10 => Authentication::SASL,
             f => return Err(ProtocolError::new(general!(
-                "unknown authentication methods ({f:x})"
+                "unknown authentication methods ({:?})",
+                bytes::Bytes::copy_from_slice(&f.to_be_bytes()),
             ))),
         };
 

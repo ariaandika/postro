@@ -1,5 +1,11 @@
-use super::{message::FrontendMessage, options::PgOptions};
-use crate::{error::Result, net::{BufferedSocket, Socket}};
+use std::io;
+
+use super::options::PgOptions;
+use crate::{
+    error::Result,
+    net::{BufferedSocket, Socket},
+    protocol::{ProtocolDecode, ProtocolEncode, ProtocolError},
+};
 
 #[derive(Debug)]
 pub struct PgStream {
@@ -17,22 +23,21 @@ impl PgStream {
     }
 
     /// write message to a buffer, this does not write to underlying io
-    pub fn write_msg(&mut self, message: FrontendMessage) -> Result<()> {
+    pub fn write<E>(&mut self, message: E) -> Result<(), ProtocolError>
+    where
+        E: ProtocolEncode,
+    {
         self.socket.encode(message)
     }
 
-    /// write message to a buffer, this does not write to underlying io
-    pub fn write(&mut self, message: impl Into<FrontendMessage>) -> Result<()> {
-        self.write_msg(message.into())
-    }
-
     /// write buffered message to underlying io
-    pub fn flush(&mut self) -> impl Future<Output = Result<()>> {
+    pub fn flush(&mut self) -> impl Future<Output = io::Result<()>> {
         self.socket.flush()
     }
 
-    pub async fn debug_read(&mut self) {
-        self.socket.debug_read().await;
+    /// receive a single message
+    pub fn recv<D: ProtocolDecode>(&mut self) -> impl Future<Output = Result<D>> {
+        self.socket.decode()
     }
 }
 

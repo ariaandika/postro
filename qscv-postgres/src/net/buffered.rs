@@ -37,39 +37,38 @@ impl BufferedSocket {
     }
 
     /// read message from socket
+    //
+    // Case 1:
+    // to prevent copies, we can use `Bytes` to share memory
+    // but the reader `BytesMut` cannot reclaim that memory back
+    //
+    // Case 2:
+    // we can just give a slice, and decoder msu copy the required bytes,
+    // but the reader buffer cannot know how much bytes was read
+    //
+    // Case 3:
+    // we can give the entire mutable reference of the `BytesMut`, the decoder
+    // will detect is the amount of bytes is sufficient, if its not, decoder should
+    // not modify the `BytesMut` in anyway, finally, decoder can split the required
+    // `Bytes`, and the reader have the leftover bytes
     pub async fn decode<D: ProtocolDecode>(&mut self) -> Result<D> {
         loop {
-            let read = self.read_buf.split().freeze();
-            let mut decode = read.clone();
-            match D::decode(&mut decode)? {
+            #[cfg(debug_assertions)]
+            let prev = (self.read_buf.len(),self.read_buf.capacity());
+            match D::decode(&mut self.read_buf)? {
                 ControlFlow::Continue(expect) => {
-                    drop(decode);
-                    let Ok(bytes) = read.try_into_mut() else {
-                        panic!("Decoding violation: bytes owned before decode finish");
-                    };
-                    self.read_buf.unsplit(bytes);
+                    debug_assert_eq!(prev,(self.read_buf.len(),self.read_buf.capacity()));
+                    self.read_buf.reserve(expect.saturating_sub(self.read_buf.len()));
                     loop {
-                        self.socket.read_buf(&mut self.read_buf).await?;
                         if self.read_buf.len() >= expect {
                             break
                         }
+                        self.socket.read_buf(&mut self.read_buf).await?;
                     }
                 },
-                ControlFlow::Break(m) => {
-                    let Ok(ok) = decode.try_into_mut() else {
-                        panic!("Decoding violation: bytes should be split, instead of cloned");
-                    };
-                    self.read_buf.unsplit(ok);
-                    return Ok(m)
-                }
+                ControlFlow::Break(m) => return Ok(m),
             }
         }
-    }
-
-    pub async fn debug_read(&mut self) {
-        self.read_buf.clear();
-        self.socket.read_buf(&mut self.read_buf).await.unwrap();
-        dbg!(&self.read_buf);
     }
 }
 

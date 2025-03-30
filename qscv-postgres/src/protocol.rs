@@ -1,5 +1,5 @@
+use bytes::BytesMut;
 use std::ops::ControlFlow;
-use bytes::{Bytes, BytesMut};
 
 use crate::common::BoxError;
 
@@ -13,19 +13,19 @@ pub trait ProtocolEncode {
 /// buffered protocol decoding
 ///
 /// If decode return [`ControlFlow::Continue`],
-/// more read is performed until expected total length in `Continue` is reached.
+/// more read is performed until expected *total length* in `Continue` is reached.
 /// This process repeated until [`ControlFlow::Break`]
 /// is returned with the complete message
 ///
 /// If decode returns [`ControlFlow::Continue`], the given
-/// `Bytes` should not be owned somewhere, in other word, it should be dropped,
-/// so the buffer owner can reclaim the `Bytes` back and read more.
+/// `BytesMut` *should not* be modified in any way, so more read
+/// does not shuffle the bytes order
 ///
 /// If decode returns [`ControlFlow::Break`], the given
-/// `Bytes` should be split to read bytes, not cloned,
-/// so the buffer owner can reclaim it back for the next encoding.
+/// `BytesMut` should be split to the required amount,
+/// the leftover bytes used for the next decoder
 pub trait ProtocolDecode: Sized {
-    fn decode(buf: &mut Bytes) -> Result<ControlFlow<Self,usize>, ProtocolError>;
+    fn decode(buf: &mut BytesMut) -> Result<ControlFlow<Self,usize>, ProtocolError>;
 }
 
 /// an error when translating buffer

@@ -15,6 +15,35 @@ macro_rules! decode {
     };
 }
 
+macro_rules! read_format {
+    ($buf:ident, $id:ident) => {{
+        // format + len
+        const FORMAT: usize = 1;
+        const PREFIX: usize = FORMAT + 4;
+
+        let Some(mut header) = $buf.get(..PREFIX) else {
+            return Ok(ControlFlow::Continue(PREFIX));
+        };
+
+        let format = header.get_u8();
+        if format != Self::FORMAT {
+            return Err(ProtocolError::new(general!(
+                "expected {} ({:?}), found {:?}",
+                stringify!($id), BytesRef(&[Self::FORMAT]), BytesRef(&[format]),
+            )));
+        }
+
+        let body_len = header.get_i32() as usize;
+
+        if $buf.get(PREFIX..FORMAT + body_len).is_none() {
+            return Ok(ControlFlow::Continue(FORMAT + body_len));
+        }
+
+        $buf.advance(PREFIX);
+        $buf.split_to(body_len - 4)
+    }};
+}
+
 /// All communication is through a stream of messages.
 ///
 /// 1. The first byte of a message identifies the [message type][BackendMessageFormat]
@@ -78,26 +107,10 @@ impl BackendKeyData {
 
 impl ProtocolDecode for BackendKeyData {
     fn decode(buf: &mut BytesMut) -> Result<ControlFlow<Self,usize>, ProtocolError> {
-        // format + len + pid + secret
-        const PREFIX: usize = 1 + 4 + 4 + 4;
-
-        let Some(mut header) = buf.get(..PREFIX) else {
-            return Ok(ControlFlow::Continue(PREFIX));
-        };
-
-        let format = header.get_u8();
-        if format != Self::FORMAT {
-            return Err(ProtocolError::new(general!(
-                "expected BackendKeyData ({:?}), found {:?}",
-                BytesRef(&[Self::FORMAT]), BytesRef(&[format]),
-            )));
-        }
-
-        buf.advance(1 + 4);
-
+        let mut body = read_format!(buf,ParameterStatus);
         Ok(ControlFlow::Break(Self {
-            process_id: buf.get_i32(),
-            secret_key: buf.get_i32(),
+            process_id: body.get_i32(),
+            secret_key: body.get_i32(),
         }))
     }
 }
@@ -117,55 +130,28 @@ impl ParameterStatus {
 
 impl ProtocolDecode for ParameterStatus {
     fn decode(buf: &mut BytesMut) -> Result<ControlFlow<Self,usize>, ProtocolError> {
-        // format + len
-        const PREFIX: usize = 1 + 4;
-
-        let Some(mut header) = buf.get(..PREFIX) else {
-            return Ok(ControlFlow::Continue(PREFIX));
-        };
-
-        let format = header.get_u8();
-        if format != Self::FORMAT {
-            return Err(ProtocolError::new(general!(
-                "expected ProtocolDecode ({:?}), found {:?}",
-                BytesRef(&[Self::FORMAT]), BytesRef(&[format]),
-            )));
+        macro_rules! string {
+            ($msg:ident) => {{
+                let end = match $msg.iter().position(|e|matches!(e,b'\0')) {
+                    Some(ok) => ok,
+                    None => return Err(ProtocolError::new(general!(
+                        "no nul termination in ParameterStatus",
+                    )))
+                };
+                match String::from_utf8($msg.split_to(end).into()) {
+                    Ok(ok) => ok,
+                    Err(err) => return Err(ProtocolError::new(general!(
+                        "non UTF-8 string in ParameterStatus: {err}",
+                    ))),
+                }
+            }};
         }
 
-        let len = header.get_i32() as usize;
+        let mut body = read_format!(buf,ParameterStatus);
 
-        if buf.get(PREFIX..PREFIX + len).is_none() {
-            return Ok(ControlFlow::Continue(len));
-        };
-
-        buf.advance(PREFIX);
-        let mut msg = buf.split_to(len - 4);
-
-        let Some(end1) = msg.iter().position(|e|matches!(e,b'\0')) else {
-            return Err(ProtocolError::new(general!(
-                "no nul termination in ParameterStatus",
-            )));
-        };
-
-        let Ok(name) = String::from_utf8(msg.split_to(end1).into()) else {
-            return Err(ProtocolError::new(general!(
-                "non UTF-8 string in ParameterStatus",
-            )));
-        };
-
-        msg.advance(1);
-
-        let Some(end2) = msg.iter().position(|e|matches!(e,b'\0')) else {
-            return Err(ProtocolError::new(general!(
-                "no nul termination in ParameterStatus",
-            )));
-        };
-
-        let Ok(value) = String::from_utf8(msg.split_to(end2).into()) else {
-            return Err(ProtocolError::new(general!(
-                "non UTF-8 string in ParameterStatus",
-            )));
-        };
+        let name = string!(body);
+        body.advance(1);
+        let value = string!(body);
 
         Ok(ControlFlow::Break(Self { name, value, }))
     }

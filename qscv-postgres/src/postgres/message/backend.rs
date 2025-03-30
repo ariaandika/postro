@@ -16,7 +16,7 @@ macro_rules! decode {
 }
 
 macro_rules! read_format {
-    ($buf:ident, $id:ident) => {{
+    (@ $buf:ident, $id:ident,$method:ident) => {{
         // format + len
         const FORMAT: usize = 1;
         const PREFIX: usize = FORMAT + 4;
@@ -40,7 +40,13 @@ macro_rules! read_format {
         }
 
         $buf.advance(PREFIX);
-        $buf.split_to(body_len - 4)
+        $buf.$method(body_len - 4)
+    }};
+    ($buf:ident,$id:ident) => {{
+        read_format!(@ $buf,$id,split_to)
+    }};
+    ($buf:ident,$id:ident,$method:ident) => {{
+        read_format!(@ $buf,$id,$method)
     }};
 }
 
@@ -58,6 +64,7 @@ pub enum BackendMessage {
     Authentication(Authentication),
     BackendKeyData(BackendKeyData),
     ParameterStatus(ParameterStatus),
+    ReadyForQuery(ReadyForQuery),
 }
 
 impl ProtocolDecode for BackendMessage {
@@ -76,6 +83,7 @@ impl ProtocolDecode for BackendMessage {
             Authentication::FORMAT => Self::Authentication(decode!(Authentication,buf)),
             BackendKeyData::FORMAT => Self::BackendKeyData(decode!(BackendKeyData,buf)),
             ParameterStatus::FORMAT => Self::ParameterStatus(decode!(ParameterStatus,buf)),
+            ReadyForQuery::FORMAT => Self::ReadyForQuery(decode!(ReadyForQuery,buf)),
             f => return Err(ProtocolError::new(general!(
                 "unsupported backend message {:?}",
                 BytesRef(&[f])
@@ -154,6 +162,20 @@ impl ProtocolDecode for ParameterStatus {
         let value = string!(body);
 
         Ok(ControlFlow::Break(Self { name, value, }))
+    }
+}
+
+#[derive(Debug)]
+pub struct ReadyForQuery;
+
+impl ReadyForQuery {
+    pub const FORMAT: u8 = b'Z';
+}
+
+impl ProtocolDecode for ReadyForQuery {
+    fn decode(buf: &mut BytesMut) -> Result<ControlFlow<Self,usize>, ProtocolError> {
+        read_format!(buf,ReadyForQuery,advance);
+        Ok(ControlFlow::Break(Self))
     }
 }
 

@@ -2,15 +2,14 @@ use bytes::{Buf, BytesMut};
 use std::ops::ControlFlow;
 
 use crate::{
-    general,
-    protocol::{ProtocolDecode, ProtocolError},
+    common::BytesRef, general, protocol::{ProtocolDecode, ProtocolError}
 };
 
+/// Identifies the message as an authentication request.
+///
+/// format: `b'R'`
+///
 /// <https://www.postgresql.org/docs/current/protocol-message-formats.html#PROTOCOL-MESSAGE-FORMATS>
-///
-/// all variant have:
-///
-/// Byte1('R') Identifies the message as an authentication request.
 #[derive(Debug)]
 pub enum Authentication {
     /// Int32(8) Length of message contents in bytes, including self.
@@ -52,7 +51,8 @@ impl Authentication {
 
 impl ProtocolDecode for Authentication {
     fn decode(buf: &mut BytesMut) -> Result<ControlFlow<Self,usize>, ProtocolError> {
-        const PREFIX: usize = 1 + 4 + 4/* format|len|method */;
+        // format + len + method
+        const PREFIX: usize = 1 + 4 + 4;
 
         let Some(mut header) = buf.get(..PREFIX) else {
             return Ok(ControlFlow::Continue(5));
@@ -61,8 +61,8 @@ impl ProtocolDecode for Authentication {
         let format = header.get_u8();
         if format != Self::FORMAT {
             return Err(ProtocolError::new(general!(
-                "expected Authentication format ({:X}), found {format:X}",
-                Self::FORMAT
+                "expected Authentication format ({:?}), found {:?}",
+                BytesRef(&[Self::FORMAT]), BytesRef(&[format]),
             )));
         }
 
@@ -88,7 +88,7 @@ impl ProtocolDecode for Authentication {
             10 => Authentication::SASL,
             f => return Err(ProtocolError::new(general!(
                 "unknown authentication methods ({:?})",
-                bytes::Bytes::copy_from_slice(&f.to_be_bytes()),
+                BytesRef(&f.to_be_bytes()),
             ))),
         };
 

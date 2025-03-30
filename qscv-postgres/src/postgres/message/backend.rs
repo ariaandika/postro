@@ -3,7 +3,7 @@ use std::ops::ControlFlow;
 
 use super::authentication::Authentication;
 use crate::{
-    general, protocol::{ProtocolDecode, ProtocolError}
+    common::BytesRef, general, protocol::{ProtocolDecode, ProtocolError}
 };
 
 macro_rules! decode {
@@ -15,25 +15,6 @@ macro_rules! decode {
     };
 }
 
-#[derive(Debug)]
-#[repr(u8)]
-pub enum BackendMessageFormat {
-    /// Identifies the message as an authentication request
-    Authentication = b'R',
-}
-
-impl BackendMessageFormat {
-    /// from postgres first byte format
-    pub fn from_u8(id: u8) -> Option<Self> {
-        match id {
-            b'R' => Some(Self::Authentication),
-            _ => None,
-        }
-    }
-}
-
-/// <https://www.postgresql.org/docs/current/protocol-overview.html#PROTOCOL-MESSAGE-CONCEPTS>
-///
 /// All communication is through a stream of messages.
 ///
 /// 1. The first byte of a message identifies the [message type][BackendMessageFormat]
@@ -41,31 +22,78 @@ impl BackendMessageFormat {
 ///
 /// (this length count includes itself, but not the message-type byte).
 /// The remaining contents of the message are determined by the message type.
+///
+/// <https://www.postgresql.org/docs/current/protocol-overview.html#PROTOCOL-MESSAGE-CONCEPTS>
 #[derive(Debug)]
 pub enum BackendMessage {
     Authentication(Authentication),
+    BackendKeyData(BackendKeyData),
 }
 
 impl ProtocolDecode for BackendMessage {
     fn decode(buf: &mut BytesMut) -> Result<ControlFlow<Self,usize>, ProtocolError> {
-        let Some(mut header) = buf.get(..5) else {
-            return Ok(ControlFlow::Continue(5));
+        // format + len
+        const PREFIX: usize = 1 + 4;
+
+        let Some(mut header) = buf.get(..PREFIX) else {
+            return Ok(ControlFlow::Continue(PREFIX));
         };
 
         // The first byte of a message identifies the message type
         let format = header.get_u8();
-        let Some(format) = BackendMessageFormat::from_u8(format) else {
-            return Err(ProtocolError::new(general!(
-                "unsupported backend message {:?}",
-                bytes::Bytes::copy_from_slice(&[format])
-            )));
-        };
 
         let message = match format {
-            BackendMessageFormat::Authentication => Self::Authentication(decode!(Authentication,buf)),
+            // Byte1('R') Identifies the message as an authentication request.
+            Authentication::FORMAT => Self::Authentication(decode!(Authentication,buf)),
+            // Byte1('K') Identifies the message as cancellation key data.
+            BackendKeyData::FORMAT => Self::BackendKeyData(decode!(BackendKeyData,buf)),
+            f => return Err(ProtocolError::new(general!(
+                "unsupported backend message {:?}",
+                BytesRef(&[f])
+            ))),
         };
 
         Ok(ControlFlow::Break(message))
+    }
+}
+
+//
+// NOTE: Backend Messages
+//
+
+/// Identifies the message as cancellation key data.
+///
+/// The frontend must save these values if it wishes to be able to issue CancelRequest messages later.
+#[derive(Debug)]
+pub struct BackendKeyData {
+    /// The process ID of this backend.
+    pub process_id: i32,
+    /// The secret key of this backend.
+    pub secret_key: i32,
+}
+
+impl BackendKeyData {
+    pub const FORMAT: u8 = b'K';
+}
+
+impl ProtocolDecode for BackendKeyData {
+    fn decode(buf: &mut BytesMut) -> Result<ControlFlow<Self,usize>, ProtocolError> {
+        // format + len
+        const PREFIX: usize = 1 + 4;
+
+        let Some(mut header) = buf.get(..PREFIX) else {
+            return Ok(ControlFlow::Continue(5));
+        };
+
+        let format = header.get_u8();
+        if format != Self::FORMAT {
+            return Err(ProtocolError::new(general!(
+                "expected BackendKeyData ({:?}), found {:?}",
+                BytesRef(&[Self::FORMAT]), BytesRef(&[format]),
+            )));
+        }
+
+        todo!()
     }
 }
 

@@ -4,24 +4,27 @@ Abstraction layer over a sql database operation
 
 layered architecture allow for generic operation performed on multiple protocol
 
-## Layer 1, Driver Layer
+## Layer 1, Io Layer
 
 here we only work with socket and buffer, no protocol specific here.
 
-driver layer provide `Socket`, `ProtocolDecode` and `ProtocolEncode`.
+this layer provide `Socket` and `BufferedSocket`
 
-`Socket` is a buffered reader and writer. `Socket` can be written with `ProtocolEncode`
-which provide type safe write instead of raw buffer, And `ProtocolDecode` to read
-with type safety from the socket.
-
-driver layer also provide common operation like runtime agnostic interface,
+this layer also provide common operation like runtime agnostic interface,
 tcp or unix stream socket, tls, and more.
 
 ## Layer 2, Protocol Layer
 
-any server or client message type must implement `ProtocolDecode` or `ProtocolEncode` respectively.
+io read does not always read the entire message, its protocol specific to know,
+buffer wise, is the message is a complete message.
 
-protocol connection can just hold a `Socket`, then safely send message to server.
+this layer provide `ProtocolStream` which wrap `Socket`, `ProtocolDecode` and `ProtocolEncode`
+
+protocol must have general format for a single message, before decoded more specific message.
+in this layer, buffer are read until one message is found, then more specific message type
+can decode without performing any io call.
+
+
 
 # SQLX
 

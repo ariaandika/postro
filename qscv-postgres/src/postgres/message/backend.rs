@@ -28,6 +28,7 @@ macro_rules! decode {
 pub enum BackendMessage {
     Authentication(Authentication),
     BackendKeyData(BackendKeyData),
+    ParameterStatus(ParameterStatus),
 }
 
 impl ProtocolDecode for BackendMessage {
@@ -45,6 +46,7 @@ impl ProtocolDecode for BackendMessage {
         let message = match format {
             Authentication::FORMAT => Self::Authentication(decode!(Authentication,buf)),
             BackendKeyData::FORMAT => Self::BackendKeyData(decode!(BackendKeyData,buf)),
+            ParameterStatus::FORMAT => Self::ParameterStatus(decode!(ParameterStatus,buf)),
             f => return Err(ProtocolError::new(general!(
                 "unsupported backend message {:?}",
                 BytesRef(&[f])
@@ -100,14 +102,12 @@ impl ProtocolDecode for BackendKeyData {
     }
 }
 
-/// Identifies the message as cancellation key data.
-///
-/// The frontend must save these values if it wishes to be able to issue CancelRequest messages later.
+/// Identifies the message as a run-time parameter status report
 #[derive(Debug)]
 pub struct ParameterStatus {
-    /// The name of the run-time parameter being reported.
+    /// The name of the run-time parameter being reported
     pub name: String,
-    /// The current value of the parameter.
+    /// The current value of the parameter
     pub value: String
 }
 
@@ -121,18 +121,53 @@ impl ProtocolDecode for ParameterStatus {
         const PREFIX: usize = 1 + 4;
 
         let Some(mut header) = buf.get(..PREFIX) else {
-            return Ok(ControlFlow::Continue(5));
+            return Ok(ControlFlow::Continue(PREFIX));
         };
 
         let format = header.get_u8();
         if format != Self::FORMAT {
             return Err(ProtocolError::new(general!(
-                "expected BackendKeyData ({:?}), found {:?}",
+                "expected ProtocolDecode ({:?}), found {:?}",
                 BytesRef(&[Self::FORMAT]), BytesRef(&[format]),
             )));
         }
 
-        todo!()
+        let len = header.get_i32() as usize;
+
+        if buf.get(PREFIX..PREFIX + len).is_none() {
+            return Ok(ControlFlow::Continue(len));
+        };
+
+        buf.advance(PREFIX);
+        let mut msg = buf.split_to(len - 4);
+
+        let Some(end1) = msg.iter().position(|e|matches!(e,b'\0')) else {
+            return Err(ProtocolError::new(general!(
+                "no nul termination in ParameterStatus",
+            )));
+        };
+
+        let Ok(name) = String::from_utf8(msg.split_to(end1).into()) else {
+            return Err(ProtocolError::new(general!(
+                "non UTF-8 string in ParameterStatus",
+            )));
+        };
+
+        msg.advance(1);
+
+        let Some(end2) = msg.iter().position(|e|matches!(e,b'\0')) else {
+            return Err(ProtocolError::new(general!(
+                "no nul termination in ParameterStatus",
+            )));
+        };
+
+        let Ok(value) = String::from_utf8(msg.split_to(end2).into()) else {
+            return Err(ProtocolError::new(general!(
+                "non UTF-8 string in ParameterStatus",
+            )));
+        };
+
+        Ok(ControlFlow::Break(Self { name, value, }))
     }
 }
 

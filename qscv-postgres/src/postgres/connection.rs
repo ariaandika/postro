@@ -4,7 +4,7 @@ use super::{
     stream::PgStream,
 };
 
-use crate::{common::general, error::{err, Result}, protocol::ProtocolError};
+use crate::{common::general, error::{err, Result}, postgres::message::frontend::PasswordMessage, protocol::ProtocolError};
 
 #[derive(Debug)]
 pub struct PgConnection {
@@ -24,7 +24,7 @@ impl PgConnection {
 
         stream.write(Startup {
             user: &opt.user,
-            database: None,
+            database: Some(&opt.dbname),
             replication: None,
         })?;
 
@@ -46,10 +46,20 @@ impl PgConnection {
                 ))),
             };
             match auth {
+                // we gucci
                 Ok => break,
+                // The frontend must now send a PasswordMessage containing the password in clear-text form
+                CleartextPassword => {
+                    let password = opt.pass.as_ref();
+                    stream.write(PasswordMessage {
+                        len: 4 + password.len() as i32,
+                        password,
+                    })?;
+                    stream.flush().await?;
+                },
                 // TODO: support more authentication method
                 f => return err!(Protocol,ProtocolError::new(general!(
-                    "authentication {f:?}) is not yet supported",
+                    "authentication {f:#?} is not yet supported",
                 )))
             }
         }
@@ -89,7 +99,7 @@ fn test_connect() {
         .build()
         .unwrap()
         .block_on(async {
-            let _conn = PgConnection::connect("postgres://postgres:@localhost:5432/postgres").await.unwrap();
+            let _conn = PgConnection::connect("postgres://cookiejar:cookie@127.0.0.1:5432/postgres").await.unwrap();
         })
 }
 

@@ -8,6 +8,7 @@
 
 // Frontend Messages
 pub mod startup;
+pub mod frontend;
 
 // Backend Messages
 pub mod backend;

@@ -1,10 +1,12 @@
 use super::{
-    message::{startup::Startup, BackendMessage},
+    message::{authentication, startup::Startup, BackendMessage},
     options::PgOptions,
     stream::PgStream,
 };
-use crate::error::Result;
 
+use crate::{err, error::Result, general, protocol::ProtocolError};
+
+#[derive(Debug)]
 pub struct PgConnection {
     #[allow(unused)]
     stream: PgStream,
@@ -34,7 +36,23 @@ impl PgConnection {
         // In some methods, no response at all is needed from the frontend, and so no authentication request occurs.
         // For GSSAPI, SSPI and SASL, multiple exchanges of packets may be needed to complete the authentication.
 
-        let _auth = stream.recv::<BackendMessage>().await?;
+        loop {
+            use authentication::Authentication::*;
+            let auth = match stream.recv::<BackendMessage>().await? {
+                BackendMessage::Authentication(ok) => ok,
+                BackendMessage::ErrorResponse(err) => return Err(err.into()),
+                f => return err!(Protocol,ProtocolError::new(general!(
+                    "unexpected message in startup phase: ({f:?})",
+                ))),
+            };
+            match auth {
+                Ok => break,
+                // TODO: support more authentication method
+                f => return err!(Protocol,ProtocolError::new(general!(
+                    "authentication {f:?}) is not yet supported",
+                )))
+            }
+        }
 
         // After having received AuthenticationOk, the frontend must wait for further messages from the server.
         // In this phase a backend process is being started, and the frontend is just an interested bystander.
@@ -45,6 +63,19 @@ impl PgConnection {
         // During this phase the backend will attempt to apply any additional run-time parameter settings that
         // were given in the startup message. If successful, these values become session defaults.
         // An error causes ErrorResponse and exit.
+
+        loop {
+            let msg = stream.recv::<BackendMessage>().await?;
+            match msg {
+                BackendMessage::ReadyForQuery(_) => break,
+                BackendMessage::BackendKeyData(_) => {}
+                BackendMessage::ParameterStatus(_) => {}
+                BackendMessage::ErrorResponse(err) => return Err(err.into()),
+                f => return err!(Protocol,ProtocolError::new(general!(
+                    "unexpected message in startup phase: {f:#?}",
+                ))),
+            }
+        }
 
         Ok(Self { stream })
     }
@@ -58,7 +89,7 @@ fn test_connect() {
         .build()
         .unwrap()
         .block_on(async {
-            let _conn = PgConnection::connect("postgres://postgres:@localhost:5432/deuzo").await.unwrap();
+            let _conn = PgConnection::connect("postgres://postgres:@localhost:5432/postgres").await.unwrap();
         })
 }
 

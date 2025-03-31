@@ -1,6 +1,7 @@
 use crate::{
     common::{bytestr::ByteStr, url::Url},
-    err, Result,
+    error::err,
+    Result,
 };
 
 /// postgres connection options

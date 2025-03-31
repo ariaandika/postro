@@ -2,7 +2,7 @@ use bytes::{Buf, BytesMut};
 use std::ops::ControlFlow;
 
 use crate::{
-    common::BytesRef, general, protocol::{ProtocolDecode, ProtocolError}
+    common::{general, BytesRef}, protocol::{ProtocolDecode, ProtocolError}
 };
 
 /// Identifies the message as an authentication request.
@@ -69,7 +69,7 @@ impl ProtocolDecode for Authentication {
         let len = header.get_i32() as _;
         let auth_method = header.get_i32();
 
-        if !buf.get(5..len).is_some() {
+        if buf.get(5..len).is_none() {
             return Ok(ControlFlow::Continue(len))
         };
 

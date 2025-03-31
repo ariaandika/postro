@@ -53,7 +53,7 @@ impl Socket {
     {
         #[cfg(feature = "tokio")]
         {
-            Ok(tokio::io::AsyncReadExt::read_buf(self, buf).await?)
+            tokio::io::AsyncReadExt::read_buf(self, buf).await
         }
 
         #[cfg(not(feature = "tokio"))]
@@ -69,7 +69,7 @@ impl Socket {
     {
         #[cfg(feature = "tokio")]
         {
-            Ok(tokio::io::AsyncWriteExt::write_all_buf(self, buf).await?)
+            tokio::io::AsyncWriteExt::write_all_buf(self, buf).await
         }
 
         #[cfg(not(feature = "tokio"))]

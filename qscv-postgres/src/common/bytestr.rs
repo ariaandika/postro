@@ -40,6 +40,7 @@ impl ByteStr {
     }
 
     /// clone the underlying bytes
+    #[allow(unused)]
     pub fn bytes(&self) -> Bytes {
         self.bytes.clone()
     }

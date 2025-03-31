@@ -1,7 +1,7 @@
 use bytes::{BufMut, BytesMut};
 
 use crate::{
-    err,
+    error::err,
     protocol::{ProtocolEncode, ProtocolError},
 };
 
@@ -45,7 +45,7 @@ impl ProtocolEncode for Startup<'_> {
 
         buf.put_slice(b"user");
         buf.put_u8(0);
-        buf.put_slice(&self.user.as_bytes());
+        buf.put_slice(self.user.as_bytes());
         buf.put_u8(0);
 
         // database: The database to connect to. Defaults to the user name.
@@ -53,7 +53,7 @@ impl ProtocolEncode for Startup<'_> {
         if let Some(db) = self.database {
             buf.put_slice(b"database");
             buf.put_u8(0);
-            buf.put_slice(&db.as_bytes());
+            buf.put_slice(db.as_bytes());
             buf.put_u8(0);
         }
 
@@ -72,7 +72,7 @@ impl ProtocolEncode for Startup<'_> {
         if let Some(repl) = self.replication {
             buf.put_slice(b"replication");
             buf.put_u8(0);
-            buf.put_slice(&repl.as_bytes());
+            buf.put_slice(repl.as_bytes());
             buf.put_u8(0);
         }
 

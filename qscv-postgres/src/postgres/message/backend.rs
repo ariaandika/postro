@@ -3,7 +3,8 @@ use std::ops::ControlFlow;
 
 use super::authentication::Authentication;
 use crate::{
-    common::BytesRef, general, protocol::{ProtocolDecode, ProtocolError}
+    common::{general, BytesRef},
+    protocol::{ProtocolDecode, ProtocolError},
 };
 
 macro_rules! decode {

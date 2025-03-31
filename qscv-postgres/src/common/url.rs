@@ -39,7 +39,7 @@ impl Url {
         let dbname = url.slice_ref(read);
 
         let Ok(port) = port.parse() else {
-            return Err(ParseError::new(format!("failed to parse port")))
+            return Err(ParseError::new("failed to parse port".to_owned()))
         };
 
         Ok(Self { scheme, user, pass, host, port, dbname, })

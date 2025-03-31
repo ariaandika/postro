@@ -35,7 +35,6 @@ impl std::fmt::Debug for Error {
 }
 
 /// general error return
-#[macro_export]
 macro_rules! err {
     ($variant:ident,$source:ident) => {
         Err(crate::error::Error::$variant($source.into()))
@@ -51,4 +50,5 @@ macro_rules! err {
     };
 }
 
+pub(crate) use err;
 

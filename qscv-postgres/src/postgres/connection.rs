@@ -4,7 +4,7 @@ use super::{
     stream::PgStream,
 };
 
-use crate::{err, error::Result, general, protocol::ProtocolError};
+use crate::{common::general, error::{err, Result}, protocol::ProtocolError};
 
 #[derive(Debug)]
 pub struct PgConnection {

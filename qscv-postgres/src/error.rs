@@ -1,6 +1,6 @@
 use std::io;
 
-use crate::protocol::ProtocolError;
+use crate::{postgres::message::backend::ErrorResponse, protocol::ProtocolError};
 
 pub type Result<T,E = Error> = std::result::Result<T,E>;
 
@@ -15,6 +15,9 @@ pub enum Error {
 
     #[error("Io error: {0}")]
     Io(#[from]#[source] io::Error),
+
+    #[error("Database error: {0}")]
+    Database(#[from] ErrorResponse),
 
     #[error(transparent)]
     Other(Box<dyn std::error::Error + Send + Sync>)
@@ -37,8 +40,11 @@ macro_rules! err {
     ($variant:ident,$source:ident) => {
         Err(crate::error::Error::$variant($source.into()))
     };
+    ($variant:ident,$str:literal,$($tt:tt)*) => {
+        Err(crate::error::Error::$variant(err!($str,$($tt)*).into()))
+    };
     ($variant:ident,$($tt:tt)*) => {
-        Err(crate::error::Error::$variant(err!($($tt)*).into()))
+        Err(crate::error::Error::$variant($($tt)*.into()))
     };
     ($($tt:tt)*) => {
         crate::common::GeneralError::new(format!($($tt)*))

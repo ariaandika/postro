@@ -1,10 +1,15 @@
+use bytes::Bytes;
+
 use super::{
-    message::{authentication, startup::Startup, BackendMessage},
+    message::{authentication, frontend::{PasswordMessage, Query}, startup::Startup, BackendMessage},
     options::PgOptions,
     stream::PgStream,
 };
-
-use crate::{common::general, error::{err, Result}, postgres::message::frontend::PasswordMessage, protocol::ProtocolError};
+use crate::{
+    common::general,
+    error::{err, Result},
+    protocol::ProtocolError,
+};
 
 #[derive(Debug)]
 pub struct PgConnection {
@@ -89,6 +94,32 @@ impl PgConnection {
 
         Ok(Self { stream })
     }
+
+    /// perform a simple query
+    ///
+    /// <https://www.postgresql.org/docs/current/protocol-flow.html#PROTOCOL-FLOW-SIMPLE-QUERY>
+    pub async fn simple_query(&mut self, sql: impl Into<Bytes>) -> Result<()> {
+        self.stream.write(Query::new(sql))?;
+        self.stream.flush().await?;
+        loop {
+            match self.stream.recv::<BackendMessage>().await? {
+                // Indicates that rows are about to be returned in response to a SELECT, FETCH, etc. query.
+                // The contents of this message describe the column layout of the rows.
+                // This will be followed by a DataRow message for each row being returned to the frontend.
+                BackendMessage::RowDescription(_row) => { },
+                // One of the set of rows returned by a SELECT, FETCH, etc. query.
+                BackendMessage::DataRow(_columns) => { }
+                // An SQL command completed normally
+                BackendMessage::CommandComplete(_tag) => { }
+                BackendMessage::ReadyForQuery(_) => break,
+                f => return err!(Protocol,ProtocolError::new(general!(
+                    "unexpected message in simple query: {f:#?}",
+                ))),
+            }
+        }
+
+        Ok(())
+    }
 }
 
 #[cfg(feature = "tokio")]
@@ -99,7 +130,8 @@ fn test_connect() {
         .build()
         .unwrap()
         .block_on(async {
-            let _conn = PgConnection::connect("postgres://cookiejar:cookie@127.0.0.1:5432/postgres").await.unwrap();
+            let mut conn = PgConnection::connect("postgres://cookiejar:cookie@127.0.0.1:5432/postgres").await.unwrap();
+            let _ = conn.simple_query("select null,4").await.unwrap();
         })
 }
 

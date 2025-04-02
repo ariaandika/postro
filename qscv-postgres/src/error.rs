@@ -1,6 +1,6 @@
 use std::io;
 
-use crate::{postgres::message::backend::ErrorResponse, protocol::ProtocolError};
+use crate::{message::backend::ErrorResponse, protocol::ProtocolError};
 
 pub type Result<T,E = Error> = std::result::Result<T,E>;
 

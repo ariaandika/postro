@@ -1,3 +1,6 @@
+
+// General Modules
+
 // common utility which completely isolated
 mod common;
 
@@ -10,8 +13,21 @@ mod net;
 // Error
 mod error;
 
-// Postgres
-pub mod postgres;
+// Postgres Specific
 
-pub use self::error::{Result, Error};
-pub use self::postgres::prelude::*;
+// Postgres
+pub mod types;
+pub mod value;
+
+pub mod options;
+pub mod connection;
+pub mod statement;
+
+pub mod message;
+mod stream;
+
+
+pub use self::error::{Error, Result};
+pub use self::options::PgOptions;
+pub use self::connection::PgConnection;
+

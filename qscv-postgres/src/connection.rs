@@ -1,7 +1,7 @@
 use bytes::Bytes;
 
 use super::{
-    message::{authentication, frontend::{PasswordMessage, Query}, startup::Startup, BackendMessage},
+    message::{authentication, frontend::{Startup, PasswordMessage, Query}, BackendMessage},
     options::PgOptions,
     stream::PgStream,
 };

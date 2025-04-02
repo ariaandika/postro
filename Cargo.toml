@@ -1,10 +1,4 @@
-[package]
-name = "qscv"
-version = "0.1.0"
-edition = "2024"
-
-[dependencies]
-
 [workspace]
-members = ["codegen", "qscv-core-legacy", "qscv-postgres"]
-default-members = ["."]
+members = ["codegen", "qscv-postgres"]
+default-members = ["qscv-postgres"]
+resolver = "2"

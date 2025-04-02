@@ -7,7 +7,6 @@
 //! [`Startup`]: startup::Startup
 
 // Frontend Messages
-pub mod startup;
 pub mod frontend;
 
 // Backend Messages

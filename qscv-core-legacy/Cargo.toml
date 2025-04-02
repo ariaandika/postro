@@ -1,5 +1,5 @@
 [package]
-name = "qscv-core"
+name = "qscv-core-legacy"
 version = "0.1.0"
 edition = "2024"
 

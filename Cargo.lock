@@ -317,7 +317,7 @@ name = "qscv"
 version = "0.1.0"
 
 [[package]]
-name = "qscv-core"
+name = "qscv-core-legacy"
 version = "0.1.0"
 dependencies = [
  "bytes",

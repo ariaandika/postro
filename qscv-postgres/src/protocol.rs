@@ -7,7 +7,7 @@ use crate::common::BoxError;
 ///
 /// the message should write buffer into provided `buf`
 pub trait ProtocolEncode {
-    fn encode(&self, buf: &mut BytesMut) -> Result<(), ProtocolError>;
+    fn encode(self, buf: &mut BytesMut) -> Result<(), ProtocolError>;
 }
 
 /// buffered protocol decoding

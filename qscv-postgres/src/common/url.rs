@@ -1,4 +1,4 @@
-use super::bytestr::ByteStr;
+use super::{general, ByteStr, GeneralError};
 
 #[derive(Debug)]
 pub struct Url {
@@ -11,14 +11,14 @@ pub struct Url {
 }
 
 impl Url {
-    pub fn parse(url: impl Into<ByteStr>) -> Result<Self, ParseError> {
-        let url = url.into();
+    pub fn parse(url: impl Into<ByteStr>) -> Result<Self, GeneralError> {
+        let url: ByteStr = url.into();
         let mut read = url.as_ref();
 
         macro_rules! eat {
             (@ $delim:literal,$id:tt,$len:literal) => {{
                 let Some(idx) = read.find($delim) else {
-                    return Err(ParseError(concat!(stringify!($id), " missing")))
+                    return Err(general!(concat!(stringify!($id), " missing")))
                 };
                 let capture = &read[..idx];
                 read = &read[idx + $len..];
@@ -39,17 +39,12 @@ impl Url {
         let port = eat!('/',dbname);
         let dbname = url.slice_ref(read);
 
-        let Ok(port) = port.parse() else {
-            return Err(ParseError("invalid port digit"))
-        };
-
-        Ok(Self { scheme, user, pass, host, port, dbname, })
+        match port.parse() {
+            Ok(port) => Ok(Self { scheme, user, pass, host, port, dbname, }),
+            Err(err) => return Err(general!("invalid port: {err}")),
+        }
     }
 }
-
-#[derive(Debug, thiserror::Error)]
-#[error("{0}")]
-pub struct ParseError(&'static str);
 
 #[cfg(test)]
 mod test {

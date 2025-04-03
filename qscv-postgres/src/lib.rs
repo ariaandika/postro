@@ -17,6 +17,7 @@ mod error;
 pub mod types;
 pub mod encode;
 pub mod value;
+pub mod raw_row;
 
 pub mod options;
 pub mod connection;

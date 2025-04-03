@@ -7,7 +7,7 @@ use crate::{
         authentication,
         frontend::{Bind, Execute, Parse, PasswordMessage, Query, Startup, Sync},
         BackendMessage,
-    }, options::PgOptions, protocol::ProtocolError, stream::PgStream
+    }, options::PgOptions, protocol::ProtocolError, raw_row::RawRow, stream::PgStream
 };
 
 const DEFAULT_PREPARED_STMT_CACHE: NonZeroUsize = NonZeroUsize::new(24).unwrap();
@@ -134,7 +134,7 @@ impl PgConnection {
     /// perform an extended query
     ///
     /// <https://www.postgresql.org/docs/current/protocol-flow.html#PROTOCOL-FLOW-EXT-QUERY>
-    pub async fn query(&mut self, sql: &str, args: &[Encoded<'_>]) -> Result<()> {
+    pub async fn query(&mut self, sql: &str, args: &[Encoded<'_>]) -> Result<Vec<RawRow>> {
         if let Some(_cached) = self.prepared_stmt.get_mut(sql) {
             todo!()
         }
@@ -202,12 +202,16 @@ impl PgConnection {
         // The response to Bind is either BindComplete or ErrorResponse.
         dbg!(self.stream.recv::<BackendMessage>().await)?;
 
+        let mut rows = vec![];
+
         // The possible responses to Execute are the same as those described above
         // for queries issued via simple query protocol, except that Execute doesn't
         // cause ReadyForQuery or RowDescription to be issued.
         loop {
             match dbg!(self.stream.recv::<BackendMessage>().await)? {
-                BackendMessage::DataRow(_) => {},
+                BackendMessage::DataRow(row) => {
+                    rows.push(row.raw_row);
+                },
                 BackendMessage::CommandComplete(_) => break,
                 _ => unreachable!(),
             }
@@ -216,7 +220,7 @@ impl PgConnection {
         // The response to Sync is either BindComplete or ErrorResponse.
         dbg!(self.stream.recv::<BackendMessage>().await)?;
 
-        Ok(())
+        Ok(rows)
     }
 }
 
@@ -239,17 +243,20 @@ fn test_connect() {
                 Encoded::new(ValueRef::Bytes(b"FooBar".into()), str::PG_TYPE.oid()),
             ];
 
-            // P\0\0\0\x17_1\0select $1\0\0\x01\0\0\0\x19
-            let _ = conn
+            let rows = conn
                 .query(
                     "SELECT * FROM (VALUES\
-                        ($1, $2),\
-                        ($2, $1)\
+                        ($1, null, $2),\
+                        ($2, $1, null)\
                     ) AS t(column1, column2);",
                     &params
                 )
                 .await
                 .unwrap();
+
+            for row in rows {
+                dbg!(row.collect::<Vec<_>>());
+            }
         })
 }
 

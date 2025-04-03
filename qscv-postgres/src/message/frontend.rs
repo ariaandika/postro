@@ -5,6 +5,32 @@ use crate::{
     protocol::{ProtocolEncode, ProtocolError},
 };
 
+trait StrExt {
+    /// postgres String must be nul terminated
+    fn nul_string_len(&self) -> i32;
+}
+
+impl StrExt for str {
+    fn nul_string_len(&self) -> i32 {
+        match i32::try_from(self.len()) {
+            Ok(ok) => ok + 1/* nul */,
+            Err(err) => panic!("message size too large for protocol: {err}"),
+        }
+    }
+}
+
+trait BufMutExt {
+    /// postgres String must be nul terminated
+    fn put_nul_string(&mut self, string: &str);
+}
+
+impl<B: BufMut> BufMutExt for B {
+    fn put_nul_string(&mut self, string: &str) {
+        self.put(string.as_bytes());
+        self.put_u8(b'\0');
+    }
+}
+
 /// write the buffer length at the first 4 bytes
 ///
 /// note to exclude the message format when writing postgres message length
@@ -17,6 +43,45 @@ fn pg_write_len(mut buf: &mut [u8]) -> Result<(), ProtocolError> {
     buf.put_i32(size);
 
     Ok(())
+}
+
+/// write a frontend message to `buf`
+///
+/// to write multiple message at the same time, use [`write_batch`]
+/// for better capacity reserve
+pub fn write<F: FrontendMessage>(msg: F, buf: &mut BytesMut) {
+    // format + length
+    const PREFIX: usize = 1 + 4;
+
+    let size = msg.size_hint();
+    buf.reserve(PREFIX + size as usize);
+
+    let offset = buf.len();
+    buf.put_u8(F::FORMAT);
+    buf.put_i32(4 + size);
+
+    // SAFETY: we have reserved above
+    unsafe { buf.advance_mut(size as _) };
+
+    msg.encode(&mut buf[offset + PREFIX..offset + PREFIX + size as usize]);
+}
+
+/// a postgres frontend message
+pub trait FrontendMessage {
+    /// message format
+    const FORMAT: u8;
+
+    /// size of the main body
+    ///
+    /// note that this is *only* the size of main body as oppose of actual postgres message
+    fn size_hint(&self) -> i32;
+
+    /// write the main body of the message
+    ///
+    /// `buf` have the length returned from `size_hint`
+    ///
+    /// writing past length may result in panic
+    fn encode(self, buf: impl BufMut);
 }
 
 /// Postgres Startup frontend message
@@ -108,7 +173,6 @@ impl ProtocolEncode for Startup<'_> {
 
 #[derive(Debug)]
 pub struct PasswordMessage<'a> {
-    pub len: i32,
     pub password: &'a str,
 }
 
@@ -135,6 +199,18 @@ impl ProtocolEncode for PasswordMessage<'_> {
         pg_write_len(&mut buf[offset + 1..])?;
 
         Ok(())
+    }
+}
+
+impl FrontendMessage for PasswordMessage<'_> {
+    const FORMAT: u8 = b'p';
+
+    fn size_hint(&self) -> i32 {
+        self.password.nul_string_len()
+    }
+
+    fn encode(self, mut buf: impl BufMut) {
+        buf.put_nul_string(self.password);
     }
 }
 

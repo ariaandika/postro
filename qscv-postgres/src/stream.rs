@@ -1,10 +1,10 @@
 use std::io;
 
-use super::options::PgOptions;
 use crate::{
-    error::Result,
+    message::{frontend, FrontendMessage},
     net::{BufferedSocket, Socket},
     protocol::{ProtocolDecode, ProtocolEncode, ProtocolError},
+    PgOptions, Result,
 };
 
 #[derive(Debug)]
@@ -28,6 +28,14 @@ impl PgStream {
         E: ProtocolEncode,
     {
         self.socket.encode(message)
+    }
+
+    /// send frontend message to a buffer, this does not write to underlying io
+    pub fn send<E>(&mut self, msg: E)
+    where
+        E: FrontendMessage,
+    {
+        frontend::write(msg, self.socket.write_buf_mut())
     }
 
     /// write buffered message to underlying io

@@ -79,5 +79,10 @@ impl BufferedSocket {
         println!("Debug PostRead: {:?}",self.read_buf);
         Ok(())
     }
+
+    /// return mutable reference to the write buffer
+    pub fn write_buf_mut(&mut self) -> &mut BytesMut {
+        &mut self.write_buf
+    }
 }
 

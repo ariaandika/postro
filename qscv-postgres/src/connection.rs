@@ -61,10 +61,7 @@ impl PgConnection {
                 // The frontend must now send a PasswordMessage containing the password in clear-text form
                 CleartextPassword => {
                     let password = opt.pass.as_ref();
-                    stream.write(PasswordMessage {
-                        len: 4 + password.len() as i32,
-                        password,
-                    })?;
+                    stream.send(PasswordMessage { password });
                     stream.flush().await?;
                 },
                 // TODO: support more authentication method

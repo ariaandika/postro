@@ -15,3 +15,5 @@ pub mod authentication;
 
 pub use backend::BackendMessage;
 
+pub use frontend::FrontendMessage;
+

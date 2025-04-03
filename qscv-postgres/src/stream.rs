@@ -30,12 +30,17 @@ impl PgStream {
         self.socket.encode(message)
     }
 
-    /// send frontend message to a buffer, this does not write to underlying io
-    pub fn send<E>(&mut self, msg: E)
+    /// send frontend message to a buffer
+    ///
+    /// just calling this function, msg only written to a buffer
+    ///
+    /// polling the returned `Flush` will actually flush the underlying io
+    pub fn send<E>(&mut self, msg: E) -> Flush<'_>
     where
         E: FrontendMessage,
     {
-        frontend::write(msg, self.socket.write_buf_mut())
+        frontend::write(msg, self.socket.write_buf_mut());
+        Flush(self)
     }
 
     /// write buffered message to underlying io
@@ -52,6 +57,17 @@ impl PgStream {
     #[allow(unused)]
     pub fn debug_read(&mut self) -> impl Future<Output = Result<()>> {
         self.socket.debug_read()
+    }
+}
+
+/// a future that flush the internal io when polled
+pub struct Flush<'a>(&'a mut PgStream);
+
+impl Future for Flush<'_> {
+    type Output = io::Result<()>;
+
+    fn poll(mut self: std::pin::Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> std::task::Poll<Self::Output> {
+        std::pin::pin!(self.0.socket.flush()).poll(cx)
     }
 }
 

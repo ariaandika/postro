@@ -48,7 +48,7 @@ impl PgConnection {
 
         loop {
             use authentication::Authentication::*;
-            let auth = match stream.recv::<BackendMessage>().await? {
+            let auth = match stream.recv().await? {
                 BackendMessage::Authentication(ok) => ok,
                 BackendMessage::ErrorResponse(err) => return Err(err.into()),
                 f => return err!(Protocol,ProtocolError::new(general!(
@@ -60,9 +60,7 @@ impl PgConnection {
                 Ok => break,
                 // The frontend must now send a PasswordMessage containing the password in clear-text form
                 CleartextPassword => {
-                    let password = opt.pass.as_ref();
-                    stream.send(PasswordMessage { password });
-                    stream.flush().await?;
+                    stream.send(PasswordMessage { password: opt.pass.as_ref() }).await?;
                 },
                 // TODO: support more authentication method
                 f => return err!(Protocol,ProtocolError::new(general!(

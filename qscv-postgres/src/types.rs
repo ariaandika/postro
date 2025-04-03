@@ -34,6 +34,10 @@ pub trait AsPgType {
     const PG_TYPE: PgType;
 }
 
+impl AsPgType for bool {
+    const PG_TYPE: PgType = PgType::Bool;
+}
+
 impl AsPgType for i32 {
     const PG_TYPE: PgType = PgType::Int4;
 }

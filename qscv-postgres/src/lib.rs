@@ -14,9 +14,10 @@ mod net;
 mod error;
 
 // Postgres Specific
+pub mod types;
+pub mod encode;
 
 // Postgres
-pub mod types;
 pub mod value;
 
 pub mod options;

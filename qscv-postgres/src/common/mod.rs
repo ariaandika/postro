@@ -1,38 +1,14 @@
-pub mod bytestr;
-pub mod url;
+mod bytestr;
+mod url;
+mod general;
+
+pub use bytestr::ByteStr;
+pub use url::Url;
+pub use self::general::GeneralError;
+
+pub(crate) use self::general::general;
 
 pub type BoxError = Box<dyn std::error::Error + Send + Sync + 'static>;
-
-macro_rules! general {
-    ($($tt:tt)*) => {
-        crate::common::GeneralError::new(format!($($tt)*))
-    };
-}
-
-pub(crate) use general;
-
-/// an error which only contain string message
-pub struct GeneralError(String);
-
-impl GeneralError {
-    pub fn new(message: String) -> GeneralError {
-        Self(message)
-    }
-}
-
-impl std::error::Error for GeneralError { }
-
-impl std::fmt::Display for GeneralError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        std::fmt::Display::fmt(&self.0, f)
-    }
-}
-
-impl std::fmt::Debug for GeneralError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        std::fmt::Display::fmt(&self.0, f)
-    }
-}
 
 /// Copied from `Bytes` `Debug` implementation
 pub struct BytesRef<'a>(pub &'a [u8]);
@@ -60,6 +36,4 @@ impl std::fmt::Debug for BytesRef<'_> {
         Ok(())
     }
 }
-
-
 

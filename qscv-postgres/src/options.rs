@@ -1,5 +1,5 @@
 use crate::{
-    common::{bytestr::ByteStr, url::Url},
+    common::{ByteStr, Url},
     error::err,
     Result,
 };

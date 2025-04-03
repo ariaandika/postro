@@ -1,19 +1,7 @@
-
-// General Modules
-
-// common utility which completely isolated
-mod common;
-
-// Driver
+pub mod common;
 pub mod protocol;
+pub mod net;
 
-// Runtime
-mod net;
-
-// Error
-mod error;
-
-// Postgres Specific
 pub mod types;
 pub mod encode;
 pub mod value;
@@ -26,6 +14,7 @@ pub mod statement;
 pub mod message;
 mod stream;
 
+mod error;
 
 pub use self::error::{Error, Result};
 pub use self::options::PgOptions;

@@ -1,14 +1,16 @@
 use bytes::Bytes;
 
-use super::{
-    message::{authentication, frontend::{Startup, PasswordMessage, Query}, BackendMessage},
-    options::PgOptions,
-    stream::PgStream,
-};
 use crate::{
     common::general,
     error::{err, Result},
+    message::{
+        authentication,
+        frontend::{PasswordMessage, Query, Startup},
+        BackendMessage,
+    },
+    options::PgOptions,
     protocol::ProtocolError,
+    stream::PgStream,
 };
 
 #[derive(Debug)]
@@ -19,8 +21,10 @@ pub struct PgConnection {
 
 impl PgConnection {
     pub async fn connect(url: &str) -> Result<Self> {
-        let opt = PgOptions::parse(url)?;
+        Self::connect_with(PgOptions::parse(url)?).await
+    }
 
+    pub async fn connect_with(opt: PgOptions) -> Result<Self> {
         let mut stream = PgStream::connect(&opt).await?;
 
         // https://www.postgresql.org/docs/current/protocol-flow.html#PROTOCOL-FLOW-START-UP

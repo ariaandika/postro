@@ -90,3 +90,15 @@ impl PartialEq<&str> for ByteStr {
     }
 }
 
+impl From<&'static str> for ByteStr {
+    fn from(value: &'static str) -> Self {
+        Self { bytes: Bytes::from_static(value.as_bytes()) }
+    }
+}
+
+impl From<String> for ByteStr {
+    fn from(value: String) -> Self {
+        Self { bytes: Bytes::from(value.into_bytes()) }
+    }
+}
+

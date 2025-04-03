@@ -1,22 +1,24 @@
+use std::num::NonZeroUsize;
 use bytes::Bytes;
+use lru::LruCache;
 
 use crate::{
-    common::general,
-    error::{err, Result},
-    message::{
+    common::general, encode::Encoded, error::{err, Result}, message::{
         authentication,
-        frontend::{PasswordMessage, Query, Startup},
+        frontend::{Bind, Execute, Parse, PasswordMessage, Query, Startup, Sync},
         BackendMessage,
-    },
-    options::PgOptions,
-    protocol::ProtocolError,
-    stream::PgStream,
+    }, options::PgOptions, protocol::ProtocolError, stream::PgStream
 };
+
+const DEFAULT_PREPARED_STMT_CACHE: NonZeroUsize = NonZeroUsize::new(24).unwrap();
 
 #[derive(Debug)]
 pub struct PgConnection {
-    #[allow(unused)]
     stream: PgStream,
+    #[allow(unused)]
+    stmt_id: std::num::NonZeroU32,
+    portal_id: std::num::NonZeroU32,
+    prepared_stmt: LruCache<String, String>,
 }
 
 impl PgConnection {
@@ -36,7 +38,6 @@ impl PgConnection {
             database: Some(&opt.dbname),
             replication: None,
         })?;
-
         stream.flush().await?;
 
         // The server then sends an appropriate authentication request message,
@@ -96,7 +97,12 @@ impl PgConnection {
             }
         }
 
-        Ok(Self { stream })
+        Ok(Self {
+            stream,
+            stmt_id: std::num::NonZeroU32::new(1).unwrap(),
+            portal_id: std::num::NonZeroU32::new(1).unwrap(),
+            prepared_stmt: LruCache::new(DEFAULT_PREPARED_STMT_CACHE),
+        })
     }
 
     /// perform a simple query
@@ -124,18 +130,126 @@ impl PgConnection {
 
         Ok(())
     }
+
+    /// perform an extended query
+    ///
+    /// <https://www.postgresql.org/docs/current/protocol-flow.html#PROTOCOL-FLOW-EXT-QUERY>
+    pub async fn query(&mut self, sql: &str, args: &[Encoded<'_>]) -> Result<()> {
+        if let Some(_cached) = self.prepared_stmt.get_mut(sql) {
+            todo!()
+        }
+
+        if self.stmt_id.checked_add(1).is_none() {
+            self.stmt_id = std::num::NonZeroU32::new(1).unwrap();
+        }
+
+        if self.portal_id.checked_add(1).is_none() {
+            self.portal_id = std::num::NonZeroU32::new(1).unwrap();
+        }
+
+        let mut b = itoa::Buffer::new();
+        let prepare_name = b.format(self.stmt_id.get()).as_bytes();
+
+
+        // In the extended protocol, the frontend first sends a Parse message
+
+        self.stream.write(Parse {
+            name: prepare_name,
+            query: sql.as_bytes(),
+            data_types_len: args.len() as _,
+            data_types: args.into_iter().map(Encoded::oid),
+        })?;
+
+        // WARN: is this documented somewhere ?
+        // Apparantly, sending Parse command, postgres does not immediately
+        // response with ParseComplete.
+        // 1. sending Sync will do so
+        // 2. otherwise, we can continue the protocol without waiting for one
+        //
+        // self.stream.write(Sync)?;
+
+
+        // Once a prepared statement exists, it can be readied for execution using a Bind message.
+
+        let mut b2 = itoa::Buffer::new();
+        let portal_name = b2.format(self.portal_id.get()).as_bytes();
+
+        self.stream.write(Bind {
+            portal_name,
+            prepare_name,
+            params_format_len: 1,
+            params_format_code: [1],
+            params_len: args.len() as _,
+            params: args,
+            results_format_len: 1,
+            results_format_code: [1],
+        })?;
+
+        // Once a portal exists, it can be executed using an Execute message
+
+        self.stream.write(Execute {
+            portal_name,
+            max_row: 0,
+        })?;
+
+        self.stream.write(Sync)?;
+        self.stream.flush().await?;
+
+
+        // The response to Parse is either ParseComplete or ErrorResponse
+        dbg!(self.stream.recv::<BackendMessage>().await)?;
+
+        // The response to Bind is either BindComplete or ErrorResponse.
+        dbg!(self.stream.recv::<BackendMessage>().await)?;
+
+        // The possible responses to Execute are the same as those described above
+        // for queries issued via simple query protocol, except that Execute doesn't
+        // cause ReadyForQuery or RowDescription to be issued.
+        loop {
+            match dbg!(self.stream.recv::<BackendMessage>().await)? {
+                BackendMessage::DataRow(_) => {},
+                BackendMessage::CommandComplete(_) => break,
+                _ => unreachable!(),
+            }
+        }
+
+        // The response to Sync is either BindComplete or ErrorResponse.
+        dbg!(self.stream.recv::<BackendMessage>().await)?;
+
+        Ok(())
+    }
 }
 
 #[cfg(feature = "tokio")]
 #[test]
 fn test_connect() {
+    use crate::{encode::ValueRef, types::AsPgType};
+
     tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
         .unwrap()
         .block_on(async {
             let mut conn = PgConnection::connect("postgres://cookiejar:cookie@127.0.0.1:5432/postgres").await.unwrap();
-            let _ = conn.simple_query("select null,4").await.unwrap();
+            let _ = conn
+                .simple_query("select null,4").await.unwrap();
+
+            let params = [
+                Encoded::new(ValueRef::Bytes(b"DeezNutz".into()), str::PG_TYPE.oid()),
+                Encoded::new(ValueRef::Bytes(b"FooBar".into()), str::PG_TYPE.oid()),
+            ];
+
+            // P\0\0\0\x17_1\0select $1\0\0\x01\0\0\0\x19
+            let _ = conn
+                .query(
+                    "SELECT * FROM (VALUES\
+                        ($1, $2),\
+                        ($2, $1)\
+                    ) AS t(column1, column2);",
+                    &params
+                )
+                .await
+                .unwrap();
         })
 }
 

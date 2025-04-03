@@ -16,8 +16,6 @@ mod error;
 // Postgres Specific
 pub mod types;
 pub mod encode;
-
-// Postgres
 pub mod value;
 
 pub mod options;

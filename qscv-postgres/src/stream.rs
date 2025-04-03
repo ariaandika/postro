@@ -39,5 +39,11 @@ impl PgStream {
     pub fn recv<D: ProtocolDecode>(&mut self) -> impl Future<Output = Result<D>> {
         self.socket.decode()
     }
+
+    #[cfg(test)]
+    #[allow(unused)]
+    pub fn debug_read(&mut self) -> impl Future<Output = Result<()>> {
+        self.socket.debug_read()
+    }
 }
 

@@ -70,6 +70,8 @@ pub enum BackendMessage {
     RowDescription(RowDescription),
     DataRow(DataRow),
     CommandComplete(CommandComplete),
+    ParseComplete(ParseComplete),
+    BindComplete(BindComplete),
 }
 
 impl ProtocolDecode for BackendMessage {
@@ -93,6 +95,8 @@ impl ProtocolDecode for BackendMessage {
             RowDescription::FORMAT => Self::RowDescription(decode!(RowDescription,buf)),
             DataRow::FORMAT => Self::DataRow(decode!(DataRow,buf)),
             CommandComplete::FORMAT => Self::CommandComplete(decode!(CommandComplete,buf)),
+            ParseComplete::FORMAT => Self::ParseComplete(decode!(ParseComplete,buf)),
+            BindComplete::FORMAT => Self::BindComplete(decode!(BindComplete,buf)),
             f => return Err(ProtocolError::new(general!(
                 "unsupported backend message {:?}",
                 BytesRef(&[f])
@@ -373,6 +377,35 @@ impl ProtocolDecode for CommandComplete {
     fn decode(buf: &mut BytesMut) -> Result<ControlFlow<Self,usize>, ProtocolError> {
         let tag = read_format!(buf,CommandComplete);
         Ok(ControlFlow::Break(Self { tag: String::from_utf8(tag.into()).unwrap() }))
+    }
+}
+
+#[derive(Debug)]
+pub struct ParseComplete;
+
+impl ParseComplete {
+    pub const FORMAT: u8 = b'1';
+}
+
+impl ProtocolDecode for ParseComplete {
+    fn decode(buf: &mut BytesMut) -> Result<ControlFlow<Self,usize>, ProtocolError> {
+        read_format!(buf,ParseComplete,advance);
+        Ok(ControlFlow::Break(Self))
+    }
+}
+
+
+#[derive(Debug)]
+pub struct BindComplete;
+
+impl BindComplete {
+    pub const FORMAT: u8 = b'2';
+}
+
+impl ProtocolDecode for BindComplete {
+    fn decode(buf: &mut BytesMut) -> Result<ControlFlow<Self,usize>, ProtocolError> {
+        read_format!(buf,BindComplete,advance);
+        Ok(ControlFlow::Break(Self))
     }
 }
 

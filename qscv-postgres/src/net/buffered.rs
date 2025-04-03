@@ -70,5 +70,14 @@ impl BufferedSocket {
             }
         }
     }
+
+    #[cfg(test)]
+    #[allow(unused)]
+    pub async fn debug_read(&mut self) -> Result<()> {
+        println!("Debug Read: {:?}",self.read_buf);
+        self.socket.read_buf(&mut self.read_buf).await?;
+        println!("Debug PostRead: {:?}",self.read_buf);
+        Ok(())
+    }
 }
 

@@ -7,6 +7,15 @@ pub struct Encoded<'q> {
     oid: Oid,
 }
 
+impl<'q> Default for Encoded<'q> {
+    fn default() -> Self {
+        Self {
+            value: ValueRef::Null,
+            oid: <()>::PG_TYPE.oid(),
+        }
+    }
+}
+
 impl<'q> Encoded<'q> {
     pub fn new(value: ValueRef<'q>, oid: Oid) -> Self {
         Self { value, oid }
@@ -73,9 +82,11 @@ impl<'q> Encode<'q> for &'q String {
 
 #[derive(Debug)]
 pub enum ValueRef<'q> {
+    Null,
     I32(i32),
     Bool(bool),
     Slice(&'q [u8]),
     Bytes(<[u8] as ToOwned>::Owned),
 }
+
 

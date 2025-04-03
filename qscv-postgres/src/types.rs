@@ -3,6 +3,7 @@ pub type Oid = i32;
 
 #[derive(Debug)]
 pub enum PgType {
+    Null,
     Bool,
     Int4,
     Int8,
@@ -21,6 +22,7 @@ impl PgType {
     }
     pub fn oid(&self) -> Oid {
         match self {
+            Self::Null => 0,
             Self::Bool => 16,
             Self::Int8 => 20,
             Self::Int4 => 23,
@@ -32,6 +34,10 @@ impl PgType {
 
 pub trait AsPgType {
     const PG_TYPE: PgType;
+}
+
+impl AsPgType for () {
+    const PG_TYPE: PgType = PgType::Null;
 }
 
 impl AsPgType for bool {

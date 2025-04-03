@@ -1,14 +1,14 @@
 use std::io;
 
-use crate::{message::backend::ErrorResponse, protocol::ProtocolError};
+use crate::{common::BoxError, message::backend::ErrorResponse, protocol::ProtocolError};
 
-pub type Result<T,E = Error> = std::result::Result<T,E>;
+pub type Result<T, E = Error> = std::result::Result<T, E>;
 
 /// all possible error from qscv
 #[derive(thiserror::Error)]
 pub enum Error {
     #[error("Configuration error: {0}")]
-    Configuration(#[source] Box<dyn std::error::Error>),
+    Configuration(#[source] BoxError),
 
     #[error("{0}")]
     Protocol(#[from]#[source] ProtocolError),
@@ -20,7 +20,7 @@ pub enum Error {
     Database(#[from] ErrorResponse),
 
     #[error(transparent)]
-    Other(Box<dyn std::error::Error + Send + Sync>)
+    Other(BoxError)
 }
 
 impl std::fmt::Debug for Error {

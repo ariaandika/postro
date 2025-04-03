@@ -5,6 +5,20 @@ use crate::{
     protocol::{ProtocolEncode, ProtocolError},
 };
 
+/// write the buffer length at the first 4 bytes
+///
+/// note to exclude the message format when writing postgres message length
+fn pg_write_len(mut buf: &mut [u8]) -> Result<(), ProtocolError> {
+    let size = buf.len();
+    let Ok(size) = i32::try_from(size) else {
+        return Err(ProtocolError::new(general!("message size out of range for protocol: {size}")));
+    };
+
+    buf.put_i32(size);
+
+    Ok(())
+}
+
 /// Postgres Startup frontend message
 #[derive(Debug)]
 pub struct Startup<'a> {
@@ -85,13 +99,8 @@ impl ProtocolEncode for Startup<'_> {
         // A zero byte is required as a terminator after the last name/value pair.
         buf.put_u8(0);
 
-        // write the length afterwards
-        let size = buf.len() - offset;
-        let Ok(size) = i32::try_from(size) else {
-            return Err(ProtocolError::new(general!("message size out of range for protocol: {size}")));
-        };
-
-        buf[offset..(offset + 4)].copy_from_slice(&size.to_be_bytes());
+        // write the length, Startup has no message format
+        pg_write_len(&mut buf[offset..])?;
 
         Ok(())
     }
@@ -122,13 +131,8 @@ impl ProtocolEncode for PasswordMessage<'_> {
         buf.put(self.password.as_bytes());
         buf.put_u8(b'\0');
 
-        // write the length afterwards
-        let size = buf[1..].len() - offset;
-        let Ok(size) = i32::try_from(size) else {
-            return Err(ProtocolError::new(general!("message size out of range for protocol: {size}")));
-        };
-
-        buf[1..][offset..(offset + 4)].copy_from_slice(&size.to_be_bytes());
+        // write the length, excluding msg format
+        pg_write_len(&mut buf[offset + 1..])?;
 
         Ok(())
     }
@@ -164,13 +168,8 @@ impl ProtocolEncode for Query {
         // C style string
         buf.put_u8(b'\0');
 
-        // write the length afterwards
-        let size = buf[1..].len() - offset;
-        let Ok(size) = i32::try_from(size) else {
-            return Err(ProtocolError::new(general!("message size out of range for protocol: {size}")));
-        };
-
-        buf[1..][offset..(offset + 4)].copy_from_slice(&size.to_be_bytes());
+        // write the length, excluding msg format
+        pg_write_len(&mut buf[offset + 1..])?;
 
         Ok(())
     }
@@ -235,13 +234,167 @@ where
             buf.put_i32(dt);
         }
 
-        // write the length afterwards
-        let size = buf[1..].len() - offset;
-        let Ok(size) = i32::try_from(size) else {
-            return Err(ProtocolError::new(general!("message size out of range for protocol: {size}")));
-        };
+        // write the length, excluding msg format
+        pg_write_len(&mut buf[offset + 1..])?;
 
-        buf[1..][offset..(offset + 4)].copy_from_slice(&size.to_be_bytes());
+        Ok(())
+    }
+}
+
+/// Identifies the message as a Sync command
+pub struct Sync;
+
+impl Sync {
+    pub const FORMAT: u8 = b'S';
+}
+
+impl ProtocolEncode for Sync {
+    fn encode(self, buf: &mut BytesMut) -> Result<(), ProtocolError> {
+        buf.put_u8(Self::FORMAT);
+        buf.put_i32(4);
+        Ok(())
+    }
+}
+
+
+/// Identifies the message as a Bind command
+pub struct Bind<'a,I,P,R> {
+    /// The name of the destination portal (an empty string selects the unnamed portal).
+    pub portal_name: &'a [u8],
+    /// The name of the source prepared statement (an empty string selects the unnamed prepared statement).
+    pub prepare_name: &'a [u8],
+
+    /// The number of parameter format codes that follow (denoted C below).
+    /// This can be zero to indicate that there are no parameters or that the parameters
+    /// all use the default format (text); or one, in which case the specified format code
+    /// is applied to all parameters; or it can equal the actual number of parameters.
+    pub params_format_len: i16,
+    /// Int16[C] The parameter format codes. Each must presently be zero (text) or one (binary).
+    pub params_format_code: I,
+
+    /// The number of parameter values that follow (possibly zero).
+    /// This must match the number of parameters needed by the query.
+    pub params_len: i16,
+
+    // Next, the following pair of fields appear for each parameter
+
+    /// Int32 The length of the parameter value, in bytes (this count does not include itself). Can be zero.
+    /// As a special case, -1 indicates a NULL parameter value. No value bytes follow in the NULL case
+    ///
+    /// followed by
+    ///
+    /// Byte[n] The value of the parameter, in the format indicated by the associated format code. n is the above length.
+    pub params: P,
+
+    // After the last parameter, the following fields appear:
+
+    /// The number of result-column format codes that follow (denoted R below).
+    /// This can be zero to indicate that there are no result columns or that the result
+    /// columns should all use the default format (text); or one, in which case the
+    /// specified format code is applied to all result columns (if any); or it can equal
+    /// the actual number of result columns of the query.
+    pub results_format_len: i16,
+
+    /// Int16[R] The result-column format codes. Each must presently be zero (text) or one (binary).
+    pub results_format_code: R,
+}
+
+impl<I,P,R> Bind<'_,I,P,R> {
+    pub const FORMAT: u8 = b'B';
+}
+
+impl<'a, I,P,R> ProtocolEncode for Bind<'a,I,P,R>
+where
+    I: IntoIterator<Item = i16>,
+    P: IntoIterator<Item = &'a crate::encode::Encoded<'a>>,
+    R: IntoIterator<Item = i16>,
+{
+    fn encode(self, buf: &mut BytesMut) -> Result<(), ProtocolError> {
+        let offset = buf.len();
+        buf.put_u8(Self::FORMAT);
+
+        // reserve for message length
+        buf.put_u32(0);
+
+        buf.put(self.portal_name);
+        buf.put_u8(b'\0');
+
+        buf.put(self.prepare_name);
+        buf.put_u8(b'\0');
+
+        buf.put_i16(self.params_format_len);
+        for format_code in self.params_format_code {
+            buf.put_i16(format_code);
+        }
+
+        buf.put_i16(self.params_len);
+        for param in self.params {
+            use crate::encode::{Encoded, ValueRef::*};
+            // NOTE: idk how to properly abstract this,
+            // number `to_be_bytes()` cannot be returned
+            // from function
+            match Encoded::value(&param) {
+                Null => todo!("how to write NULL ?"),
+                I32(num) => {
+                    buf.put_i32(4);
+                    buf.put_slice(&num.to_be_bytes());
+                },
+                Bool(b) => {
+                    buf.put_i32(1);
+                    buf.put_u8(*b as _);
+                },
+                Slice(items) => {
+                    buf.put_i32(items.len() as _);
+                    buf.put_slice(items);
+                },
+                Bytes(items) => {
+                    buf.put_i32(items.len() as _);
+                    buf.put_slice(items);
+                }
+            }
+        }
+
+        buf.put_i16(self.results_format_len);
+        for format_code in self.results_format_code {
+            buf.put_i16(format_code);
+        }
+
+        // write length, excluding msg format
+        pg_write_len(&mut buf[offset + 1..])?;
+
+        Ok(())
+    }
+}
+
+
+/// Identifies the message as a Execute command
+pub struct Execute<'a> {
+    /// The name of the portal to execute (an empty string selects the unnamed portal).
+    pub portal_name: &'a [u8],
+    /// Maximum number of rows to return, if portal contains a query that returns rows
+    /// (ignored otherwise). Zero denotes “no limit”.
+    pub max_row: i32,
+}
+
+impl Execute<'_> {
+    pub const FORMAT: u8 = b'E';
+}
+
+impl ProtocolEncode for Execute<'_> {
+    fn encode(self, buf: &mut BytesMut) -> Result<(), ProtocolError> {
+        let offset = buf.len();
+        buf.put_u8(Self::FORMAT);
+
+        // reserve for length
+        buf.put_u32(0);
+
+        buf.put(self.portal_name);
+        buf.put_u8(b'\0');
+
+        buf.put_i32(self.max_row);
+
+        // write length, excluding msg format
+        pg_write_len(&mut buf[offset + 1..])?;
 
         Ok(())
     }

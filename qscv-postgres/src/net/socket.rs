@@ -4,12 +4,10 @@ use std::io;
 /// `AsyncRead` and `AsyncWrite` transparently
 ///
 /// require `tokio` feature, otherwise panic at runtime
-#[derive(Debug)]
 pub struct Socket {
     kind: Kind,
 }
 
-#[derive(Debug)]
 enum Kind {
     #[cfg(feature = "tokio")]
     TokioTcp(tokio::net::TcpStream),
@@ -132,6 +130,17 @@ impl tokio::io::AsyncWrite for Socket {
             Kind::TokioTcp(t) => Pin::new(t).poll_shutdown(cx),
             #[cfg(unix)]
             Kind::TokioUnixSocket(u) => Pin::new(u).poll_shutdown(cx),
+        }
+    }
+}
+
+impl std::fmt::Debug for Socket {
+    fn fmt(&self, _f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.kind {
+            #[cfg(feature = "tokio")]
+            Kind::TokioTcp(ref tcp) => std::fmt::Debug::fmt(tcp, _f),
+            #[cfg(all(feature = "tokio", unix))]
+            Kind::TokioUnixSocket(ref unix) => std::fmt::Debug::fmt(&unix, _f),
         }
     }
 }

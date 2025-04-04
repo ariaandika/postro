@@ -2,6 +2,8 @@ pub mod common;
 pub mod protocol;
 pub mod net;
 
+pub mod message;
+
 pub mod types;
 pub mod encode;
 pub mod value;
@@ -11,8 +13,6 @@ pub mod row_buffer;
 pub mod options;
 pub mod connection;
 pub mod statement;
-
-pub mod message;
 mod stream;
 
 mod error;

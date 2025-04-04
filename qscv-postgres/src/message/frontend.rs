@@ -17,10 +17,13 @@ pub fn write<F: FrontendMessage>(msg: F, buf: &mut BytesMut) {
     buf.put_u8(F::FORMAT);
     buf.put_i32(4 + size);
 
-    // SAFETY: we have reserved above
-    unsafe { buf.advance_mut(size as _) };
+    msg.encode(&mut *buf);
 
-    msg.encode(&mut buf[offset + PREFIX..offset + PREFIX + size as usize]);
+    assert_eq!(
+        buf[offset..].len(),
+        PREFIX + size as usize,
+        "[BUG] Frontend Message body not equal to size hint"
+    );
 }
 
 /// a postgres frontend message

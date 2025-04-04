@@ -14,7 +14,6 @@ const DEFAULT_PREPARED_STMT_CACHE: NonZeroUsize = NonZeroUsize::new(24).unwrap()
 #[derive(Debug)]
 pub struct PgConnection {
     stream: PgStream,
-    #[allow(unused)]
     stmt_id: std::num::NonZeroU32,
     portal_id: std::num::NonZeroU32,
     prepared_stmt: LruCache<String, String>,

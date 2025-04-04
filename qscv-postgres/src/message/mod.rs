@@ -6,14 +6,12 @@
 //!
 //! [`Startup`]: startup::Startup
 
-// Frontend Messages
 pub mod frontend;
-
-// Backend Messages
 pub mod backend;
 pub mod authentication;
 
-pub use backend::BackendMessage;
+mod ext;
 
+pub use backend::BackendMessage;
 pub use frontend::FrontendMessage;
 

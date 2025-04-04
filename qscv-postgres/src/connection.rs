@@ -6,7 +6,7 @@ use crate::{
         authentication,
         frontend::{Bind, Execute, Parse, PasswordMessage, Query, Startup, Sync},
         BackendMessage,
-    }, options::PgOptions, protocol::ProtocolError, raw_row::RawRow, stream::PgStream
+    }, options::PgOptions, protocol::ProtocolError, row_buffer::RowBuffer, stream::PgStream
 };
 
 const DEFAULT_PREPARED_STMT_CACHE: NonZeroUsize = NonZeroUsize::new(24).unwrap();
@@ -113,7 +113,7 @@ impl PgConnection {
                 // This will be followed by a DataRow message for each row being returned to the frontend.
                 RowDescription(_row) => { },
                 // One of the set of rows returned by a SELECT, FETCH, etc. query.
-                DataRow(row) => rows.push(row.raw_row),
+                DataRow(row) => rows.push(row.row_buffer),
                 // An SQL command completed normally
                 CommandComplete(_tag) => { }
                 ReadyForQuery(_) => break,
@@ -129,7 +129,7 @@ impl PgConnection {
     /// perform an extended query
     ///
     /// <https://www.postgresql.org/docs/current/protocol-flow.html#PROTOCOL-FLOW-EXT-QUERY>
-    pub async fn query(&mut self, sql: &str, args: &[Encoded<'_>]) -> Result<Vec<RawRow>> {
+    pub async fn query(&mut self, sql: &str, args: &[Encoded<'_>]) -> Result<Vec<RowBuffer>> {
         if let Some(_cached) = self.prepared_stmt.get_mut(sql) {
             todo!()
         }
@@ -199,7 +199,7 @@ impl PgConnection {
         loop {
             use BackendMessage::*;
             match self.stream.recv().await? {
-                DataRow(row) => rows.push(row.raw_row),
+                DataRow(row) => rows.push(row.row_buffer),
                 CommandComplete(_) => break,
                 f => return err!(Protocol,ProtocolError::new(general!(
                     "unexpected message in extended query: {f:#?}",

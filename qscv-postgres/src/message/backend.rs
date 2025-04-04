@@ -4,7 +4,7 @@ use std::ops::ControlFlow;
 use super::authentication::Authentication;
 use crate::{
     common::{general, BytesRef},
-    protocol::{ProtocolDecode, ProtocolError}, raw_row::RawRow,
+    protocol::{ProtocolDecode, ProtocolError}, row_buffer::RowBuffer,
 };
 
 macro_rules! decode {
@@ -307,7 +307,7 @@ impl ProtocolDecode for RowDescription {
 #[derive(Debug)]
 /// Identifies the message as a row description
 pub struct DataRow {
-    pub raw_row: RawRow,
+    pub row_buffer: RowBuffer,
 }
 
 impl DataRow {
@@ -322,9 +322,9 @@ impl ProtocolDecode for DataRow {
         let col_values_len = body.get_i16();
 
         // lazily decode row without allocating `Vec`
-        let raw_row = RawRow::new(col_values_len, body.freeze());
+        let row_buffer = RowBuffer::new(col_values_len, body.freeze());
 
-        Ok(ControlFlow::Break(Self { raw_row }))
+        Ok(ControlFlow::Break(Self { row_buffer }))
     }
 }
 

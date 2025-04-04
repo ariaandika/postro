@@ -2,7 +2,7 @@ use bytes::{Buf, Bytes};
 
 /// an unencoded row
 #[derive(Debug)]
-pub struct RawRow {
+pub struct RowBuffer {
     /// expected column length
     col_len: i16,
     /// already read column
@@ -11,13 +11,13 @@ pub struct RawRow {
     bytes: Bytes,
 }
 
-impl RawRow {
+impl RowBuffer {
     pub fn new(col_len: i16, bytes: Bytes) -> Self {
         Self { col_len, bytes, read: 0 }
     }
 }
 
-impl Iterator for RawRow {
+impl Iterator for RowBuffer {
     type Item = Bytes;
 
     fn next(&mut self) -> Option<Self::Item> {

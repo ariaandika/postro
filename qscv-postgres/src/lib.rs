@@ -5,7 +5,8 @@ pub mod net;
 pub mod types;
 pub mod encode;
 pub mod value;
-pub mod raw_row;
+
+pub mod row_buffer;
 
 pub mod options;
 pub mod connection;

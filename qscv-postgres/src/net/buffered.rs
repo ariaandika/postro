@@ -3,7 +3,7 @@ use std::{io, ops::ControlFlow};
 
 use super::Socket;
 use crate::{
-    protocol::{ProtocolDecode, ProtocolEncode, ProtocolError},
+    protocol::ProtocolDecode,
     Result,
 };
 
@@ -24,11 +24,6 @@ impl BufferedSocket {
             read_buf: BytesMut::with_capacity(DEFAULT_BUF_CAPACITY),
             write_buf: BytesMut::with_capacity(DEFAULT_BUF_CAPACITY),
         }
-    }
-
-    /// write message to a buffer, this does not write to underlying io
-    pub fn encode<E: ProtocolEncode>(&mut self, message: E) -> Result<(), ProtocolError> {
-        message.encode(&mut self.write_buf)
     }
 
     /// write buffered message to underlying io

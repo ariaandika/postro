@@ -3,15 +3,6 @@ use std::ops::ControlFlow;
 
 use crate::common::BoxError;
 
-/// buffered protocol encoding
-///
-/// the message should write buffer into provided `buf`
-///
-/// note that buf may not be empty, take notice when writing message length
-pub trait ProtocolEncode {
-    fn encode(self, buf: &mut BytesMut) -> Result<(), ProtocolError>;
-}
-
 /// buffered protocol decoding
 ///
 /// If decode return [`ControlFlow::Continue`],

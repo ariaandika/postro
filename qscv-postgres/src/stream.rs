@@ -1,9 +1,12 @@
 use std::io;
 
 use crate::{
-    message::{frontend, FrontendMessage},
+    message::{
+        frontend::{self, Startup},
+        FrontendMessage,
+    },
     net::{BufferedSocket, Socket},
-    protocol::{ProtocolDecode, ProtocolEncode, ProtocolError},
+    protocol::ProtocolDecode,
     PgOptions, Result,
 };
 
@@ -22,12 +25,9 @@ impl PgStream {
         Ok(Self { socket: BufferedSocket::new(socket) })
     }
 
-    /// write message to a buffer, this does not write to underlying io
-    pub fn write<E>(&mut self, message: E) -> Result<(), ProtocolError>
-    where
-        E: ProtocolEncode,
-    {
-        self.socket.encode(message)
+    pub fn send_startup(&mut self, msg: Startup) -> Flush<'_> {
+        msg.write(self.socket.write_buf_mut());
+        Flush(self)
     }
 
     /// send frontend message to a buffer

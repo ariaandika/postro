@@ -1,10 +1,5 @@
 use bytes::{BufMut, BytesMut};
 
-use crate::{
-    common::general,
-    protocol::{ProtocolEncode, ProtocolError},
-};
-
 trait UsizeExt {
     /// length is usize in rust, while postgres want i32,
     /// this will panic when overflow instead of wrapping
@@ -51,20 +46,6 @@ impl<B: BufMut> BufMutExt for B {
         self.put(string.as_bytes());
         self.put_u8(b'\0');
     }
-}
-
-/// write the buffer length at the first 4 bytes
-///
-/// note to exclude the message format when writing postgres message length
-fn pg_write_len(mut buf: &mut [u8]) -> Result<(), ProtocolError> {
-    let size = buf.len();
-    let Ok(size) = i32::try_from(size) else {
-        return Err(ProtocolError::new(general!("message size out of range for protocol: {size}")));
-    };
-
-    buf.put_i32(size);
-
-    Ok(())
 }
 
 /// write a frontend message to `buf`
@@ -125,8 +106,8 @@ pub struct Startup<'a> {
 /// Fri Mar 28 07:34:09 PM WIB 2025
 ///
 /// <https://www.postgresql.org/docs/current/protocol-message-formats.html#PROTOCOL-MESSAGE-FORMATS-STARTUPMESSAGE>
-impl ProtocolEncode for Startup<'_> {
-    fn encode(self, buf: &mut BytesMut) -> Result<(), ProtocolError> {
+impl Startup<'_> {
+    pub fn write(self, buf: &mut BytesMut) {
         let offset = buf.len();
 
         // Int32
@@ -186,10 +167,9 @@ impl ProtocolEncode for Startup<'_> {
         // A zero byte is required as a terminator after the last name/value pair.
         buf.put_u8(0);
 
-        // write the length, Startup has no message format
-        pg_write_len(&mut buf[offset..])?;
-
-        Ok(())
+        // write the length
+        let mut written_buf = &mut buf[offset..];
+        written_buf.put_i32(written_buf.len().to_i32());
     }
 }
 

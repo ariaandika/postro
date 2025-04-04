@@ -32,12 +32,11 @@ impl PgConnection {
 
         // To begin a session, a frontend opens a connection to the server and sends a startup message.
 
-        stream.write(Startup {
+        stream.send_startup(Startup {
             user: &opt.user,
             database: Some(&opt.dbname),
             replication: None,
-        })?;
-        stream.flush().await?;
+        }).await?;
 
         // The server then sends an appropriate authentication request message,
         // to which the frontend must reply with an appropriate authentication response message (such as a password).

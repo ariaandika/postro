@@ -1,9 +1,34 @@
-use bytes::{BufMut, Bytes, BytesMut};
+use bytes::{BufMut, BytesMut};
 
 use crate::{
     common::general,
     protocol::{ProtocolEncode, ProtocolError},
 };
+
+trait UsizeExt {
+    /// length is usize in rust, while postgres want i32,
+    /// this will panic when overflow instead of wrapping
+    fn to_i32(self) -> i32;
+    /// length is usize in rust, while sometime postgres want i16,
+    /// this will panic when overflow instead of wrapping
+    fn to_i16(self) -> i16;
+}
+
+impl UsizeExt for usize {
+    fn to_i32(self) -> i32 {
+        match i32::try_from(self) {
+            Ok(ok) => ok,
+            Err(err) => panic!("message size too large for protocol: {err}"),
+        }
+    }
+
+    fn to_i16(self) -> i16 {
+        match i16::try_from(self) {
+            Ok(ok) => ok,
+            Err(err) => panic!("message size too large for protocol: {err}"),
+        }
+    }
+}
 
 trait StrExt {
     /// postgres String must be nul terminated
@@ -12,10 +37,7 @@ trait StrExt {
 
 impl StrExt for str {
     fn nul_string_len(&self) -> i32 {
-        match i32::try_from(self.len()) {
-            Ok(ok) => ok + 1/* nul */,
-            Err(err) => panic!("message size too large for protocol: {err}"),
-        }
+        self.len().to_i32() + 1/* nul */
     }
 }
 
@@ -176,32 +198,6 @@ pub struct PasswordMessage<'a> {
     pub password: &'a str,
 }
 
-impl PasswordMessage<'_> {
-    pub const FORMAT: u8 = b'p';
-}
-
-impl ProtocolEncode for PasswordMessage<'_> {
-    fn encode(self, buf: &mut BytesMut) -> Result<(), ProtocolError> {
-        let offset = buf.len();
-
-        // Byte1('p') Identifies the message as a password response
-        buf.put_u8(Self::FORMAT);
-
-        // Int32 Length of message contents in bytes, including self.
-        // reserve 4 bytes for length
-        buf.put_u32(0);
-
-        // String The password (encrypted, if requested)
-        buf.put(self.password.as_bytes());
-        buf.put_u8(b'\0');
-
-        // write the length, excluding msg format
-        pg_write_len(&mut buf[offset + 1..])?;
-
-        Ok(())
-    }
-}
-
 impl FrontendMessage for PasswordMessage<'_> {
     const FORMAT: u8 = b'p';
 
@@ -215,48 +211,29 @@ impl FrontendMessage for PasswordMessage<'_> {
 }
 
 /// Identifies the message as a simple query
-pub struct Query {
+pub struct Query<'a> {
     /// the query string itself
-    query: Bytes,
+    pub sql: &'a str,
 }
 
-impl Query {
-    pub fn new(query: impl Into<Bytes>) -> Self {
-        Self { query: query.into() }
+impl FrontendMessage for Query<'_> {
+    const FORMAT: u8 = b'Q';
+
+    fn size_hint(&self) -> i32 {
+        self.sql.nul_string_len()
     }
 
-    pub const FORMAT: u8 = b'Q';
-}
-
-impl ProtocolEncode for Query {
-    fn encode(self, buf: &mut BytesMut) -> Result<(), ProtocolError> {
-        let offset = buf.len();
-
-        // Byte1('Q') Identifies the message as a simple query.
-        buf.put_u8(Self::FORMAT);
-
-        // Int32 Length of message contents in bytes, including self.
-        // reserve 4 bytes for length
-        buf.put_u32(0);
-
-        // String The query string itself
-        buf.put(&self.query[..]);
-        // C style string
-        buf.put_u8(b'\0');
-
-        // write the length, excluding msg format
-        pg_write_len(&mut buf[offset + 1..])?;
-
-        Ok(())
+    fn encode(self, mut buf: impl BufMut) {
+        buf.put_nul_string(self.sql);
     }
 }
 
 /// Identifies the message as a Parse command
 pub struct Parse<'a,I> {
     /// prepared statement name (an empty string selects the unnamed prepared statement).
-    pub name: &'a [u8],
+    pub prepare_name: &'a str,
     /// The query string to be parsed.
-    pub query: &'a [u8],
+    pub sql: &'a str,
     /// The number of parameter data types specified (can be zero).
     ///
     /// Note that this is not an indication of the number of parameters that might appear in the query string,
@@ -270,75 +247,46 @@ pub struct Parse<'a,I> {
     pub data_types: I,//&'a [i32],
 }
 
-impl<I> Parse<'_,I> {
-    pub const FORMAT: u8 = b'P';
-}
-
-impl<I> ProtocolEncode for Parse<'_,I>
+impl<I> FrontendMessage for Parse<'_,I>
 where
     I: IntoIterator<Item = i32>
 {
-    fn encode(self, buf: &mut BytesMut) -> Result<(), ProtocolError> {
-        let offset = buf.len();
+    const FORMAT: u8 = b'P';
 
-        // message format
-        buf.put_u8(Self::FORMAT);
+    fn size_hint(&self) -> i32 {
+        self.prepare_name.nul_string_len() +
+        self.sql.nul_string_len() +
+        2 +
+        (self.data_types_len as i32 * 4)
+    }
 
-        // Length of message contents
-        buf.put_u32(0);
-
-        // prepared statement name
-        buf.put(self.name);
-        buf.put_u8(b'\0');
-
-        // The query string to be parsed.
-        buf.put(self.query);
-        buf.put_u8(b'\0');
-
-        // The number of parameter data types specified (can be zero).
-        //
-        // Note that this is not an indication of the number of parameters that might appear in the query string,
-        // only the number that the frontend wants to prespecify types for.
-        //
-        // For each parameter, there is the following `data_types`
+    fn encode(self, mut buf: impl BufMut) {
+        buf.put_nul_string(self.prepare_name);
+        buf.put_nul_string(self.sql);
         buf.put_i16(self.data_types_len);
-
-        // Specifies the object ID of the parameter data type.
-        //
-        // Placing a zero here is equivalent to leaving the type unspecified.
         for dt in self.data_types {
             buf.put_i32(dt);
         }
-
-        // write the length, excluding msg format
-        pg_write_len(&mut buf[offset + 1..])?;
-
-        Ok(())
     }
 }
 
 /// Identifies the message as a Sync command
 pub struct Sync;
 
-impl Sync {
-    pub const FORMAT: u8 = b'S';
-}
+impl FrontendMessage for Sync {
+    const FORMAT: u8 = b'S';
 
-impl ProtocolEncode for Sync {
-    fn encode(self, buf: &mut BytesMut) -> Result<(), ProtocolError> {
-        buf.put_u8(Self::FORMAT);
-        buf.put_i32(4);
-        Ok(())
-    }
-}
+    fn size_hint(&self) -> i32 { 0 }
 
+    fn encode(self, _: impl BufMut) { }
+}
 
 /// Identifies the message as a Bind command
-pub struct Bind<'a,I,P,R> {
+pub struct Bind<'a,I,L,P,R> {
     /// The name of the destination portal (an empty string selects the unnamed portal).
-    pub portal_name: &'a [u8],
+    pub portal_name: &'a str,
     /// The name of the source prepared statement (an empty string selects the unnamed prepared statement).
-    pub prepare_name: &'a [u8],
+    pub prepare_name: &'a str,
 
     /// The number of parameter format codes that follow (denoted C below).
     /// This can be zero to indicate that there are no parameters or that the parameters
@@ -350,7 +298,7 @@ pub struct Bind<'a,I,P,R> {
 
     /// The number of parameter values that follow (possibly zero).
     /// This must match the number of parameters needed by the query.
-    pub params_len: i16,
+    pub params_len: L,
 
     // Next, the following pair of fields appear for each parameter
 
@@ -375,56 +323,75 @@ pub struct Bind<'a,I,P,R> {
     pub results_format_code: R,
 }
 
-impl<I,P,R> Bind<'_,I,P,R> {
-    pub const FORMAT: u8 = b'B';
-}
+// NOTE: idk how to properly abstract this,
+// number `to_be_bytes()` cannot be returned
+// from function
 
-impl<'a, I,P,R> ProtocolEncode for Bind<'a,I,P,R>
+impl<'a,I,L,P,R> FrontendMessage for Bind<'a,I,L,P,R>
 where
     I: IntoIterator<Item = i16>,
-    P: IntoIterator<Item = &'a crate::encode::Encoded<'a>>,
+    L: IntoIterator,
+    L::IntoIter: ExactSizeIterator,
+    P: IntoIterator<Item = &'a crate::encode::Encoded<'a>> + Copy/* expected a reference */,
     R: IntoIterator<Item = i16>,
 {
-    fn encode(self, buf: &mut BytesMut) -> Result<(), ProtocolError> {
-        let offset = buf.len();
-        buf.put_u8(Self::FORMAT);
+    const FORMAT: u8 = b'B';
 
-        // reserve for message length
-        buf.put_u32(0);
+    fn size_hint(&self) -> i32 {
+        self.portal_name.nul_string_len() +
+        self.prepare_name.nul_string_len() +
+        // self.params_format_len (i16)
+        2 +
+        // self.params_format_code (i16[])
+        (self.params_format_len as i32 * 2) +
+        // self.params_len (i16)
+        2 +
+        IntoIterator::into_iter(self.params)
+            .fold(0i32, |acc,n|{
+                use crate::encode::{Encoded, ValueRef::*};
+                let len_and_data = match Encoded::value(&n) {
+                    Null => todo!("what the length of NULL ?"),
+                    I32(_) => 4 + 4,
+                    Bool(_) => 4 + 1,
+                    Slice(items) => 4 + items.len().to_i32(),
+                    Bytes(items) => 4 + items.len().to_i32(),
+                };
+                acc + len_and_data
+            }) +
+        // self.results_format_len (i16)
+        2 +
+        // self.results_format_code (i16[])
+        (self.results_format_len as i32 * 2)
+    }
 
-        buf.put(self.portal_name);
-        buf.put_u8(b'\0');
-
-        buf.put(self.prepare_name);
-        buf.put_u8(b'\0');
+    fn encode(self, mut buf: impl BufMut) {
+        buf.put_nul_string(self.portal_name);
+        buf.put_nul_string(self.prepare_name);
 
         buf.put_i16(self.params_format_len);
         for format_code in self.params_format_code {
             buf.put_i16(format_code);
         }
 
-        buf.put_i16(self.params_len);
+        buf.put_i16(self.params_len.into_iter().len().to_i16());
         for param in self.params {
             use crate::encode::{Encoded, ValueRef::*};
-            // NOTE: idk how to properly abstract this,
-            // number `to_be_bytes()` cannot be returned
-            // from function
             match Encoded::value(&param) {
                 Null => todo!("how to write NULL ?"),
                 I32(num) => {
                     buf.put_i32(4);
-                    buf.put_slice(&num.to_be_bytes());
+                    buf.put_i32(*num);
                 },
                 Bool(b) => {
                     buf.put_i32(1);
                     buf.put_u8(*b as _);
                 },
                 Slice(items) => {
-                    buf.put_i32(items.len() as _);
+                    buf.put_i32(items.len().to_i32());
                     buf.put_slice(items);
                 },
                 Bytes(items) => {
-                    buf.put_i32(items.len() as _);
+                    buf.put_i32(items.len().to_i32());
                     buf.put_slice(items);
                 }
             }
@@ -434,45 +401,30 @@ where
         for format_code in self.results_format_code {
             buf.put_i16(format_code);
         }
-
-        // write length, excluding msg format
-        pg_write_len(&mut buf[offset + 1..])?;
-
-        Ok(())
     }
 }
-
 
 /// Identifies the message as a Execute command
 pub struct Execute<'a> {
     /// The name of the portal to execute (an empty string selects the unnamed portal).
-    pub portal_name: &'a [u8],
+    pub portal_name: &'a str,
     /// Maximum number of rows to return, if portal contains a query that returns rows
     /// (ignored otherwise). Zero denotes “no limit”.
     pub max_row: i32,
 }
 
-impl Execute<'_> {
-    pub const FORMAT: u8 = b'E';
-}
+impl FrontendMessage for Execute<'_> {
+    const FORMAT: u8 = b'E';
 
-impl ProtocolEncode for Execute<'_> {
-    fn encode(self, buf: &mut BytesMut) -> Result<(), ProtocolError> {
-        let offset = buf.len();
-        buf.put_u8(Self::FORMAT);
+    fn size_hint(&self) -> i32 {
+        self.portal_name.nul_string_len() +
+        // self.max_row
+        4
+    }
 
-        // reserve for length
-        buf.put_u32(0);
-
-        buf.put(self.portal_name);
-        buf.put_u8(b'\0');
-
+    fn encode(self, mut buf: impl BufMut) {
+        buf.put_nul_string(self.portal_name);
         buf.put_i32(self.max_row);
-
-        // write length, excluding msg format
-        pg_write_len(&mut buf[offset + 1..])?;
-
-        Ok(())
     }
 }
 

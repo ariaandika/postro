@@ -1,5 +1,4 @@
 use std::num::NonZeroUsize;
-use bytes::Bytes;
 use lru::LruCache;
 
 use crate::{
@@ -103,20 +102,23 @@ impl PgConnection {
     /// perform a simple query
     ///
     /// <https://www.postgresql.org/docs/current/protocol-flow.html#PROTOCOL-FLOW-SIMPLE-QUERY>
-    pub async fn simple_query(&mut self, sql: impl Into<Bytes>) -> Result<()> {
-        self.stream.write(Query::new(sql))?;
-        self.stream.flush().await?;
+    pub async fn simple_query(&mut self, sql: &str) -> Result<()> {
+        self.stream.send(Query { sql }).await?;
+
+        let mut rows = vec![];
+
         loop {
-            match self.stream.recv::<BackendMessage>().await? {
+            use BackendMessage::*;
+            match self.stream.recv().await? {
                 // Indicates that rows are about to be returned in response to a SELECT, FETCH, etc. query.
                 // The contents of this message describe the column layout of the rows.
                 // This will be followed by a DataRow message for each row being returned to the frontend.
-                BackendMessage::RowDescription(_row) => { },
+                RowDescription(_row) => { },
                 // One of the set of rows returned by a SELECT, FETCH, etc. query.
-                BackendMessage::DataRow(_columns) => { }
+                DataRow(row) => rows.push(row.raw_row),
                 // An SQL command completed normally
-                BackendMessage::CommandComplete(_tag) => { }
-                BackendMessage::ReadyForQuery(_) => break,
+                CommandComplete(_tag) => { }
+                ReadyForQuery(_) => break,
                 f => return err!(Protocol,ProtocolError::new(general!(
                     "unexpected message in simple query: {f:#?}",
                 ))),
@@ -143,59 +145,53 @@ impl PgConnection {
         }
 
         let mut b = itoa::Buffer::new();
-        let prepare_name = b.format(self.stmt_id.get()).as_bytes();
-
+        let mut b2 = itoa::Buffer::new();
+        let prepare_name = b.format(self.stmt_id.get());
+        let portal_name = b2.format(self.portal_id.get());
 
         // In the extended protocol, the frontend first sends a Parse message
-
-        self.stream.write(Parse {
-            name: prepare_name,
-            query: sql.as_bytes(),
-            data_types_len: args.len() as _,
-            data_types: args.into_iter().map(Encoded::oid),
-        })?;
 
         // WARN: is this documented somewhere ?
         // Apparantly, sending Parse command, postgres does not immediately
         // response with ParseComplete.
-        // 1. sending Sync will do so
+        // 1. sending Sync immediately will do so
         // 2. otherwise, we can continue the protocol without waiting for one
-        //
-        // self.stream.write(Sync)?;
 
+        self.stream.send(Parse {
+            prepare_name,
+            sql,
+            data_types_len: args.len() as _,
+            data_types: args.into_iter().map(Encoded::oid),
+        });
 
         // Once a prepared statement exists, it can be readied for execution using a Bind message.
 
-        let mut b2 = itoa::Buffer::new();
-        let portal_name = b2.format(self.portal_id.get()).as_bytes();
-
-        self.stream.write(Bind {
+        self.stream.send(Bind {
             portal_name,
             prepare_name,
             params_format_len: 1,
             params_format_code: [1],
-            params_len: args.len() as _,
+            params_len: args,
             params: args,
             results_format_len: 1,
             results_format_code: [1],
-        })?;
+        });
 
         // Once a portal exists, it can be executed using an Execute message
 
-        self.stream.write(Execute {
+        self.stream.send(Execute {
             portal_name,
             max_row: 0,
-        })?;
+        });
 
-        self.stream.write(Sync)?;
+        self.stream.send(Sync);
         self.stream.flush().await?;
 
-
         // The response to Parse is either ParseComplete or ErrorResponse
-        dbg!(self.stream.recv::<BackendMessage>().await)?;
+        self.stream.recv::<BackendMessage>().await?;
 
         // The response to Bind is either BindComplete or ErrorResponse.
-        dbg!(self.stream.recv::<BackendMessage>().await)?;
+        self.stream.recv::<BackendMessage>().await?;
 
         let mut rows = vec![];
 
@@ -203,17 +199,18 @@ impl PgConnection {
         // for queries issued via simple query protocol, except that Execute doesn't
         // cause ReadyForQuery or RowDescription to be issued.
         loop {
-            match dbg!(self.stream.recv::<BackendMessage>().await)? {
-                BackendMessage::DataRow(row) => {
-                    rows.push(row.raw_row);
-                },
-                BackendMessage::CommandComplete(_) => break,
-                _ => unreachable!(),
+            use BackendMessage::*;
+            match self.stream.recv().await? {
+                DataRow(row) => rows.push(row.raw_row),
+                CommandComplete(_) => break,
+                f => return err!(Protocol,ProtocolError::new(general!(
+                    "unexpected message in extended query: {f:#?}",
+                ))),
             }
         }
 
         // The response to Sync is either BindComplete or ErrorResponse.
-        dbg!(self.stream.recv::<BackendMessage>().await)?;
+        self.stream.recv::<BackendMessage>().await?;
 
         Ok(rows)
     }

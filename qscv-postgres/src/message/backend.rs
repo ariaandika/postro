@@ -1,4 +1,4 @@
-use bytes::{Buf, BytesMut};
+use bytes::{Buf, Bytes, BytesMut};
 use std::ops::ControlFlow;
 
 use super::authentication::Authentication;
@@ -7,9 +7,21 @@ use crate::{
     protocol::{ProtocolDecode, ProtocolError}, row_buffer::RowBuffer,
 };
 
+/// a type that can be decoded into postgres backend message
+pub trait BackendProtocol: Sized {
+    fn decode(msgtype: u8, body: Bytes) -> Result<Self,ProtocolError>;
+}
+
+macro_rules! assert_msgtype {
+    ($self:ident,$typ:ident) => {
+        // TODO: return error instead
+        assert_eq!($self::MSGTYPE,$typ);
+    };
+}
+
 macro_rules! decode {
     ($ty:ty,$buf:ident) => {
-        match <$ty>::decode($buf)? {
+        match <$ty as ProtocolDecode>::decode($buf)? {
             ControlFlow::Break(ok) => ok,
             ControlFlow::Continue(read) => return Ok(ControlFlow::Continue(read)),
         }
@@ -51,15 +63,33 @@ macro_rules! read_format {
     }};
 }
 
-/// All communication is through a stream of messages.
-///
-/// 1. The first byte of a message identifies the [message type][BackendMessageFormat]
-/// 2. The next four bytes specify the length of the rest of the message
-///
-/// (this length count includes itself, but not the message-type byte).
-/// The remaining contents of the message are determined by the message type.
-///
-/// <https://www.postgresql.org/docs/current/protocol-overview.html#PROTOCOL-MESSAGE-CONCEPTS>
+macro_rules! nul_string {
+    (@ $msg:ident,$advance:stmt) => {{
+        let end = match $msg.iter().position(|e|matches!(e,b'\0')) {
+            Some(ok) => ok,
+            None => return Err(ProtocolError::new(general!(
+                "no nul termination in ParameterStatus",
+            )))
+        };
+        match String::from_utf8($msg.split_to(end).into()) {
+            Ok(ok) => {
+                $advance
+                ok
+            },
+            Err(err) => return Err(ProtocolError::new(general!(
+                "non UTF-8 string in ParameterStatus: {err}",
+            ))),
+        }
+    }};
+    ($msg:ident) => {{
+        nul_string!(@ $msg,$msg.advance(1))
+    }};
+    ($msg:ident,noadvance) => {{
+        nul_string!(@ $msg,())
+    }};
+}
+
+/// postgres backend messages
 #[derive(Debug)]
 pub enum BackendMessage {
     Authentication(Authentication),
@@ -107,6 +137,29 @@ impl ProtocolDecode for BackendMessage {
     }
 }
 
+impl BackendProtocol for BackendMessage {
+    fn decode(msgtype: u8, body: Bytes) -> Result<Self,ProtocolError> {
+        let message = match msgtype {
+            Authentication::MSGTYPE => Self::Authentication(<Authentication as BackendProtocol>::decode(msgtype, body)?),
+            BackendKeyData::MSGTYPE => Self::BackendKeyData(<BackendKeyData as BackendProtocol>::decode(msgtype, body)?),
+            ErrorResponse::MSGTYPE => Self::ErrorResponse(<ErrorResponse as BackendProtocol>::decode(msgtype, body)?),
+            ParameterStatus::MSGTYPE => Self::ParameterStatus(<ParameterStatus as BackendProtocol>::decode(msgtype, body)?),
+            ReadyForQuery::MSGTYPE => Self::ReadyForQuery(<ReadyForQuery as BackendProtocol>::decode(msgtype, body)?),
+            RowDescription::MSGTYPE => Self::RowDescription(<RowDescription as BackendProtocol>::decode(msgtype, body)?),
+            DataRow::MSGTYPE => Self::DataRow(<DataRow as BackendProtocol>::decode(msgtype, body)?),
+            CommandComplete::MSGTYPE => Self::CommandComplete(<CommandComplete as BackendProtocol>::decode(msgtype, body)?),
+            ParseComplete::MSGTYPE => Self::ParseComplete(<ParseComplete as BackendProtocol>::decode(msgtype, body)?),
+            BindComplete::MSGTYPE => Self::BindComplete(<BindComplete as BackendProtocol>::decode(msgtype, body)?),
+            _ => return Err(ProtocolError::new(general!(
+                "unsupported backend message {:?}",
+                BytesRef(&[msgtype])
+            ))),
+        };
+
+        Ok(message)
+    }
+}
+
 //
 // NOTE: Backend Messages
 //
@@ -124,6 +177,7 @@ pub struct BackendKeyData {
 
 impl BackendKeyData {
     pub const FORMAT: u8 = b'K';
+    pub const MSGTYPE: u8 = b'K';
 }
 
 impl ProtocolDecode for BackendKeyData {
@@ -133,6 +187,16 @@ impl ProtocolDecode for BackendKeyData {
             process_id: body.get_i32(),
             secret_key: body.get_i32(),
         }))
+    }
+}
+
+impl BackendProtocol for BackendKeyData {
+    fn decode(msgtype: u8, mut body: Bytes) -> Result<Self,ProtocolError> {
+        assert_msgtype!(Self,msgtype);
+        Ok(Self {
+            process_id: body.get_i32(),
+            secret_key: body.get_i32(),
+        })
     }
 }
 
@@ -147,32 +211,7 @@ pub struct ParameterStatus {
 
 impl ParameterStatus {
     pub const FORMAT: u8 = b'S';
-}
-
-macro_rules! nul_string {
-    (@ $msg:ident,$advance:stmt) => {{
-        let end = match $msg.iter().position(|e|matches!(e,b'\0')) {
-            Some(ok) => ok,
-            None => return Err(ProtocolError::new(general!(
-                        "no nul termination in ParameterStatus",
-            )))
-        };
-        match String::from_utf8($msg.split_to(end).into()) {
-            Ok(ok) => {
-                $advance
-                ok
-            },
-            Err(err) => return Err(ProtocolError::new(general!(
-                "non UTF-8 string in ParameterStatus: {err}",
-            ))),
-        }
-    }};
-    ($msg:ident) => {{
-        nul_string!(@ $msg,$msg.advance(1))
-    }};
-    ($msg:ident,noadvance) => {{
-        nul_string!(@ $msg,())
-    }};
+    pub const MSGTYPE: u8 = b'S';
 }
 
 impl ProtocolDecode for ParameterStatus {
@@ -184,17 +223,35 @@ impl ProtocolDecode for ParameterStatus {
     }
 }
 
+impl BackendProtocol for ParameterStatus {
+    fn decode(msgtype: u8, mut body: Bytes) -> Result<Self,ProtocolError> {
+        assert_msgtype!(Self,msgtype);
+        Ok(Self {
+            name: nul_string!(body),
+            value: nul_string!(body),
+        })
+    }
+}
+
 #[derive(Debug)]
 pub struct ReadyForQuery;
 
 impl ReadyForQuery {
     pub const FORMAT: u8 = b'Z';
+    pub const MSGTYPE: u8 = b'Z';
 }
 
 impl ProtocolDecode for ReadyForQuery {
     fn decode(buf: &mut BytesMut) -> Result<ControlFlow<Self,usize>, ProtocolError> {
         read_format!(buf,ReadyForQuery,advance);
         Ok(ControlFlow::Break(Self))
+    }
+}
+
+impl BackendProtocol for ReadyForQuery {
+    fn decode(msgtype: u8, _: Bytes) -> Result<Self,ProtocolError> {
+        assert_msgtype!(Self,msgtype);
+        Ok(Self)
     }
 }
 
@@ -213,10 +270,9 @@ pub struct ErrorResponse {
     pub body: std::collections::HashMap<u8,String>,
 }
 
-pub const FORMAT: u8 = b'M';
-
 impl ErrorResponse {
     pub const FORMAT: u8 = b'E';
+    pub const MSGTYPE: u8 = b'E';
 }
 
 impl ProtocolDecode for ErrorResponse {
@@ -238,6 +294,22 @@ impl ProtocolDecode for ErrorResponse {
     }
 }
 
+impl BackendProtocol for ErrorResponse {
+    fn decode(msgtype: u8, mut bytes: Bytes) -> Result<Self,ProtocolError> {
+        assert_msgtype!(Self,msgtype);
+        let mut body = std::collections::HashMap::new();
+        loop {
+            let f = bytes.get_u8();
+            if f == b'\0' {
+                break
+            }
+            let msg = nul_string!(bytes);
+            body.insert(f, msg);
+        }
+        Ok(Self { body })
+    }
+}
+
 #[derive(Debug)]
 /// Identifies the message as a row description
 pub struct RowDescription {
@@ -254,6 +326,7 @@ pub struct RowDescription {
 
 impl RowDescription {
     pub const FORMAT: u8 = b'T';
+    pub const MSGTYPE: u8 = b'T';
 }
 
 impl ProtocolDecode for RowDescription {
@@ -304,6 +377,37 @@ impl ProtocolDecode for RowDescription {
     }
 }
 
+impl BackendProtocol for RowDescription {
+    fn decode(msgtype: u8, mut body: Bytes) -> Result<Self,ProtocolError> {
+        assert_msgtype!(Self,msgtype);
+        Ok(Self {
+            // Int16 Specifies the number of fields in a row (can be zero).
+            field_len: body.get_i16(),
+            // Int16 Specifies the number of fields in a row (can be zero).
+            field_name: nul_string!(body),
+            // If the field can be identified as a column of a specific table,
+            // the object ID of the table; otherwise zero
+            table_oid: body.get_i32(),
+            // If the field can be identified as a column of a specific table,
+            // the attribute number of the column; otherwise zero.
+            attribute_len: body.get_i16(),
+            // The object ID of the field's data type.
+            data_type: body.get_i32(),
+            // The data type size (see pg_type.typlen).
+            // Note that negative values denote variable-width types.
+            data_type_size: body.get_i16(),
+            // The type modifier (see pg_attribute.atttypmod).
+            // The meaning of the modifier is type-specific.
+            type_modifier: body.get_i32(),
+            // The format code being used for the field.
+            // Currently will be zero (text) or one (binary).
+            // In a RowDescription returned from the statement variant of Describe,
+            // the format code is not yet known and will always be zero.
+            format_code: body.get_i16(),
+        })
+    }
+}
+
 #[derive(Debug)]
 /// Identifies the message as a row description
 pub struct DataRow {
@@ -312,6 +416,7 @@ pub struct DataRow {
 
 impl DataRow {
     pub const FORMAT: u8 = b'D';
+    pub const MSGTYPE: u8 = b'D';
 }
 
 impl ProtocolDecode for DataRow {
@@ -325,6 +430,20 @@ impl ProtocolDecode for DataRow {
         let row_buffer = RowBuffer::new(col_values_len, body.freeze());
 
         Ok(ControlFlow::Break(Self { row_buffer }))
+    }
+}
+
+impl BackendProtocol for DataRow {
+    fn decode(msgtype: u8, mut body: Bytes) -> Result<Self,ProtocolError> {
+        assert_msgtype!(Self,msgtype);
+
+        // The number of column values that follow (possibly zero).
+        let col_values_len = body.get_i16();
+
+        // lazily decode row without allocating `Vec`
+        let row_buffer = RowBuffer::new(col_values_len, body);
+
+        Ok(Self { row_buffer })
     }
 }
 
@@ -353,13 +472,12 @@ impl ProtocolDecode for DataRow {
 #[derive(Debug)]
 pub struct CommandComplete {
     /// The command tag. This is usually a single word that identifies which SQL command was completed.
-    ///
-    /// see [strcut level docs][CommandComplete]
     pub tag: String,
 }
 
 impl CommandComplete {
     pub const FORMAT: u8 = b'C';
+    pub const MSGTYPE: u8 = b'C';
 }
 
 impl ProtocolDecode for CommandComplete {
@@ -369,11 +487,26 @@ impl ProtocolDecode for CommandComplete {
     }
 }
 
+impl BackendProtocol for CommandComplete {
+    fn decode(msgtype: u8, body: Bytes) -> Result<Self,ProtocolError> {
+        assert_msgtype!(Self,msgtype);
+        Ok(Self {
+            tag: match String::from_utf8(body.into()) {
+                Ok(ok) => ok,
+                Err(err) => return Err(ProtocolError::new(general!(
+                    "non UTF-8 string in ParameterStatus: {err}",
+                ))),
+            }
+        })
+    }
+}
+
 #[derive(Debug)]
 pub struct ParseComplete;
 
 impl ParseComplete {
     pub const FORMAT: u8 = b'1';
+    pub const MSGTYPE: u8 = b'1';
 }
 
 impl ProtocolDecode for ParseComplete {
@@ -383,12 +516,20 @@ impl ProtocolDecode for ParseComplete {
     }
 }
 
+impl BackendProtocol for ParseComplete {
+    fn decode(msgtype: u8, _: Bytes) -> Result<Self,ProtocolError> {
+        assert_msgtype!(Self,msgtype);
+        Ok(Self)
+    }
+}
+
 
 #[derive(Debug)]
 pub struct BindComplete;
 
 impl BindComplete {
     pub const FORMAT: u8 = b'2';
+    pub const MSGTYPE: u8 = b'2';
 }
 
 impl ProtocolDecode for BindComplete {
@@ -398,3 +539,9 @@ impl ProtocolDecode for BindComplete {
     }
 }
 
+impl BackendProtocol for BindComplete {
+    fn decode(msgtype: u8, _: Bytes) -> Result<Self,ProtocolError> {
+        assert_msgtype!(Self,msgtype);
+        Ok(Self)
+    }
+}

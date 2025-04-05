@@ -1,9 +1,11 @@
-use bytes::{Buf, BytesMut};
+use bytes::{Buf, Bytes, BytesMut};
 use std::ops::ControlFlow;
 
 use crate::{
     common::{general, BytesRef}, protocol::{ProtocolDecode, ProtocolError}
 };
+
+use super::backend::BackendProtocol;
 
 /// Identifies the message as an authentication request.
 ///
@@ -47,6 +49,7 @@ pub enum Authentication {
 
 impl Authentication {
     pub const FORMAT: u8 = b'R';
+    pub const MSGTYPE: u8 = b'R';
 }
 
 impl ProtocolDecode for Authentication {
@@ -96,4 +99,22 @@ impl ProtocolDecode for Authentication {
     }
 }
 
+impl BackendProtocol for Authentication {
+    fn decode(_: u8, mut body: Bytes) -> Result<Self,ProtocolError> {
+        let auth = match body.get_i32() {
+            0 => Authentication::Ok,
+            2 => Authentication::KerberosV5,
+            3 => Authentication::CleartextPassword,
+            5 => Authentication::MD5Password { salt: body.get_u32(), },
+            7 => Authentication::GSS,
+            9 => Authentication::SSPI,
+            10 => Authentication::SASL,
+            _ => return Err(ProtocolError::new(general!(
+                "unknown authentication methods ({:?})",
+                BytesRef(&body[..]),
+            ))),
+        };
+        Ok(auth)
+    }
+}
 

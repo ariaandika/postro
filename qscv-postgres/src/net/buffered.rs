@@ -1,10 +1,9 @@
-use bytes::BytesMut;
-use std::{io, ops::ControlFlow};
+use bytes::{Buf, BytesMut};
+use std::io;
 
 use super::Socket;
 use crate::{
-    protocol::ProtocolDecode,
-    Result,
+    message::backend::BackendProtocol, Result
 };
 
 const DEFAULT_BUF_CAPACITY: usize = 1024;
@@ -46,23 +45,29 @@ impl BufferedSocket {
     // will detect is the amount of bytes is sufficient, if its not, decoder should
     // not modify the `BytesMut` in anyway, finally, decoder can split the required
     // `Bytes`, and the reader have the leftover bytes
-    pub async fn decode<D: ProtocolDecode>(&mut self) -> Result<D> {
+    pub async fn recv<B: BackendProtocol>(&mut self) -> Result<B> {
         loop {
-            #[cfg(debug_assertions)]
-            let prev = (self.read_buf.len(),self.read_buf.capacity());
-            match D::decode(&mut self.read_buf)? {
-                ControlFlow::Continue(expect) => {
-                    debug_assert_eq!(prev,(self.read_buf.len(),self.read_buf.capacity()));
-                    self.read_buf.reserve(expect.saturating_sub(self.read_buf.len()));
-                    loop {
-                        if self.read_buf.len() >= expect {
-                            break
-                        }
-                        self.socket.read_buf(&mut self.read_buf).await?;
-                    }
-                },
-                ControlFlow::Break(m) => return Ok(m),
+            let Some(mut header) = self.read_buf.get(..5) else {
+                self.read_buf.reserve(1024);
+                self.socket.read_buf(&mut self.read_buf).await?;
+                continue;
+            };
+
+            let msgtype = header.get_u8();
+            let len = header.get_i32() as _;
+
+            if self.read_buf.len() - 1/*msgtype*/ < len {
+                self.read_buf.reserve(1 + len);
+                self.socket.read_buf(&mut self.read_buf).await?;
+                continue;
             }
+
+            self.read_buf.advance(5);
+            let body = self.read_buf.split_to(len - 4).freeze();
+
+            let msg = B::decode(msgtype, body)?;
+
+            return Ok(msg)
         }
     }
 

@@ -2,11 +2,9 @@ use std::io;
 
 use crate::{
     message::{
-        frontend::{self, Startup},
-        FrontendProtocol,
+        backend::BackendProtocol, frontend::{self, Startup}, FrontendProtocol
     },
     net::{BufferedSocket, Socket},
-    protocol::ProtocolDecode,
     PgOptions, Result,
 };
 
@@ -49,8 +47,8 @@ impl PgStream {
     }
 
     /// receive a single message
-    pub fn recv<D: ProtocolDecode>(&mut self) -> impl Future<Output = Result<D>> {
-        self.socket.decode()
+    pub fn recv<D: BackendProtocol>(&mut self) -> impl Future<Output = Result<D>> {
+        self.socket.recv()
     }
 
     #[cfg(test)]

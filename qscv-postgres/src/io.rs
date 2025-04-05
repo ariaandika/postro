@@ -36,19 +36,19 @@ pub trait PostgresIo {
 
 impl PostgresIo for &mut PgStream {
     fn send<F: FrontendProtocol>(&mut self, message: F) {
-        PgStream::send(&mut *self, message);
+        PgStream::send(self, message);
     }
 
     fn send_startup(&mut self, startup: Startup) {
-        PgStream::send_startup(&mut *self, startup);
+        PgStream::send_startup(self, startup);
     }
 
     fn flush(&mut self) -> impl Future<Output = io::Result<()>> {
-        PgStream::flush(&mut *self)
+        PgStream::flush(self)
     }
 
     fn recv<B: BackendProtocol>(&mut self) -> impl Future<Output = Result<B>> {
-        PgStream::recv(&mut *self)
+        PgStream::recv(self)
     }
 }
 

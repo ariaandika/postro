@@ -46,13 +46,12 @@ impl std::fmt::Debug for DatabaseError {
 
 impl std::fmt::Display for DatabaseError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut iter = self.body.iter().copied().enumerate();
         let mut severity = None;
         let mut code = None;
         let mut message = None;
         let mut detail = None;
 
-        while let Some((i,b)) = iter.next() {
+        for (i,b) in self.body.iter().copied().enumerate() {
             match DbErrField::from_byte(b) {
                 Some(DbErrField::SeverityLocalized) => severity = Some(i),
                 Some(DbErrField::Severity) => {

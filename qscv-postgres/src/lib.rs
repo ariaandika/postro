@@ -3,6 +3,8 @@ pub mod net;
 
 pub mod message;
 
+pub mod io;
+
 pub mod types;
 pub mod encode;
 pub mod value;

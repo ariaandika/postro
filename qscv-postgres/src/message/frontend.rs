@@ -44,6 +44,11 @@ pub fn write<F: FrontendProtocol>(msg: F, buf: &mut BytesMut) {
 }
 
 /// A type which can be encoded into postgres frontend message
+///
+/// For historical reasons, the very first message sent by the client (the startup message)
+/// has no initial message-type byte.
+///
+/// Thus, [`Startup`] does not implement [`FrontendProtocol`]
 pub trait FrontendProtocol {
     /// message type
     const MSGTYPE: u8;
@@ -62,6 +67,11 @@ pub trait FrontendProtocol {
 }
 
 /// Postgres Startup frontend message
+///
+/// For historical reasons, the very first message sent by the client (the startup message)
+/// has no initial message-type byte.
+///
+/// Thus, [`Startup`] does not implement [`FrontendProtocol`]
 #[derive(Debug)]
 pub struct Startup<'a> {
     /// The database user name to connect as. Required; there is no default.

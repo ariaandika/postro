@@ -2,9 +2,8 @@ use std::num::NonZeroUsize;
 use lru::LruCache;
 
 use crate::{
-    common::general,
     encode::Encoded,
-    error::{err, Result},
+    error::Result,
     message::{
         error::ProtocolError,
         frontend::{Bind, Execute, Parse, Query, Sync},
@@ -69,9 +68,7 @@ impl PgConnection {
                 // An SQL command completed normally
                 CommandComplete(_tag) => { }
                 ReadyForQuery(_) => break,
-                f => return err!(Protocol,ProtocolError::new(general!(
-                    "unexpected message in simple query: {f:#?}",
-                ))),
+                f => Err(ProtocolError::unexpected_phase(f.msgtype(), "simple query"))?,
             }
         }
 
@@ -153,9 +150,7 @@ impl PgConnection {
             match self.stream.recv().await? {
                 DataRow(row) => rows.push(row.row_buffer),
                 CommandComplete(_) => break,
-                f => return err!(Protocol,ProtocolError::new(general!(
-                    "unexpected message in extended query: {f:#?}",
-                ))),
+                f => Err(ProtocolError::unexpected_phase(f.msgtype(), "extended query"))?,
             }
         }
 

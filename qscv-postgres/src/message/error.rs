@@ -1,5 +1,5 @@
 //! Protocol error
-use crate::common::{general, BoxError, BytesRef};
+use crate::common::{general, BoxError};
 
 mod database;
 
@@ -37,18 +37,24 @@ impl ProtocolError {
         Self { source: general!("non UTF-8 string: {err}").into(), }
     }
 
+    pub fn unexpected_phase(found: u8, phase: &str) -> ProtocolError {
+        Self {
+            source: general!("unexpected ({}) in {phase}", found as char).into(),
+        }
+    }
+
     pub fn unexpected(expect: &str, expecttype: u8, found: u8) -> ProtocolError {
         Self {
             source: general!(
-                "expected {expect}({:?}) found ({:?})",
-                BytesRef(&[expecttype]), BytesRef(&[found]),
+                "expected {expect}({}) found ({:?})",
+                expecttype as char, found as char,
             ).into(),
         }
     }
 
     pub fn unknown(msgtype: u8) -> ProtocolError {
         Self {
-            source: general!("unknown message type: {:?}", BytesRef(&[msgtype])).into(),
+            source: general!("unknown message type: {:?}", msgtype as char).into(),
         }
     }
 

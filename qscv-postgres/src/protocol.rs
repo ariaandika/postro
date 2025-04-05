@@ -78,9 +78,7 @@ pub async fn startup<'a, IO: PostgresIo>(
             BackendKeyData(new_key_data) => key_data = Some(new_key_data),
             ParameterStatus(param) => param_status.push(param),
             // TODO: NOTICE_RESPONSE
-            f => Err(ProtocolError::new(general!(
-                "unexpected message in startup phase: {f:#?}",
-            )))?,
+            f => Err(ProtocolError::unexpected_phase(f.msgtype(), "startup phase"))?,
         }
     }
 

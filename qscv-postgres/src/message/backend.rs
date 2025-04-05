@@ -60,6 +60,20 @@ impl BackendMessage {
             ok => Ok(ok),
         }
     }
+
+    pub fn msgtype(&self) -> u8 {
+        macro_rules! match_type {
+            ($($name:ident,)*) => {
+                match self {
+                    $(Self::$name(_) => $name::MSGTYPE,)*
+                }
+            };
+        }
+        match_type! {
+            Authentication, BackendKeyData, ErrorResponse, ParameterStatus, ReadyForQuery,
+            RowDescription, DataRow, CommandComplete, ParseComplete, BindComplete,
+        }
+    }
 }
 
 /// Identifies the message as an authentication request.

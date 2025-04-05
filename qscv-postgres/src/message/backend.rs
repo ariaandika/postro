@@ -2,7 +2,6 @@
 use bytes::{Buf, Bytes};
 
 use crate::{
-    common::{general, BytesRef},
     message::{error::ProtocolError, ext::BytesExt},
     row_buffer::RowBuffer,
 };
@@ -14,8 +13,9 @@ pub trait BackendProtocol: Sized {
 
 macro_rules! assert_msgtype {
     ($self:ident,$typ:ident) => {
-        // TODO: return error instead
-        assert_eq!($self::MSGTYPE,$typ);
+        if $self::MSGTYPE != $typ {
+            return Err(ProtocolError::unexpected(stringify!($self),$self::MSGTYPE,$typ))
+        }
     };
 }
 
@@ -35,31 +35,22 @@ pub enum BackendMessage {
 }
 
 impl BackendProtocol for BackendMessage {
-    fn decode(msgtype: u8, body: Bytes) -> Result<Self,ProtocolError> {
-        let message = match msgtype {
-            Authentication::MSGTYPE => Self::Authentication(<Authentication as BackendProtocol>::decode(msgtype, body)?),
-            BackendKeyData::MSGTYPE => Self::BackendKeyData(<BackendKeyData as BackendProtocol>::decode(msgtype, body)?),
-            ErrorResponse::MSGTYPE => Self::ErrorResponse(<ErrorResponse as BackendProtocol>::decode(msgtype, body)?),
-            ParameterStatus::MSGTYPE => Self::ParameterStatus(<ParameterStatus as BackendProtocol>::decode(msgtype, body)?),
-            ReadyForQuery::MSGTYPE => Self::ReadyForQuery(<ReadyForQuery as BackendProtocol>::decode(msgtype, body)?),
-            RowDescription::MSGTYPE => Self::RowDescription(<RowDescription as BackendProtocol>::decode(msgtype, body)?),
-            DataRow::MSGTYPE => Self::DataRow(<DataRow as BackendProtocol>::decode(msgtype, body)?),
-            CommandComplete::MSGTYPE => Self::CommandComplete(<CommandComplete as BackendProtocol>::decode(msgtype, body)?),
-            ParseComplete::MSGTYPE => Self::ParseComplete(<ParseComplete as BackendProtocol>::decode(msgtype, body)?),
-            BindComplete::MSGTYPE => Self::BindComplete(<BindComplete as BackendProtocol>::decode(msgtype, body)?),
-            _ => return Err(ProtocolError::new(general!(
-                "unsupported backend message {:?}",
-                BytesRef(&[msgtype])
-            ))),
+    fn decode(msgtype: u8, body: Bytes) -> Result<Self, ProtocolError> {
+        macro_rules! match_type {
+            ($($name:ident,)*) => {
+                match msgtype {
+                    $($name::MSGTYPE => Self::$name(<$name as BackendProtocol>::decode(msgtype, body)?),)*
+                    _ => return Err(ProtocolError::unknown(msgtype)),
+                }
+            };
+        }
+        let message = match_type! {
+            Authentication, BackendKeyData, ErrorResponse, ParameterStatus, ReadyForQuery,
+            RowDescription, DataRow, CommandComplete, ParseComplete, BindComplete,
         };
-
         Ok(message)
     }
 }
-
-//
-// NOTE: Backend Messages
-//
 
 /// Identifies the message as an authentication request.
 #[derive(Debug)]
@@ -95,7 +86,8 @@ impl Authentication {
 }
 
 impl BackendProtocol for Authentication {
-    fn decode(_: u8, mut body: Bytes) -> Result<Self,ProtocolError> {
+    fn decode(msgtype: u8, mut body: Bytes) -> Result<Self,ProtocolError> {
+        assert_msgtype!(Authentication,msgtype);
         let auth = match body.get_i32() {
             0 => Authentication::Ok,
             2 => Authentication::KerberosV5,
@@ -104,10 +96,7 @@ impl BackendProtocol for Authentication {
             7 => Authentication::GSS,
             9 => Authentication::SSPI,
             10 => Authentication::SASL,
-            _ => return Err(ProtocolError::new(general!(
-                "unknown authentication methods ({:?})",
-                BytesRef(&body[..]),
-            ))),
+            auth => return Err(ProtocolError::unknown_auth(auth)),
         };
         Ok(auth)
     }
@@ -130,7 +119,7 @@ impl BackendKeyData {
 
 impl BackendProtocol for BackendKeyData {
     fn decode(msgtype: u8, mut body: Bytes) -> Result<Self,ProtocolError> {
-        assert_msgtype!(Self,msgtype);
+        assert_msgtype!(BackendKeyData,msgtype);
         Ok(Self {
             process_id: body.get_i32(),
             secret_key: body.get_i32(),
@@ -153,7 +142,7 @@ impl ParameterStatus {
 
 impl BackendProtocol for ParameterStatus {
     fn decode(msgtype: u8, mut body: Bytes) -> Result<Self,ProtocolError> {
-        assert_msgtype!(Self,msgtype);
+        assert_msgtype!(ParameterStatus,msgtype);
         Ok(Self {
             name: body.get_nul_string()?,
             value: body.get_nul_string()?,
@@ -171,7 +160,7 @@ impl ReadyForQuery {
 
 impl BackendProtocol for ReadyForQuery {
     fn decode(msgtype: u8, _: Bytes) -> Result<Self,ProtocolError> {
-        assert_msgtype!(Self,msgtype);
+        assert_msgtype!(ReadyForQuery,msgtype);
         Ok(Self)
     }
 }
@@ -197,7 +186,7 @@ impl ErrorResponse {
 
 impl BackendProtocol for ErrorResponse {
     fn decode(msgtype: u8, mut bytes: Bytes) -> Result<Self,ProtocolError> {
-        assert_msgtype!(Self,msgtype);
+        assert_msgtype!(ErrorResponse,msgtype);
         let mut body = std::collections::HashMap::new();
         loop {
             let f = bytes.get_u8();
@@ -211,8 +200,8 @@ impl BackendProtocol for ErrorResponse {
     }
 }
 
-#[derive(Debug)]
 /// Identifies the message as a row description
+#[derive(Debug)]
 pub struct RowDescription {
     /// Specifies the number of fields in a row (can be zero).
     pub field_len: i16,
@@ -231,7 +220,7 @@ impl RowDescription {
 
 impl BackendProtocol for RowDescription {
     fn decode(msgtype: u8, mut body: Bytes) -> Result<Self,ProtocolError> {
-        assert_msgtype!(Self,msgtype);
+        assert_msgtype!(RowDescription,msgtype);
         Ok(Self {
             // Int16 Specifies the number of fields in a row (can be zero).
             field_len: body.get_i16(),
@@ -272,7 +261,7 @@ impl DataRow {
 
 impl BackendProtocol for DataRow {
     fn decode(msgtype: u8, mut body: Bytes) -> Result<Self,ProtocolError> {
-        assert_msgtype!(Self,msgtype);
+        assert_msgtype!(DataRow,msgtype);
 
         // The number of column values that follow (possibly zero).
         let col_values_len = body.get_i16();
@@ -317,15 +306,10 @@ impl CommandComplete {
 }
 
 impl BackendProtocol for CommandComplete {
-    fn decode(msgtype: u8, body: Bytes) -> Result<Self,ProtocolError> {
-        assert_msgtype!(Self,msgtype);
+    fn decode(msgtype: u8, body: Bytes) -> Result<Self, ProtocolError> {
+        assert_msgtype!(CommandComplete, msgtype);
         Ok(Self {
-            tag: match String::from_utf8(body.into()) {
-                Ok(ok) => ok,
-                Err(err) => return Err(ProtocolError::new(general!(
-                    "non UTF-8 string in ParameterStatus: {err}",
-                ))),
-            }
+            tag: String::from_utf8(body.into()).map_err(ProtocolError::non_utf8)?,
         })
     }
 }
@@ -340,7 +324,7 @@ impl ParseComplete {
 
 impl BackendProtocol for ParseComplete {
     fn decode(msgtype: u8, _: Bytes) -> Result<Self,ProtocolError> {
-        assert_msgtype!(Self,msgtype);
+        assert_msgtype!(ParseComplete,msgtype);
         Ok(Self)
     }
 }
@@ -356,7 +340,7 @@ impl BindComplete {
 
 impl BackendProtocol for BindComplete {
     fn decode(msgtype: u8, _: Bytes) -> Result<Self,ProtocolError> {
-        assert_msgtype!(Self,msgtype);
+        assert_msgtype!(BindComplete,msgtype);
         Ok(Self)
     }
 }

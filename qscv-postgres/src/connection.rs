@@ -133,38 +133,3 @@ impl PgConnection {
     }
 }
 
-#[cfg(feature = "tokio")]
-#[test]
-fn test_connect() {
-    use crate::{encode::ValueRef, types::AsPgType};
-
-    tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .unwrap()
-        .block_on(async {
-            let mut conn = PgConnection::connect("postgres://cookiejar:cookie@127.0.0.1:5432/postgres").await.unwrap();
-            let _ = crate::protocol::simple_query("select null,4", &mut conn.stream).await.unwrap();
-
-            let params = [
-                Encoded::new(ValueRef::Bytes(b"DeezNutz".into()), str::PG_TYPE.oid()),
-                Encoded::new(ValueRef::Bytes(b"FooBar".into()), str::PG_TYPE.oid()),
-            ];
-
-            let rows = conn
-                .query(
-                    "SELECT * FROM (VALUES\
-                        ($1, null, $2),\
-                        ($2, $1, null)\
-                    ) AS t(column1, column2);",
-                    &params
-                )
-                .await
-                .unwrap();
-
-            for row in rows {
-                dbg!(row.collect::<Vec<_>>());
-            }
-        })
-}
-

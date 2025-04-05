@@ -117,3 +117,136 @@ pub async fn simple_query<IO: PostgresIo>(sql: &str, mut io: IO) -> Result<Vec<R
     Ok(rows)
 }
 
+/// perform an extended query
+///
+/// this is simple flow of extended query protocol where prepared statement will not be cached,
+/// and closed on query completion
+///
+/// <https://www.postgresql.org/docs/current/protocol-flow.html#PROTOCOL-FLOW-EXT-QUERY>
+pub async fn extended_query<IO: PostgresIo>(
+    sql: &str,
+    args: &[crate::encode::Encoded<'_>],
+    mut io: IO,
+) -> Result<Vec<RowBuffer>> {
+    const PREPARE_NAME: &str = "__xXtemp_prep_stmtXx__";
+    const PORTAL_NAME: &str = "__xXtemp_nether_portalXx__";
+
+    io.send(frontend::Parse {
+        prepare_name: PREPARE_NAME,
+        sql,
+        data_types_len: args.len() as _,
+        data_types: args.iter().map(crate::encode::Encoded::oid),
+    });
+
+    // Once a prepared statement exists, it can be readied for execution using a Bind message.
+
+    io.send(frontend::Bind {
+        portal_name: PORTAL_NAME,
+        prepare_name: PREPARE_NAME,
+        params_format_len: 1,
+        params_format_code: [1],
+        params_len: args,
+        params: args,
+        results_format_len: 1,
+        results_format_code: [1],
+    });
+
+    // Once a portal exists, it can be executed using an Execute message
+
+    io.send(frontend::Execute {
+        portal_name: PORTAL_NAME,
+        max_row: 0,
+    });
+
+    // A Flush must be sent after any extended-query command except Sync,
+    // if the frontend wishes to examine the results of that command before issuing more commands.
+    //
+    // Without Flush, messages returned by the backend will be combined into the minimum possible
+    // number of packets to minimize network overhead.
+    io.send(frontend::Flush);
+
+    io.flush().await?;
+
+    // The response to Parse is either ParseComplete or ErrorResponse
+    io.recv::<backend::ParseComplete>().await?;
+
+    // The response to Bind is either BindComplete or ErrorResponse.
+    io.recv::<backend::BindComplete>().await?;
+
+    let mut rows = vec![];
+
+    // The possible responses to Execute are the same as those described above
+    // for queries issued via simple query protocol, except that Execute doesn't
+    // cause ReadyForQuery or RowDescription to be issued.
+    loop {
+        use BackendMessage::*;
+        match io.recv().await? {
+            DataRow(row) => rows.push(row.row_buffer),
+            CommandComplete(_) => break,
+            f => Err(ProtocolError::unexpected_phase(f.msgtype(), "extended query"))?,
+        }
+    }
+
+    // for this example, close the prepared statement immediately
+    io.send(frontend::Close {
+        variant: b'S',
+        name: PREPARE_NAME,
+    });
+    io.send(frontend::Sync);
+    io.flush().await?;
+
+    // The response to Close is either CloseComplete or ErrorResponse.
+    io.recv::<backend::CloseComplete>().await?;
+
+    // The response to Sync is either BindComplete or ErrorResponse.
+    io.recv::<backend::ReadyForQuery>().await?;
+
+    Ok(rows)
+}
+
+#[cfg(all(test, feature = "tokio"))]
+mod test {
+    use crate::{encode::Encoded, stream::PgStream, PgOptions};
+
+    #[test]
+    fn test_connect() {
+        use crate::{encode::ValueRef, types::AsPgType};
+
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(async {
+                let mut conn = PgStream::connect(
+                    &PgOptions::parse("postgres://cookiejar:cookie@127.0.0.1:5432/postgres").unwrap(),
+                )
+                .await
+                .unwrap();
+                let _ = super::simple_query("select null,4", &mut conn)
+                    .await
+                    .unwrap();
+
+                let params = [
+                    Encoded::new(ValueRef::Bytes(b"DeezNutz".into()), str::PG_TYPE.oid()),
+                    Encoded::new(ValueRef::Bytes(b"FooBar".into()), str::PG_TYPE.oid()),
+                ];
+
+                let rows = super::extended_query(
+                    "SELECT * FROM (VALUES\
+                            ($1, null, $2),\
+                            ($2, $1, null)\
+                        ) AS t(column1, column2);",
+                    &params,
+                    &mut conn,
+                )
+                .await
+                .unwrap();
+
+                for row in rows {
+                    dbg!(row.collect::<Vec<_>>());
+                }
+            })
+    }
+}
+
+

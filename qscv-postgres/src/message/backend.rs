@@ -25,6 +25,7 @@ macro_rules! assert_msgtype {
 pub enum BackendMessage {
     Authentication(Authentication),
     BackendKeyData(BackendKeyData),
+    NoticeResponse(NoticeResponse),
     ErrorResponse(ErrorResponse),
     ParameterStatus(ParameterStatus),
     ReadyForQuery(ReadyForQuery),
@@ -46,8 +47,8 @@ impl BackendProtocol for BackendMessage {
             };
         }
         let message = match_type! {
-            Authentication, BackendKeyData, ErrorResponse, ParameterStatus, ReadyForQuery,
-            RowDescription, DataRow, CommandComplete, ParseComplete, BindComplete,
+            Authentication, BackendKeyData, NoticeResponse, ErrorResponse, ParameterStatus,
+            ReadyForQuery, RowDescription, DataRow, CommandComplete, ParseComplete, BindComplete,
         };
         Ok(message)
     }
@@ -70,8 +71,8 @@ impl BackendMessage {
             };
         }
         match_type! {
-            Authentication, BackendKeyData, ErrorResponse, ParameterStatus, ReadyForQuery,
-            RowDescription, DataRow, CommandComplete, ParseComplete, BindComplete,
+            Authentication, BackendKeyData, NoticeResponse, ErrorResponse, ParameterStatus,
+            ReadyForQuery, RowDescription, DataRow, CommandComplete, ParseComplete, BindComplete,
         }
     }
 }
@@ -186,6 +187,24 @@ impl BackendProtocol for ReadyForQuery {
     fn decode(msgtype: u8, _: Bytes) -> Result<Self,ProtocolError> {
         assert_msgtype!(ReadyForQuery,msgtype);
         Ok(Self)
+    }
+}
+
+/// A warning message. The frontend should display the message.
+///
+/// for detail of the body form, see [`MessageFields`]
+pub struct NoticeResponse {
+    pub body: Bytes
+}
+
+impl NoticeResponse {
+    pub const MSGTYPE: u8 = b'N';
+}
+
+impl BackendProtocol for NoticeResponse {
+    fn decode(msgtype: u8, body: Bytes) -> Result<Self,ProtocolError> {
+        assert_msgtype!(NoticeResponse,msgtype);
+        Ok(NoticeResponse { body })
     }
 }
 

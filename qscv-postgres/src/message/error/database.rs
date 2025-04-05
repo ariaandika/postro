@@ -1,27 +1,10 @@
 use bytes::Bytes;
 
-use crate::common::{BytesRef, LossyStr};
+use crate::{common::{BytesRef, LossyStr}, message::backend::NoticeResponse};
 
 /// Lazily Decode error from [`ErrorResponse`] body
 ///
-/// Each field type has a single-byte identification token.
-///
-/// Note that any given field type should appear at most once per message.
-///
-/// The message body consists of one or more identified fields, followed by a zero byte as a terminator.
-/// Fields can appear in any order.
-///
-/// For each field there is the following:
-///
-/// `Byte1` A code identifying the field type; if zero, this is the message terminator and no string follows.
-/// The presently defined field types are listed in Section 53.8.
-/// Since more field types might be added in future,
-/// frontends should silently ignore fields of unrecognized type.
-///
-/// `String` The field value.
-///
-/// previously, this error have struct fields for each database error field, but clippy detect it
-/// to big in size, 432 bytes to be exact
+/// for detail of the body form, see [`MessageFields`]
 ///
 /// <https://www.postgresql.org/docs/current/protocol-error-fields.html>
 ///
@@ -46,60 +29,48 @@ impl std::fmt::Debug for DatabaseError {
 
 impl std::fmt::Display for DatabaseError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut severity = None;
-        let mut code = None;
-        let mut message = None;
-        let mut detail = None;
+        MessageFields::display(&self.body, f)
+    }
+}
 
-        for (i,b) in self.body.iter().copied().enumerate() {
-            match DbErrField::from_byte(b) {
-                Some(DbErrField::SeverityLocalized) => severity = Some(i),
-                Some(DbErrField::Severity) => {
-                    severity.get_or_insert(i);
-                },
-                Some(DbErrField::Code) => code = Some(i),
-                Some(DbErrField::Message) => message = Some(i),
-                Some(DbErrField::Detail) => detail = Some(i),
-                Some(_) => {},
-                None => {},
-            }
-        }
+impl std::error::Error for NoticeResponse { }
 
-        macro_rules! foo {
-            (@ $f:ident,$s:literal;$($tt:tt)*) => {
-                'foo: {
-                    let Some(i) = $f else {
-                        $($tt)*
-                        break 'foo
-                    };
-                    let Some(end) = self.body[i + 1..].iter().position(|e|matches!(e,b'\0')) else {
-                        write!(f, $s, "??")?;
-                        break 'foo
-                    };
-                    write!(f, $s, LossyStr(&self.body[i + 1..end]))?;
-                }
-            };
-            ($f:ident,$s:literal,?) => {
-                foo!(@ $f,$s;();)
-            };
-            ($f:ident,$s:literal) => {
-                foo!(@ $f,$s;write!(f, $s, "??")?;)
-            };
-        }
+impl std::fmt::Debug for NoticeResponse {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Debug::fmt(&BytesRef(&self.body), f)
+    }
+}
 
-        foo!(severity, "[{}]");
-        foo!(message, " {}");
-        foo!(code, " ({})");
-        foo!(detail, ", {}", ?);
-        Ok(())
+impl std::fmt::Display for NoticeResponse {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        MessageFields::display(&self.body, f)
     }
 }
 
 // TODO: Appendix A, error code / sqlstate message
 // https://www.postgresql.org/docs/current/errcodes-appendix.html
 
-/// a field of [`DatabaseError`]
-pub enum DbErrField {
+/// a field of [`DatabaseError`] or [`NoticeResponse`]
+///
+/// Each field type has a single-byte identification token.
+///
+/// Note that any given field type should appear at most once per message.
+///
+/// The message body consists of one or more identified fields, followed by a zero byte as a terminator.
+/// Fields can appear in any order.
+///
+/// For each field there is the following:
+///
+/// `Byte1` A code identifying the field type; if zero, this is the message terminator and no string follows.
+/// The presently defined field types are listed in Section 53.8.
+/// Since more field types might be added in future,
+/// frontends should silently ignore fields of unrecognized type.
+///
+/// `String` The field value.
+///
+/// previously, this have their own explicit fields, but clippy detect it
+/// to big in size, 432 bytes to be exact
+pub enum MessageFields {
     /// one of [`Severity`], or a localized translation of one of these, always present
     SeverityLocalized,
     /// this is identical to the S field except that the contents are never localized.
@@ -168,8 +139,59 @@ pub enum DbErrField {
     Routine,
 }
 
-impl DbErrField {
-    pub fn from_byte(byte: u8) -> Option<DbErrField> {
+impl MessageFields {
+    pub fn display(body: &[u8], f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        let mut severity = None;
+        let mut code = None;
+        let mut message = None;
+        let mut detail = None;
+        let mut hint = None;
+
+        for (i,b) in body.iter().copied().enumerate() {
+            match MessageFields::from_byte(b) {
+                Some(MessageFields::SeverityLocalized) => severity = Some(i),
+                Some(MessageFields::Severity) => {
+                    severity.get_or_insert(i);
+                },
+                Some(MessageFields::Code) => code = Some(i),
+                Some(MessageFields::Message) => message = Some(i),
+                Some(MessageFields::Detail) => detail = Some(i),
+                Some(MessageFields::Hint) => hint = Some(i),
+                _ => {}
+            }
+        }
+
+        macro_rules! foo {
+            (@ $f:ident,$s:literal;$($tt:tt)*) => {
+                'foo: {
+                    let Some(i) = $f else {
+                        $($tt)*
+                        break 'foo
+                    };
+                    let Some(end) = body[i + 1..].iter().position(|e|matches!(e,b'\0')) else {
+                        write!(f, $s, "??")?;
+                        break 'foo
+                    };
+                    write!(f, $s, LossyStr(&body[i + 1..end]))?;
+                }
+            };
+            ($f:ident,$s:literal,?) => {
+                foo!(@ $f,$s;();)
+            };
+            ($f:ident,$s:literal) => {
+                foo!(@ $f,$s;write!(f, $s, "??")?;)
+            };
+        }
+
+        foo!(severity, "[{}]");
+        foo!(message, " {}");
+        foo!(code, " ({})");
+        foo!(detail, ",\n\n{}", ?);
+        foo!(hint, ",\n\nHINT: {}", ?);
+        Ok(())
+    }
+
+    pub fn from_byte(byte: u8) -> Option<MessageFields> {
         macro_rules! mat {
             ($($b:literal => $s:ident,)*) => {
                 Some(match byte {

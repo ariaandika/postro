@@ -77,7 +77,7 @@ pub async fn startup<'a, IO: PostgresIo>(
             ReadyForQuery(_) => break,
             BackendKeyData(new_key_data) => key_data = Some(new_key_data),
             ParameterStatus(param) => param_status.push(param),
-            // TODO: NOTICE_RESPONSE
+            NoticeResponse(warn) => eprintln!("{warn}"),
             f => Err(ProtocolError::unexpected_phase(f.msgtype(), "startup phase"))?,
         }
     }

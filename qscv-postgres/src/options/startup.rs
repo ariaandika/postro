@@ -36,11 +36,15 @@ impl<'a> StartupOptions<'a> {
     }
 
     /// Get password
+    ///
+    /// note that [`None`] is assumed empty string password
     pub fn get_password(&self) -> Option<&str> {
         self.password.as_ref().map(<_>::as_ref)
     }
 
     /// Set password
+    ///
+    /// note that [`None`] is assumed empty string password
     pub fn password(mut self, password: impl Into<Cow<'a,str>>) -> Self {
         self.password = Some(password.into());
         self

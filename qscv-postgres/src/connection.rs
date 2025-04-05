@@ -2,11 +2,18 @@ use std::num::NonZeroUsize;
 use lru::LruCache;
 
 use crate::{
-    common::general, encode::Encoded, error::{err, Result}, message::{
+    common::general,
+    encode::Encoded,
+    error::{err, Result},
+    message::{
         authentication,
+        error::ProtocolError,
         frontend::{Bind, Execute, Parse, PasswordMessage, Query, Startup, Sync},
         BackendMessage,
-    }, options::PgOptions, protocol::ProtocolError, row_buffer::RowBuffer, stream::PgStream
+    },
+    options::PgOptions,
+    row_buffer::RowBuffer,
+    stream::PgStream,
 };
 
 const DEFAULT_PREPARED_STMT_CACHE: NonZeroUsize = NonZeroUsize::new(24).unwrap();

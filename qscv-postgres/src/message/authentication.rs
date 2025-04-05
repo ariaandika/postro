@@ -1,11 +1,9 @@
-use bytes::{Buf, Bytes, BytesMut};
-use std::ops::ControlFlow;
+use bytes::{Buf, Bytes};
 
 use crate::{
-    common::{general, BytesRef}, protocol::{ProtocolDecode, ProtocolError}
+    common::{general, BytesRef},
+    message::{backend::BackendProtocol, error::ProtocolError},
 };
-
-use super::backend::BackendProtocol;
 
 /// Identifies the message as an authentication request.
 ///
@@ -50,53 +48,6 @@ pub enum Authentication {
 impl Authentication {
     pub const FORMAT: u8 = b'R';
     pub const MSGTYPE: u8 = b'R';
-}
-
-impl ProtocolDecode for Authentication {
-    fn decode(buf: &mut BytesMut) -> Result<ControlFlow<Self,usize>, ProtocolError> {
-        // format + len + method
-        const PREFIX: usize = 1 + 4 + 4;
-
-        let Some(mut header) = buf.get(..PREFIX) else {
-            return Ok(ControlFlow::Continue(5));
-        };
-
-        let format = header.get_u8();
-        if format != Self::FORMAT {
-            return Err(ProtocolError::new(general!(
-                "expected Authentication format ({:?}), found {:?}",
-                BytesRef(&[Self::FORMAT]), BytesRef(&[format]),
-            )));
-        }
-
-        let len = header.get_i32() as _;
-        let auth_method = header.get_i32();
-
-        if buf.get(5..len).is_none() {
-            return Ok(ControlFlow::Continue(len))
-        };
-
-        // format + length + method
-        buf.advance(PREFIX);
-
-        // at this point, `buf` should sufficient
-
-        let auth = match auth_method {
-            0 => Authentication::Ok,
-            2 => Authentication::KerberosV5,
-            3 => Authentication::CleartextPassword,
-            5 => Authentication::MD5Password { salt: buf.get_u32(), },
-            7 => Authentication::GSS,
-            9 => Authentication::SSPI,
-            10 => Authentication::SASL,
-            f => return Err(ProtocolError::new(general!(
-                "unknown authentication methods ({:?})",
-                BytesRef(&f.to_be_bytes()),
-            ))),
-        };
-
-        Ok(ControlFlow::Break(auth))
-    }
 }
 
 impl BackendProtocol for Authentication {

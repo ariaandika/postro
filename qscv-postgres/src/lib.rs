@@ -1,5 +1,4 @@
 pub mod common;
-pub mod protocol;
 pub mod net;
 
 pub mod message;

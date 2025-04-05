@@ -1,10 +1,9 @@
-use bytes::{Buf, Bytes, BytesMut};
-use std::ops::ControlFlow;
+use bytes::{Buf, Bytes};
 
-use super::authentication::Authentication;
+use super::{authentication::Authentication, error::ProtocolError};
 use crate::{
     common::{general, BytesRef},
-    protocol::{ProtocolDecode, ProtocolError}, row_buffer::RowBuffer,
+    row_buffer::RowBuffer,
 };
 
 /// a type that can be decoded into postgres backend message
@@ -17,50 +16,6 @@ macro_rules! assert_msgtype {
         // TODO: return error instead
         assert_eq!($self::MSGTYPE,$typ);
     };
-}
-
-macro_rules! decode {
-    ($ty:ty,$buf:ident) => {
-        match <$ty as ProtocolDecode>::decode($buf)? {
-            ControlFlow::Break(ok) => ok,
-            ControlFlow::Continue(read) => return Ok(ControlFlow::Continue(read)),
-        }
-    };
-}
-
-macro_rules! read_format {
-    (@ $buf:ident,$id:ident,$method:ident) => {{
-        // format + len
-        const FORMAT: usize = 1;
-        const PREFIX: usize = FORMAT + 4;
-
-        let Some(mut header) = $buf.get(..PREFIX) else {
-            return Ok(ControlFlow::Continue(PREFIX));
-        };
-
-        let format = header.get_u8();
-        if format != $id::FORMAT {
-            return Err(ProtocolError::new(general!(
-                "expected {} ({:?}), found {:?}",
-                stringify!($id), BytesRef(&[$id::FORMAT]), BytesRef(&[format]),
-            )));
-        }
-
-        let body_len = header.get_i32() as usize;
-
-        if $buf.get(PREFIX..FORMAT + body_len).is_none() {
-            return Ok(ControlFlow::Continue(FORMAT + body_len));
-        }
-
-        $buf.advance(PREFIX);
-        $buf.$method(body_len - 4)
-    }};
-    ($buf:ident,$id:ident) => {{
-        read_format!(@ $buf,$id,split_to)
-    }};
-    ($buf:ident,$id:ident,$method:ident) => {{
-        read_format!(@ $buf,$id,$method)
-    }};
 }
 
 macro_rules! nul_string {
@@ -102,39 +57,6 @@ pub enum BackendMessage {
     CommandComplete(CommandComplete),
     ParseComplete(ParseComplete),
     BindComplete(BindComplete),
-}
-
-impl ProtocolDecode for BackendMessage {
-    fn decode(buf: &mut BytesMut) -> Result<ControlFlow<Self,usize>, ProtocolError> {
-        // format + len
-        const PREFIX: usize = 1 + 4;
-
-        let Some(mut header) = buf.get(..PREFIX) else {
-            return Ok(ControlFlow::Continue(PREFIX));
-        };
-
-        // The first byte of a message identifies the message type
-        let format = header.get_u8();
-
-        let message = match format {
-            Authentication::FORMAT => Self::Authentication(decode!(Authentication,buf)),
-            BackendKeyData::FORMAT => Self::BackendKeyData(decode!(BackendKeyData,buf)),
-            ErrorResponse::FORMAT => Self::ErrorResponse(decode!(ErrorResponse,buf)),
-            ParameterStatus::FORMAT => Self::ParameterStatus(decode!(ParameterStatus,buf)),
-            ReadyForQuery::FORMAT => Self::ReadyForQuery(decode!(ReadyForQuery,buf)),
-            RowDescription::FORMAT => Self::RowDescription(decode!(RowDescription,buf)),
-            DataRow::FORMAT => Self::DataRow(decode!(DataRow,buf)),
-            CommandComplete::FORMAT => Self::CommandComplete(decode!(CommandComplete,buf)),
-            ParseComplete::FORMAT => Self::ParseComplete(decode!(ParseComplete,buf)),
-            BindComplete::FORMAT => Self::BindComplete(decode!(BindComplete,buf)),
-            f => return Err(ProtocolError::new(general!(
-                "unsupported backend message {:?}",
-                BytesRef(&[f])
-            ))),
-        };
-
-        Ok(ControlFlow::Break(message))
-    }
 }
 
 impl BackendProtocol for BackendMessage {
@@ -180,16 +102,6 @@ impl BackendKeyData {
     pub const MSGTYPE: u8 = b'K';
 }
 
-impl ProtocolDecode for BackendKeyData {
-    fn decode(buf: &mut BytesMut) -> Result<ControlFlow<Self,usize>, ProtocolError> {
-        let mut body = read_format!(buf,BackendKeyData);
-        Ok(ControlFlow::Break(Self {
-            process_id: body.get_i32(),
-            secret_key: body.get_i32(),
-        }))
-    }
-}
-
 impl BackendProtocol for BackendKeyData {
     fn decode(msgtype: u8, mut body: Bytes) -> Result<Self,ProtocolError> {
         assert_msgtype!(Self,msgtype);
@@ -214,15 +126,6 @@ impl ParameterStatus {
     pub const MSGTYPE: u8 = b'S';
 }
 
-impl ProtocolDecode for ParameterStatus {
-    fn decode(buf: &mut BytesMut) -> Result<ControlFlow<Self,usize>, ProtocolError> {
-        let mut body = read_format!(buf,ParameterStatus);
-        let name = nul_string!(body);
-        let value = nul_string!(body);
-        Ok(ControlFlow::Break(Self { name, value, }))
-    }
-}
-
 impl BackendProtocol for ParameterStatus {
     fn decode(msgtype: u8, mut body: Bytes) -> Result<Self,ProtocolError> {
         assert_msgtype!(Self,msgtype);
@@ -239,13 +142,6 @@ pub struct ReadyForQuery;
 impl ReadyForQuery {
     pub const FORMAT: u8 = b'Z';
     pub const MSGTYPE: u8 = b'Z';
-}
-
-impl ProtocolDecode for ReadyForQuery {
-    fn decode(buf: &mut BytesMut) -> Result<ControlFlow<Self,usize>, ProtocolError> {
-        read_format!(buf,ReadyForQuery,advance);
-        Ok(ControlFlow::Break(Self))
-    }
 }
 
 impl BackendProtocol for ReadyForQuery {
@@ -273,25 +169,6 @@ pub struct ErrorResponse {
 impl ErrorResponse {
     pub const FORMAT: u8 = b'E';
     pub const MSGTYPE: u8 = b'E';
-}
-
-impl ProtocolDecode for ErrorResponse {
-    fn decode(buf: &mut BytesMut) -> Result<ControlFlow<Self,usize>, ProtocolError> {
-        let mut bytes = read_format!(buf,ErrorResponse);
-        let mut body = std::collections::HashMap::new();
-
-        loop {
-            let f = bytes.get_u8();
-            if f == b'\0' {
-                break
-            }
-            let msg = nul_string!(bytes);
-            body.insert(f, msg);
-
-        }
-
-        Ok(ControlFlow::Break(Self { body }))
-    }
 }
 
 impl BackendProtocol for ErrorResponse {
@@ -327,54 +204,6 @@ pub struct RowDescription {
 impl RowDescription {
     pub const FORMAT: u8 = b'T';
     pub const MSGTYPE: u8 = b'T';
-}
-
-impl ProtocolDecode for RowDescription {
-    fn decode(buf: &mut BytesMut) -> Result<ControlFlow<Self,usize>, ProtocolError> {
-        let mut body = read_format!(buf,RowDescription);
-
-        // Int16 Specifies the number of fields in a row (can be zero).
-        let field_len = body.get_i16();
-
-        // Int16 Specifies the number of fields in a row (can be zero).
-        let field_name = nul_string!(body);
-
-        // If the field can be identified as a column of a specific table,
-        // the object ID of the table; otherwise zero
-        let table_oid = body.get_i32();
-
-        // If the field can be identified as a column of a specific table,
-        // the attribute number of the column; otherwise zero.
-        let attribute_len = body.get_i16();
-
-        // The object ID of the field's data type.
-        let data_type = body.get_i32();
-
-        // The data type size (see pg_type.typlen).
-        // Note that negative values denote variable-width types.
-        let data_type_size = body.get_i16();
-
-        // The type modifier (see pg_attribute.atttypmod).
-        // The meaning of the modifier is type-specific.
-        let type_modifier = body.get_i32();
-
-        // The format code being used for the field.
-        // Currently will be zero (text) or one (binary).
-        // In a RowDescription returned from the statement variant of Describe,
-        // the format code is not yet known and will always be zero.
-        let format_code = body.get_i16();
-
-        Ok(ControlFlow::Break(Self {
-            field_len,
-            field_name,
-            table_oid,
-            attribute_len,
-            data_type,
-            data_type_size,
-            type_modifier,
-            format_code
-        }))
-    }
 }
 
 impl BackendProtocol for RowDescription {
@@ -417,20 +246,6 @@ pub struct DataRow {
 impl DataRow {
     pub const FORMAT: u8 = b'D';
     pub const MSGTYPE: u8 = b'D';
-}
-
-impl ProtocolDecode for DataRow {
-    fn decode(buf: &mut BytesMut) -> Result<ControlFlow<Self,usize>, ProtocolError> {
-        let mut body = read_format!(buf,DataRow);
-
-        // The number of column values that follow (possibly zero).
-        let col_values_len = body.get_i16();
-
-        // lazily decode row without allocating `Vec`
-        let row_buffer = RowBuffer::new(col_values_len, body.freeze());
-
-        Ok(ControlFlow::Break(Self { row_buffer }))
-    }
 }
 
 impl BackendProtocol for DataRow {
@@ -480,13 +295,6 @@ impl CommandComplete {
     pub const MSGTYPE: u8 = b'C';
 }
 
-impl ProtocolDecode for CommandComplete {
-    fn decode(buf: &mut BytesMut) -> Result<ControlFlow<Self,usize>, ProtocolError> {
-        let tag = read_format!(buf,CommandComplete);
-        Ok(ControlFlow::Break(Self { tag: String::from_utf8(tag.into()).unwrap() }))
-    }
-}
-
 impl BackendProtocol for CommandComplete {
     fn decode(msgtype: u8, body: Bytes) -> Result<Self,ProtocolError> {
         assert_msgtype!(Self,msgtype);
@@ -509,13 +317,6 @@ impl ParseComplete {
     pub const MSGTYPE: u8 = b'1';
 }
 
-impl ProtocolDecode for ParseComplete {
-    fn decode(buf: &mut BytesMut) -> Result<ControlFlow<Self,usize>, ProtocolError> {
-        read_format!(buf,ParseComplete,advance);
-        Ok(ControlFlow::Break(Self))
-    }
-}
-
 impl BackendProtocol for ParseComplete {
     fn decode(msgtype: u8, _: Bytes) -> Result<Self,ProtocolError> {
         assert_msgtype!(Self,msgtype);
@@ -532,16 +333,10 @@ impl BindComplete {
     pub const MSGTYPE: u8 = b'2';
 }
 
-impl ProtocolDecode for BindComplete {
-    fn decode(buf: &mut BytesMut) -> Result<ControlFlow<Self,usize>, ProtocolError> {
-        read_format!(buf,BindComplete,advance);
-        Ok(ControlFlow::Break(Self))
-    }
-}
-
 impl BackendProtocol for BindComplete {
     fn decode(msgtype: u8, _: Bytes) -> Result<Self,ProtocolError> {
         assert_msgtype!(Self,msgtype);
         Ok(Self)
     }
 }
+

@@ -1,6 +1,9 @@
 use std::io;
 
-use crate::{common::BoxError, message::backend::ErrorResponse, protocol::ProtocolError};
+use crate::{
+    common::BoxError,
+    message::{backend::ErrorResponse, error::ProtocolError},
+};
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 

@@ -68,6 +68,7 @@
 pub mod frontend;
 pub mod backend;
 pub mod authentication;
+pub mod error;
 
 mod ext;
 

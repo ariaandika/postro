@@ -1,10 +1,11 @@
 //! Postgres Backend Messages
 use bytes::{Buf, Bytes};
 
-use crate::{
-    message::{error::ProtocolError, ext::BytesExt},
-    row_buffer::RowBuffer,
+use super::{
+    error::{DatabaseError, ProtocolError},
+    ext::BytesExt,
 };
+use crate::row_buffer::RowBuffer;
 
 /// A type that can be decoded into postgres backend message
 pub trait BackendProtocol: Sized {
@@ -49,6 +50,15 @@ impl BackendProtocol for BackendMessage {
             RowDescription, DataRow, CommandComplete, ParseComplete, BindComplete,
         };
         Ok(message)
+    }
+}
+
+impl BackendMessage {
+    pub fn try_dberror(self) -> Result<Self, DatabaseError> {
+        match self {
+            Self::ErrorResponse(err) => Err(err.to_db_error()),
+            ok => Ok(ok),
+        }
     }
 }
 
@@ -167,35 +177,34 @@ impl BackendProtocol for ReadyForQuery {
 
 /// Identifies the message as an error
 ///
-/// The message body consists of one or more identified fields, followed by a zero byte as a terminator. Fields can appear in any order. For each field there is the following:
+/// The message body consists of one or more identified fields, followed by a zero byte as a terminator.
+/// Fields can appear in any order.
 ///
-/// Byte1 A code identifying the field type; if zero, this is the message terminator and no string follows. The presently defined field types are listed in Section 53.8. Since more field types might be added in future, frontends should silently ignore fields of unrecognized type.
+/// For each field there is the following:
 ///
-/// String The field value.
+/// `Byte1` A code identifying the field type; if zero, this is the message terminator and no string follows.
+/// The presently defined field types are listed in Section 53.8.
+/// Since more field types might be added in future,
+/// frontends should silently ignore fields of unrecognized type.
 ///
-/// TODO: translate the error response
+/// `String` The field value.
 #[derive(Debug, thiserror::Error)]
 #[error("{body:?}")]
 pub struct ErrorResponse {
-    pub body: std::collections::HashMap<u8,String>,
+    pub body: Bytes,
 }
 
 impl ErrorResponse {
     pub const MSGTYPE: u8 = b'E';
+
+    pub fn to_db_error(self) -> DatabaseError {
+        DatabaseError::from_error_response(self.body)
+    }
 }
 
 impl BackendProtocol for ErrorResponse {
-    fn decode(msgtype: u8, mut bytes: Bytes) -> Result<Self,ProtocolError> {
+    fn decode(msgtype: u8, body: Bytes) -> Result<Self,ProtocolError> {
         assert_msgtype!(ErrorResponse,msgtype);
-        let mut body = std::collections::HashMap::new();
-        loop {
-            let f = bytes.get_u8();
-            if f == b'\0' {
-                break
-            }
-            let msg = bytes.get_nul_string()?;
-            body.insert(f, msg);
-        }
         Ok(Self { body })
     }
 }

@@ -1,6 +1,10 @@
 //! Protocol error
 use crate::common::{general, BoxError, BytesRef};
 
+mod database;
+
+pub use database::DatabaseError;
+
 macro_rules! protocol_err {
     (%$str:literal) => {
         crate::message::error::ProtocolError::new($str)

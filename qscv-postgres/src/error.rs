@@ -2,7 +2,7 @@ use std::io;
 
 use crate::{
     common::BoxError,
-    message::{backend::ErrorResponse, error::ProtocolError},
+    message::error::{DatabaseError, ProtocolError},
 };
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
@@ -20,7 +20,7 @@ pub enum Error {
     Io(#[from]#[source] io::Error),
 
     #[error("Database error: {0}")]
-    Database(#[from] ErrorResponse),
+    Database(#[from] DatabaseError),
 
     #[error(transparent)]
     Other(BoxError)

@@ -3,7 +3,7 @@ use std::io;
 use crate::{
     message::{
         frontend::{self, Startup},
-        FrontendMessage,
+        FrontendProtocol,
     },
     net::{BufferedSocket, Socket},
     protocol::ProtocolDecode,
@@ -37,7 +37,7 @@ impl PgStream {
     /// polling the returned `Flush` will actually flush the underlying io
     pub fn send<E>(&mut self, msg: E) -> Flush<'_>
     where
-        E: FrontendMessage,
+        E: FrontendProtocol,
     {
         frontend::write(msg, self.socket.write_buf_mut());
         Flush(self)

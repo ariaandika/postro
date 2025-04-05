@@ -1,12 +1,29 @@
+//! Postgres Frontend Messages
 use bytes::{BufMut, BytesMut};
 
 use super::ext::{BufMutExt, StrExt, UsizeExt};
+
+// Other Frontend Message:
+// CancelRequest
+// Close('C')
+// CopyData('d')
+// CopyDone('c')
+// CopyFail('f')
+// Describe('D')
+// Flush('H')
+// FunctionCall('F')
+// GSSENCRequest
+// GSSENCResponse('p')
+// SASLInitialResponse('p')
+// SASLResponse('p')
+// SSLRequest
+// Terminate('X')
 
 /// write a frontend message to `buf`
 ///
 /// to write multiple message at the same time, use [`write_batch`]
 /// for better capacity reserve
-pub fn write<F: FrontendMessage>(msg: F, buf: &mut BytesMut) {
+pub fn write<F: FrontendProtocol>(msg: F, buf: &mut BytesMut) {
     // format + length
     const PREFIX: usize = 1 + 4;
 
@@ -26,8 +43,8 @@ pub fn write<F: FrontendMessage>(msg: F, buf: &mut BytesMut) {
     );
 }
 
-/// a postgres frontend message
-pub trait FrontendMessage {
+/// a type which can be encoded into postgres frontend message
+pub trait FrontendProtocol {
     /// message format
     const FORMAT: u8;
 
@@ -40,7 +57,7 @@ pub trait FrontendMessage {
     ///
     /// `buf` have the length returned from `size_hint`
     ///
-    /// writing past length may result in panic
+    /// writing less or past length results in panic
     fn encode(self, buf: impl BufMut);
 }
 
@@ -135,7 +152,7 @@ pub struct PasswordMessage<'a> {
     pub password: &'a str,
 }
 
-impl FrontendMessage for PasswordMessage<'_> {
+impl FrontendProtocol for PasswordMessage<'_> {
     const FORMAT: u8 = b'p';
 
     fn size_hint(&self) -> i32 {
@@ -153,7 +170,7 @@ pub struct Query<'a> {
     pub sql: &'a str,
 }
 
-impl FrontendMessage for Query<'_> {
+impl FrontendProtocol for Query<'_> {
     const FORMAT: u8 = b'Q';
 
     fn size_hint(&self) -> i32 {
@@ -184,7 +201,7 @@ pub struct Parse<'a,I> {
     pub data_types: I,//&'a [i32],
 }
 
-impl<I> FrontendMessage for Parse<'_,I>
+impl<I> FrontendProtocol for Parse<'_,I>
 where
     I: IntoIterator<Item = i32>
 {
@@ -210,7 +227,7 @@ where
 /// Identifies the message as a Sync command
 pub struct Sync;
 
-impl FrontendMessage for Sync {
+impl FrontendProtocol for Sync {
     const FORMAT: u8 = b'S';
 
     fn size_hint(&self) -> i32 { 0 }
@@ -260,11 +277,11 @@ pub struct Bind<'a,I,L,P,R> {
     pub results_format_code: R,
 }
 
-// NOTE: idk how to properly abstract this,
+// NOTE: idk how to properly abstract the Params,
 // number `to_be_bytes()` cannot be returned
 // from function
 
-impl<'a,I,L,P,R> FrontendMessage for Bind<'a,I,L,P,R>
+impl<'a,I,L,P,R> FrontendProtocol for Bind<'a,I,L,P,R>
 where
     I: IntoIterator<Item = i16>,
     L: IntoIterator,
@@ -350,7 +367,7 @@ pub struct Execute<'a> {
     pub max_row: i32,
 }
 
-impl FrontendMessage for Execute<'_> {
+impl FrontendProtocol for Execute<'_> {
     const FORMAT: u8 = b'E';
 
     fn size_hint(&self) -> i32 {

@@ -72,5 +72,5 @@ pub mod authentication;
 mod ext;
 
 pub use backend::BackendMessage;
-pub use frontend::FrontendMessage;
+pub use frontend::FrontendProtocol;
 

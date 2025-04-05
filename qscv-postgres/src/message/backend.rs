@@ -34,6 +34,7 @@ pub enum BackendMessage {
     CommandComplete(CommandComplete),
     ParseComplete(ParseComplete),
     BindComplete(BindComplete),
+    CloseComplete(CloseComplete),
 }
 
 impl BackendProtocol for BackendMessage {
@@ -48,7 +49,7 @@ impl BackendProtocol for BackendMessage {
         }
         let message = match_type! {
             Authentication, BackendKeyData, NoticeResponse, ErrorResponse, ParameterStatus,
-            ReadyForQuery, RowDescription, DataRow, CommandComplete, ParseComplete, BindComplete,
+            ReadyForQuery, RowDescription, DataRow, CommandComplete, ParseComplete, BindComplete, CloseComplete,
         };
         Ok(message)
     }
@@ -72,7 +73,7 @@ impl BackendMessage {
         }
         match_type! {
             Authentication, BackendKeyData, NoticeResponse, ErrorResponse, ParameterStatus,
-            ReadyForQuery, RowDescription, DataRow, CommandComplete, ParseComplete, BindComplete,
+            ReadyForQuery, RowDescription, DataRow, CommandComplete, ParseComplete, BindComplete, CloseComplete,
         }
     }
 }
@@ -383,6 +384,21 @@ impl BindComplete {
 impl BackendProtocol for BindComplete {
     fn decode(msgtype: u8, _: Bytes) -> Result<Self,ProtocolError> {
         assert_msgtype!(BindComplete,msgtype);
+        Ok(Self)
+    }
+}
+
+/// Identifies the message as a Close-complete indicator.
+#[derive(Debug)]
+pub struct CloseComplete;
+
+impl CloseComplete {
+    pub const MSGTYPE: u8 = b'3';
+}
+
+impl BackendProtocol for CloseComplete {
+    fn decode(msgtype: u8, _: Bytes) -> Result<Self,ProtocolError> {
+        assert_msgtype!(CloseComplete,msgtype);
         Ok(Self)
     }
 }

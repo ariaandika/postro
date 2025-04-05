@@ -5,12 +5,10 @@ use super::ext::{BufMutExt, StrExt, UsizeExt};
 
 // Other Frontend Message:
 // CancelRequest
-// Close('C')
 // CopyData('d')
 // CopyDone('c')
 // CopyFail('f')
 // Describe('D')
-// Flush('H')
 // FunctionCall('F')
 // GSSENCRequest
 // GSSENCResponse('p')
@@ -235,6 +233,17 @@ impl FrontendProtocol for Sync {
     fn encode(self, _: impl BufMut) { }
 }
 
+/// Identifies the message as a Flush command
+pub struct Flush;
+
+impl FrontendProtocol for Flush {
+    const MSGTYPE: u8 = b'H';
+
+    fn size_hint(&self) -> i32 { 0 }
+
+    fn encode(self, _: impl BufMut) { }
+}
+
 /// Identifies the message as a Bind command
 pub struct Bind<'a,I,L,P,R> {
     /// The name of the destination portal (an empty string selects the unnamed portal).
@@ -379,6 +388,30 @@ impl FrontendProtocol for Execute<'_> {
     fn encode(self, mut buf: impl BufMut) {
         buf.put_nul_string(self.portal_name);
         buf.put_i32(self.max_row);
+    }
+}
+
+/// Identifies the message as a Close command
+pub struct Close<'a> {
+    /// 'S' to close a prepared statement; or 'P' to close a portal.
+    pub variant: u8,
+    /// The name of the prepared statement or portal to close
+    /// (an empty string selects the unnamed prepared statement or portal).
+    pub name: &'a str,
+}
+
+impl FrontendProtocol for Close<'_> {
+    const MSGTYPE: u8 = b'C';
+
+    fn size_hint(&self) -> i32 {
+        // self.variant (u8)
+        1 +
+        self.name.nul_string_len()
+    }
+
+    fn encode(self, mut buf: impl BufMut) {
+        buf.put_u8(self.variant);
+        buf.put_nul_string(self.name);
     }
 }
 

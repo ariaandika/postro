@@ -35,7 +35,8 @@ impl PgConnection {
             user: &opt.user,
             database: Some(&opt.dbname),
             replication: None,
-        }).await?;
+        });
+        stream.flush().await?;
 
         // The server then sends an appropriate authentication request message,
         // to which the frontend must reply with an appropriate authentication response message (such as a password).
@@ -57,7 +58,8 @@ impl PgConnection {
                 Ok => break,
                 // The frontend must now send a PasswordMessage containing the password in clear-text form
                 CleartextPassword => {
-                    stream.send(PasswordMessage { password: opt.pass.as_ref() }).await?;
+                    stream.send(PasswordMessage { password: opt.pass.as_ref() });
+                    stream.flush().await?;
                 },
                 // TODO: support more authentication method
                 f => return err!(Protocol,ProtocolError::new(general!(
@@ -101,7 +103,8 @@ impl PgConnection {
     ///
     /// <https://www.postgresql.org/docs/current/protocol-flow.html#PROTOCOL-FLOW-SIMPLE-QUERY>
     pub async fn simple_query(&mut self, sql: &str) -> Result<()> {
-        self.stream.send(Query { sql }).await?;
+        self.stream.send(Query { sql });
+        self.stream.flush().await?;
 
         let mut rows = vec![];
 

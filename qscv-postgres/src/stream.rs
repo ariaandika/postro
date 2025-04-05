@@ -1,16 +1,23 @@
 use std::io;
+use bytes::{Buf, BytesMut};
 
 use crate::{
     message::{
-        backend::BackendProtocol, frontend::{self, Startup}, FrontendProtocol
+        backend::BackendProtocol,
+        frontend::{self, Startup},
+        FrontendProtocol,
     },
-    net::{BufferedSocket, Socket},
+    net::Socket,
     PgOptions, Result,
 };
 
+const DEFAULT_BUF_CAPACITY: usize = 1024;
+
 #[derive(Debug)]
 pub struct PgStream {
-    socket: BufferedSocket,
+    socket: Socket,
+    read_buf: BytesMut,
+    write_buf: BytesMut,
 }
 
 impl PgStream {
@@ -20,12 +27,15 @@ impl PgStream {
             _ => Socket::connect_tcp(&opt.host, opt.port).await?,
         };
 
-        Ok(Self { socket: BufferedSocket::new(socket) })
+        Ok(Self {
+            socket,
+            read_buf: BytesMut::with_capacity(DEFAULT_BUF_CAPACITY),
+            write_buf: BytesMut::with_capacity(DEFAULT_BUF_CAPACITY),
+        })
     }
 
-    pub fn send_startup(&mut self, msg: Startup) -> Flush<'_> {
-        msg.write(self.socket.write_buf_mut());
-        Flush(self)
+    pub fn send_startup(&mut self, msg: Startup) {
+        msg.write(&mut self.write_buf);
     }
 
     /// send frontend message to a buffer
@@ -33,39 +43,43 @@ impl PgStream {
     /// just calling this function, msg only written to a buffer
     ///
     /// polling the returned `Flush` will actually flush the underlying io
-    pub fn send<E>(&mut self, msg: E) -> Flush<'_>
+    pub fn send<E>(&mut self, msg: E)
     where
         E: FrontendProtocol,
     {
-        frontend::write(msg, self.socket.write_buf_mut());
-        Flush(self)
+        frontend::write(msg, &mut self.write_buf);
     }
 
     /// write buffered message to underlying io
     pub fn flush(&mut self) -> impl Future<Output = io::Result<()>> {
-        self.socket.flush()
+        self.socket.write_all_buf(&mut self.write_buf)
     }
 
     /// receive a single message
-    pub fn recv<D: BackendProtocol>(&mut self) -> impl Future<Output = Result<D>> {
-        self.socket.recv()
-    }
+    pub async fn recv<B: BackendProtocol>(&mut self) -> Result<B> {
+        loop {
+            let Some(mut header) = self.read_buf.get(..5) else {
+                self.read_buf.reserve(1024);
+                self.socket.read_buf(&mut self.read_buf).await?;
+                continue;
+            };
 
-    #[cfg(test)]
-    #[allow(unused)]
-    pub fn debug_read(&mut self) -> impl Future<Output = Result<()>> {
-        self.socket.debug_read()
-    }
-}
+            let msgtype = header.get_u8();
+            let len = header.get_i32() as _;
 
-/// a future that flush the internal io when polled
-pub struct Flush<'a>(&'a mut PgStream);
+            if self.read_buf.len() - 1/*msgtype*/ < len {
+                self.read_buf.reserve(1 + len);
+                self.socket.read_buf(&mut self.read_buf).await?;
+                continue;
+            }
 
-impl Future for Flush<'_> {
-    type Output = io::Result<()>;
+            self.read_buf.advance(5);
+            let body = self.read_buf.split_to(len - 4).freeze();
 
-    fn poll(mut self: std::pin::Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> std::task::Poll<Self::Output> {
-        std::pin::pin!(self.0.socket.flush()).poll(cx)
+            let msg = B::decode(msgtype, body)?;
+
+            return Ok(msg)
+        }
     }
 }
 

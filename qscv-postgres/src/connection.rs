@@ -171,7 +171,7 @@ impl PgConnection {
             prepare_name,
             sql,
             data_types_len: args.len() as _,
-            data_types: args.into_iter().map(Encoded::oid),
+            data_types: args.iter().map(Encoded::oid),
         });
 
         // Once a prepared statement exists, it can be readied for execution using a Bind message.

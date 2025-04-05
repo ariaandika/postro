@@ -17,9 +17,8 @@ pub struct PgOptions {
 }
 
 impl PgOptions {
-    pub fn new() {
-        todo!("postgres env var convention")
-    }
+    // TODO: postgres env var convention
+    // pub fn new() { }
 
     pub fn parse(url: &str) -> Result<PgOptions> {
         Self::parse_inner(ByteStr::copy_from_str(url))

@@ -303,7 +303,7 @@ where
         IntoIterator::into_iter(self.params)
             .fold(0i32, |acc,n|{
                 use crate::encode::{Encoded, ValueRef::*};
-                let len_and_data = match Encoded::value(&n) {
+                let len_and_data = match Encoded::value(n) {
                     Null => todo!("what the length of NULL ?"),
                     I32(_) => 4 + 4,
                     Bool(_) => 4 + 1,
@@ -330,7 +330,7 @@ where
         buf.put_i16(self.params_len.into_iter().len().to_i16());
         for param in self.params {
             use crate::encode::{Encoded, ValueRef::*};
-            match Encoded::value(&param) {
+            match Encoded::value(param) {
                 Null => todo!("how to write NULL ?"),
                 I32(num) => {
                     buf.put_i32(4);

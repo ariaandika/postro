@@ -1,4 +1,6 @@
-use bytes::BufMut;
+use bytes::{BufMut, Bytes};
+
+use super::error::{ProtocolError, protocol_err};
 
 pub trait UsizeExt {
     /// length is usize in rust, while postgres want i32,
@@ -45,6 +47,22 @@ impl<B: BufMut> BufMutExt for B {
     fn put_nul_string(&mut self, string: &str) {
         self.put(string.as_bytes());
         self.put_u8(b'\0');
+    }
+}
+
+pub trait BytesExt {
+    fn get_nul_string(&mut self) -> Result<String,ProtocolError>;
+}
+
+impl BytesExt for Bytes {
+    fn get_nul_string(&mut self) -> Result<String,ProtocolError> {
+        let Some(end) = self.iter().position(|e|matches!(e,b'\0')) else {
+            return Err(protocol_err!("no nul termination for string"))
+        };
+        match String::from_utf8(self.split_to(end).into()) {
+            Ok(ok) => Ok(ok),
+            Err(err) => Err(protocol_err!("non UTF-8 string: {err}")),
+        }
     }
 }
 

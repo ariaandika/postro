@@ -14,3 +14,14 @@ impl ProtocolError {
     }
 }
 
+macro_rules! protocol_err {
+    (%$str:literal) => {
+        crate::message::error::ProtocolError::new($str)
+    };
+    ($($tt:tt)*) => {
+        crate::message::error::ProtocolError::new(format!($($tt)*))
+    };
+}
+
+pub(crate) use protocol_err;
+

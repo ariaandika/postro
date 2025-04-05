@@ -2,8 +2,7 @@ use bytes::{Buf, Bytes};
 
 use super::{authentication::Authentication, error::ProtocolError};
 use crate::{
-    common::{general, BytesRef},
-    row_buffer::RowBuffer,
+    common::{general, BytesRef}, message::ext::BytesExt, row_buffer::RowBuffer
 };
 
 /// a type that can be decoded into postgres backend message
@@ -16,32 +15,6 @@ macro_rules! assert_msgtype {
         // TODO: return error instead
         assert_eq!($self::MSGTYPE,$typ);
     };
-}
-
-macro_rules! nul_string {
-    (@ $msg:ident,$advance:stmt) => {{
-        let end = match $msg.iter().position(|e|matches!(e,b'\0')) {
-            Some(ok) => ok,
-            None => return Err(ProtocolError::new(general!(
-                "no nul termination in ParameterStatus",
-            )))
-        };
-        match String::from_utf8($msg.split_to(end).into()) {
-            Ok(ok) => {
-                $advance
-                ok
-            },
-            Err(err) => return Err(ProtocolError::new(general!(
-                "non UTF-8 string in ParameterStatus: {err}",
-            ))),
-        }
-    }};
-    ($msg:ident) => {{
-        nul_string!(@ $msg,$msg.advance(1))
-    }};
-    ($msg:ident,noadvance) => {{
-        nul_string!(@ $msg,())
-    }};
 }
 
 /// postgres backend messages
@@ -130,8 +103,8 @@ impl BackendProtocol for ParameterStatus {
     fn decode(msgtype: u8, mut body: Bytes) -> Result<Self,ProtocolError> {
         assert_msgtype!(Self,msgtype);
         Ok(Self {
-            name: nul_string!(body),
-            value: nul_string!(body),
+            name: body.get_nul_string()?,
+            value: body.get_nul_string()?,
         })
     }
 }
@@ -180,7 +153,7 @@ impl BackendProtocol for ErrorResponse {
             if f == b'\0' {
                 break
             }
-            let msg = nul_string!(bytes);
+            let msg = bytes.get_nul_string()?;
             body.insert(f, msg);
         }
         Ok(Self { body })
@@ -213,7 +186,7 @@ impl BackendProtocol for RowDescription {
             // Int16 Specifies the number of fields in a row (can be zero).
             field_len: body.get_i16(),
             // Int16 Specifies the number of fields in a row (can be zero).
-            field_name: nul_string!(body),
+            field_name: body.get_nul_string()?,
             // If the field can be identified as a column of a specific table,
             // the object ID of the table; otherwise zero
             table_oid: body.get_i32(),

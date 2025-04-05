@@ -1,8 +1,11 @@
+//! An option for postgres startup phase
+//!
+//! <https://www.postgresql.org/docs/current/protocol-flow.html#PROTOCOL-FLOW-START-UP>
 use std::borrow::Cow;
 
-// An option for postgres startup phase
-//
-// <https://www.postgresql.org/docs/current/protocol-flow.html#PROTOCOL-FLOW-START-UP>
+/// An option for postgres startup phase
+///
+/// <https://www.postgresql.org/docs/current/protocol-flow.html#PROTOCOL-FLOW-START-UP>
 pub struct StartupOptions<'a> {
     user: Cow<'a,str>,
     database: Option<Cow<'a,str>>,
@@ -11,83 +14,59 @@ pub struct StartupOptions<'a> {
 }
 
 impl<'a> StartupOptions<'a> {
-    /// create a builder
-    pub fn builder(user: impl Into<Cow<'a, str>>) -> StartupOptionsBuilder<'a> {
-        StartupOptionsBuilder::new(user)
+    /// Create new options, the database user name is required
+    pub fn new(user: impl Into<Cow<'a, str>>) -> Self {
+        Self { user: user.into(), database: None, password: None, replication: None  }
     }
 
-    /// get user
-    pub fn user(&self) -> &str {
+    /// The database user name to connect as. Required; there is no default.
+    pub fn get_user(&self) -> &str {
         &self.user
     }
 
-    /// get database
-    pub fn database(&self) -> Option<&Cow<'a, str>> {
-        self.database.as_ref()
+    /// The database to connect to. Defaults to the user name.
+    pub fn get_database(&self) -> Option<&str> {
+        self.database.as_ref().map(<_>::as_ref)
     }
 
-    /// get password
-    pub fn password(&self) -> Option<&Cow<'a, str>> {
-        self.password.as_ref()
-    }
-
-    /// get replication
-    pub fn replication(&self) -> Option<&Cow<'a, str>> {
-        self.replication.as_ref()
-    }
-}
-
-/// Builder got [`StartupOptions`]
-pub struct StartupOptionsBuilder<'a> {
-    user: Cow<'a,str>,
-    database: Option<Cow<'a,str>>,
-    password: Option<Cow<'a,str>>,
-    replication: Option<Cow<'a,str>>,
-}
-
-impl<'a> StartupOptionsBuilder<'a> {
-    /// create new builder
-    pub fn new(user: impl Into<Cow<'a, str>>) -> Self {
-        Self {
-            user: user.into(),
-            database: None,
-            password: None,
-            replication: None,
-        }
-    }
-
-    /// set database
+    /// The database to connect to. Defaults to the user name.
     pub fn database(mut self, database: impl Into<Cow<'a,str>>) -> Self {
         self.database = Some(database.into());
         self
     }
 
-    /// set password
+    /// Get password
+    pub fn get_password(&self) -> Option<&str> {
+        self.password.as_ref().map(<_>::as_ref)
+    }
+
+    /// Set password
     pub fn password(mut self, password: impl Into<Cow<'a,str>>) -> Self {
         self.password = Some(password.into());
         self
     }
 
-    /// set replication
+    /// Used to connect in streaming replication mode, where a small set of replication commands can be issued
+    /// instead of SQL statements.
+    ///
+    /// Value can be true, false, or database, and the default is false.
+    ///
+    /// See [Section 53.4](https://www.postgresql.org/docs/current/protocol-replication.html) for details.
+    pub fn get_replication(&self) -> Option<&str> {
+        self.replication.as_ref().map(<_>::as_ref)
+    }
+
+    /// Set replication
+    ///
+    /// Used to connect in streaming replication mode, where a small set of replication commands can be issued
+    /// instead of SQL statements.
+    ///
+    /// Value can be true, false, or database, and the default is false.
+    ///
+    /// See [Section 53.4](https://www.postgresql.org/docs/current/protocol-replication.html) for details.
     pub fn replication(mut self, replication: impl Into<Cow<'a,str>>) -> Self {
         self.replication = Some(replication.into());
         self
-    }
-
-    /// build the final options
-    pub fn build(self) -> StartupOptions<'a> {
-        StartupOptions {
-            user: self.user,
-            database: self.database,
-            password: self.password,
-            replication: self.replication,
-        }
-    }
-}
-
-impl<'a> From<StartupOptionsBuilder<'a>> for StartupOptions<'a> {
-    fn from(opt: StartupOptionsBuilder<'a>,) -> StartupOptions<'a> {
-        opt.build()
     }
 }
 

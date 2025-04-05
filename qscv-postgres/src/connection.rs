@@ -6,7 +6,7 @@ use crate::{
     error::Result,
     message::{
         error::ProtocolError,
-        frontend::{Bind, Execute, Parse, Query, Sync},
+        frontend::{Bind, Execute, Parse, Sync},
         BackendMessage,
     },
     options::PgOptions,
@@ -45,34 +45,6 @@ impl PgConnection {
             portal_id: std::num::NonZeroU32::new(1).unwrap(),
             prepared_stmt: LruCache::new(DEFAULT_PREPARED_STMT_CACHE),
         })
-    }
-
-    /// perform a simple query
-    ///
-    /// <https://www.postgresql.org/docs/current/protocol-flow.html#PROTOCOL-FLOW-SIMPLE-QUERY>
-    pub async fn simple_query(&mut self, sql: &str) -> Result<()> {
-        self.stream.send(Query { sql });
-        self.stream.flush().await?;
-
-        let mut rows = vec![];
-
-        loop {
-            use BackendMessage::*;
-            match self.stream.recv().await? {
-                // Indicates that rows are about to be returned in response to a SELECT, FETCH, etc. query.
-                // The contents of this message describe the column layout of the rows.
-                // This will be followed by a DataRow message for each row being returned to the frontend.
-                RowDescription(_row) => { },
-                // One of the set of rows returned by a SELECT, FETCH, etc. query.
-                DataRow(row) => rows.push(row.row_buffer),
-                // An SQL command completed normally
-                CommandComplete(_tag) => { }
-                ReadyForQuery(_) => break,
-                f => Err(ProtocolError::unexpected_phase(f.msgtype(), "simple query"))?,
-            }
-        }
-
-        Ok(())
     }
 
     /// perform an extended query
@@ -172,8 +144,7 @@ fn test_connect() {
         .unwrap()
         .block_on(async {
             let mut conn = PgConnection::connect("postgres://cookiejar:cookie@127.0.0.1:5432/postgres").await.unwrap();
-            let _ = conn
-                .simple_query("select null,4").await.unwrap();
+            let _ = crate::protocol::simple_query("select null,4", &mut conn.stream).await.unwrap();
 
             let params = [
                 Encoded::new(ValueRef::Bytes(b"DeezNutz".into()), str::PG_TYPE.oid()),

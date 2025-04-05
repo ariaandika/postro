@@ -4,6 +4,7 @@ use crate::{
     io::PostgresIo,
     message::{backend, error::ProtocolError, frontend, BackendMessage},
     options::startup::StartupOptions,
+    row_buffer::RowBuffer,
     Result,
 };
 
@@ -86,5 +87,33 @@ pub async fn startup<'a, IO: PostgresIo>(
         param_status,
         backend_key_data: key_data.expect("postgres never send backend key data"),
     })
+}
+
+/// perform a simple query
+///
+/// <https://www.postgresql.org/docs/current/protocol-flow.html#PROTOCOL-FLOW-SIMPLE-QUERY>
+pub async fn simple_query<IO: PostgresIo>(sql: &str, mut io: IO) -> Result<Vec<RowBuffer>> {
+    io.send(frontend::Query { sql });
+    io.flush().await?;
+
+    let mut rows = vec![];
+
+    loop {
+        use BackendMessage::*;
+        match io.recv().await? {
+            ReadyForQuery(_) => break,
+            // Indicates that rows are about to be returned in response to a SELECT, FETCH, etc. query.
+            // The contents of this message describe the column layout of the rows.
+            // This will be followed by a DataRow message for each row being returned to the frontend.
+            RowDescription(_row) => { },
+            // One of the set of rows returned by a SELECT, FETCH, etc. query.
+            DataRow(row) => rows.push(row.row_buffer),
+            // An SQL command completed normally
+            CommandComplete(_tag) => { }
+            f => Err(ProtocolError::unexpected_phase(f.msgtype(), "simple query"))?,
+        }
+    }
+
+    Ok(rows)
 }
 

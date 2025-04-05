@@ -7,7 +7,7 @@ pub struct Encoded<'q> {
     oid: Oid,
 }
 
-impl<'q> Default for Encoded<'q> {
+impl Default for Encoded<'_> {
     fn default() -> Self {
         Self {
             value: ValueRef::Null,

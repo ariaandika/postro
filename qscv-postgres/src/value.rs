@@ -1,5 +1,3 @@
-use super::types::Oid;
-
 
 #[derive(Debug)]
 pub enum ValueRef<'a> {
@@ -8,12 +6,6 @@ pub enum ValueRef<'a> {
     Bytes(&'a [u8]),
     Number(i32),
     Bool(bool),
-}
-
-impl<'a> ValueRef<'a> {
-    pub fn oid(&self) -> Oid {
-        todo!()
-    }
 }
 
 impl From<i32> for ValueRef<'static> {

@@ -41,7 +41,7 @@ impl Url {
 
         match port.parse() {
             Ok(port) => Ok(Self { scheme, user, pass, host, port, dbname, }),
-            Err(err) => return Err(general!("invalid port: {err}")),
+            Err(err) => Err(general!("invalid port: {err}")),
         }
     }
 }

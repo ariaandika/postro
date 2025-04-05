@@ -32,9 +32,11 @@ impl ByteStr {
     pub fn slice_ref(&self, subset: &str) -> Self {
         Self { bytes: Bytes::slice_ref(&self.bytes, subset.as_bytes()) }
     }
+}
 
+impl AsRef<str> for ByteStr {
     /// return the internal str
-    pub fn as_ref(&self) -> &str {
+    fn as_ref(&self) -> &str {
         // SAFETY: input is a string and immutable
         unsafe { std::str::from_utf8_unchecked(&self.bytes) }
     }

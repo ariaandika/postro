@@ -27,6 +27,9 @@ pub trait PostgresIo {
     fn flush(&mut self) -> impl Future<Output = io::Result<()>>;
 
     /// receive a backend message
+    ///
+    /// note that the implementor *should* detect database error,
+    /// and return it as [`Result::Err`][std::result::Result::Err]
     fn recv<B: BackendProtocol>(&mut self) -> impl Future<Output = Result<B>>;
 }
 

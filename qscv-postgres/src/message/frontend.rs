@@ -24,14 +24,14 @@ use super::ext::{BufMutExt, StrExt, UsizeExt};
 /// to write multiple message at the same time, use [`write_batch`]
 /// for better capacity reserve
 pub fn write<F: FrontendProtocol>(msg: F, buf: &mut BytesMut) {
-    // format + length
+    // msgtype + length
     const PREFIX: usize = 1 + 4;
 
     let size = msg.size_hint();
     buf.reserve(PREFIX + size as usize);
 
     let offset = buf.len();
-    buf.put_u8(F::FORMAT);
+    buf.put_u8(F::MSGTYPE);
     buf.put_i32(4 + size);
 
     msg.encode(&mut *buf);
@@ -45,8 +45,8 @@ pub fn write<F: FrontendProtocol>(msg: F, buf: &mut BytesMut) {
 
 /// a type which can be encoded into postgres frontend message
 pub trait FrontendProtocol {
-    /// message format
-    const FORMAT: u8;
+    /// message type
+    const MSGTYPE: u8;
 
     /// size of the main body
     ///
@@ -153,7 +153,7 @@ pub struct PasswordMessage<'a> {
 }
 
 impl FrontendProtocol for PasswordMessage<'_> {
-    const FORMAT: u8 = b'p';
+    const MSGTYPE: u8 = b'p';
 
     fn size_hint(&self) -> i32 {
         self.password.nul_string_len()
@@ -171,7 +171,7 @@ pub struct Query<'a> {
 }
 
 impl FrontendProtocol for Query<'_> {
-    const FORMAT: u8 = b'Q';
+    const MSGTYPE: u8 = b'Q';
 
     fn size_hint(&self) -> i32 {
         self.sql.nul_string_len()
@@ -205,7 +205,7 @@ impl<I> FrontendProtocol for Parse<'_,I>
 where
     I: IntoIterator<Item = i32>
 {
-    const FORMAT: u8 = b'P';
+    const MSGTYPE: u8 = b'P';
 
     fn size_hint(&self) -> i32 {
         self.prepare_name.nul_string_len() +
@@ -228,7 +228,7 @@ where
 pub struct Sync;
 
 impl FrontendProtocol for Sync {
-    const FORMAT: u8 = b'S';
+    const MSGTYPE: u8 = b'S';
 
     fn size_hint(&self) -> i32 { 0 }
 
@@ -289,7 +289,7 @@ where
     P: IntoIterator<Item = &'a crate::encode::Encoded<'a>> + Copy/* expected a reference */,
     R: IntoIterator<Item = i16>,
 {
-    const FORMAT: u8 = b'B';
+    const MSGTYPE: u8 = b'B';
 
     fn size_hint(&self) -> i32 {
         self.portal_name.nul_string_len() +
@@ -368,7 +368,7 @@ pub struct Execute<'a> {
 }
 
 impl FrontendProtocol for Execute<'_> {
-    const FORMAT: u8 = b'E';
+    const MSGTYPE: u8 = b'E';
 
     fn size_hint(&self) -> i32 {
         self.portal_name.nul_string_len() +

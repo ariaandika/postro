@@ -55,9 +55,8 @@ impl PgConnection {
 
         loop {
             use backend::Authentication::*;
-            let auth = match stream.recv().await? {
+            let auth = match stream.recv::<BackendMessage>().await?.try_dberror()? {
                 BackendMessage::Authentication(ok) => ok,
-                BackendMessage::ErrorResponse(err) => return Err(err.into()),
                 f => return err!(Protocol,ProtocolError::new(general!(
                     "unexpected message in startup phase: ({f:?})",
                 ))),
@@ -88,12 +87,11 @@ impl PgConnection {
         // An error causes ErrorResponse and exit.
 
         loop {
-            let msg = stream.recv::<BackendMessage>().await?;
+            let msg = stream.recv::<BackendMessage>().await?.try_dberror()?;
             match msg {
                 BackendMessage::ReadyForQuery(_) => break,
                 BackendMessage::BackendKeyData(_) => {}
                 BackendMessage::ParameterStatus(_) => {}
-                BackendMessage::ErrorResponse(err) => return Err(err.into()),
                 f => return err!(Protocol,ProtocolError::new(general!(
                     "unexpected message in startup phase: {f:#?}",
                 ))),

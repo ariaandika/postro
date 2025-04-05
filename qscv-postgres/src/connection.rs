@@ -6,9 +6,9 @@ use crate::{
     encode::Encoded,
     error::{err, Result},
     message::{
-        authentication,
         error::ProtocolError,
         frontend::{Bind, Execute, Parse, PasswordMessage, Query, Startup, Sync},
+        backend,
         BackendMessage,
     },
     options::PgOptions,
@@ -27,10 +27,12 @@ pub struct PgConnection {
 }
 
 impl PgConnection {
+    /// perform a startup message via url
     pub async fn connect(url: &str) -> Result<Self> {
         Self::connect_with(PgOptions::parse(url)?).await
     }
 
+    /// perform a startup message with options
     pub async fn connect_with(opt: PgOptions) -> Result<Self> {
         let mut stream = PgStream::connect(&opt).await?;
 
@@ -52,7 +54,7 @@ impl PgConnection {
         // For GSSAPI, SSPI and SASL, multiple exchanges of packets may be needed to complete the authentication.
 
         loop {
-            use authentication::Authentication::*;
+            use backend::Authentication::*;
             let auth = match stream.recv().await? {
                 BackendMessage::Authentication(ok) => ok,
                 BackendMessage::ErrorResponse(err) => return Err(err.into()),

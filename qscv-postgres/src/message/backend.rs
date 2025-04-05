@@ -1,11 +1,13 @@
+//! Postgres Backend Messages
 use bytes::{Buf, Bytes};
 
-use super::{authentication::Authentication, error::ProtocolError};
 use crate::{
-    common::{general, BytesRef}, message::ext::BytesExt, row_buffer::RowBuffer
+    common::{general, BytesRef},
+    message::{error::ProtocolError, ext::BytesExt},
+    row_buffer::RowBuffer,
 };
 
-/// a type that can be decoded into postgres backend message
+/// A type that can be decoded into postgres backend message
 pub trait BackendProtocol: Sized {
     fn decode(msgtype: u8, body: Bytes) -> Result<Self,ProtocolError>;
 }
@@ -17,7 +19,7 @@ macro_rules! assert_msgtype {
     };
 }
 
-/// postgres backend messages
+/// Postgres backend messages
 #[derive(Debug)]
 pub enum BackendMessage {
     Authentication(Authentication),
@@ -59,6 +61,58 @@ impl BackendProtocol for BackendMessage {
 // NOTE: Backend Messages
 //
 
+/// Identifies the message as an authentication request.
+#[derive(Debug)]
+pub enum Authentication {
+    /// Int32(0) Specifies that the authentication was successful.
+    Ok,
+    /// Int32(2) Specifies that Kerberos V5 authentication is required.
+    KerberosV5,
+    /// Int32(3) Specifies that a clear-text password is required.
+    CleartextPassword,
+    /// Int32(5) Specifies that an MD5-encrypted password is required.
+    /// Byte4 The salt to use when encrypting the password.
+    MD5Password {
+        salt: u32
+    },
+    /// Int32(7) Specifies that GSSAPI authentication is required.
+    GSS,
+    /// Int32(9) Specifies that SSPI authentication is required.
+    SSPI,
+    /// Int32(10) Specifies that SASL authentication is required.
+    ///   The message body is a list of SASL authentication mechanisms,
+    ///   in the server's order of preference. A zero byte is required
+    ///   as terminator after the last authentication mechanism name.
+    ///   For each mechanism, there is the following:
+    /// String Name of a SASL authentication mechanism.
+    /// TODO: SASL not yet supported
+    /// there are more protocol for SASL control flow
+    SASL,
+}
+
+impl Authentication {
+    pub const MSGTYPE: u8 = b'R';
+}
+
+impl BackendProtocol for Authentication {
+    fn decode(_: u8, mut body: Bytes) -> Result<Self,ProtocolError> {
+        let auth = match body.get_i32() {
+            0 => Authentication::Ok,
+            2 => Authentication::KerberosV5,
+            3 => Authentication::CleartextPassword,
+            5 => Authentication::MD5Password { salt: body.get_u32(), },
+            7 => Authentication::GSS,
+            9 => Authentication::SSPI,
+            10 => Authentication::SASL,
+            _ => return Err(ProtocolError::new(general!(
+                "unknown authentication methods ({:?})",
+                BytesRef(&body[..]),
+            ))),
+        };
+        Ok(auth)
+    }
+}
+
 /// Identifies the message as cancellation key data.
 ///
 /// The frontend must save these values if it wishes to be able to issue CancelRequest messages later.
@@ -71,7 +125,6 @@ pub struct BackendKeyData {
 }
 
 impl BackendKeyData {
-    pub const FORMAT: u8 = b'K';
     pub const MSGTYPE: u8 = b'K';
 }
 
@@ -95,7 +148,6 @@ pub struct ParameterStatus {
 }
 
 impl ParameterStatus {
-    pub const FORMAT: u8 = b'S';
     pub const MSGTYPE: u8 = b'S';
 }
 
@@ -109,11 +161,11 @@ impl BackendProtocol for ParameterStatus {
     }
 }
 
+/// Identifies the message type. ReadyForQuery is sent whenever the backend is ready for a new query cycle.
 #[derive(Debug)]
 pub struct ReadyForQuery;
 
 impl ReadyForQuery {
-    pub const FORMAT: u8 = b'Z';
     pub const MSGTYPE: u8 = b'Z';
 }
 
@@ -140,7 +192,6 @@ pub struct ErrorResponse {
 }
 
 impl ErrorResponse {
-    pub const FORMAT: u8 = b'E';
     pub const MSGTYPE: u8 = b'E';
 }
 
@@ -175,7 +226,6 @@ pub struct RowDescription {
 }
 
 impl RowDescription {
-    pub const FORMAT: u8 = b'T';
     pub const MSGTYPE: u8 = b'T';
 }
 
@@ -211,13 +261,12 @@ impl BackendProtocol for RowDescription {
 }
 
 #[derive(Debug)]
-/// Identifies the message as a row description
+/// Identifies the message as a data row.
 pub struct DataRow {
     pub row_buffer: RowBuffer,
 }
 
 impl DataRow {
-    pub const FORMAT: u8 = b'D';
     pub const MSGTYPE: u8 = b'D';
 }
 
@@ -264,7 +313,6 @@ pub struct CommandComplete {
 }
 
 impl CommandComplete {
-    pub const FORMAT: u8 = b'C';
     pub const MSGTYPE: u8 = b'C';
 }
 
@@ -282,11 +330,11 @@ impl BackendProtocol for CommandComplete {
     }
 }
 
+/// Identifies the message as a Parse-complete indicator.
 #[derive(Debug)]
 pub struct ParseComplete;
 
 impl ParseComplete {
-    pub const FORMAT: u8 = b'1';
     pub const MSGTYPE: u8 = b'1';
 }
 
@@ -298,11 +346,11 @@ impl BackendProtocol for ParseComplete {
 }
 
 
+/// Identifies the message as a Bind-complete indicator.
 #[derive(Debug)]
 pub struct BindComplete;
 
 impl BindComplete {
-    pub const FORMAT: u8 = b'2';
     pub const MSGTYPE: u8 = b'2';
 }
 

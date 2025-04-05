@@ -11,7 +11,7 @@
 //! but not the message-type byte). The remaining contents of the message are determined by the message type.
 //!
 //! ```text
-//! | u8 |        u32        | body
+//! | u8 |        i32        | body
 //! |----|-------------------|-----
 //! | 43 | 00 | 00 | 00 | 32 |  ..
 //!
@@ -67,11 +67,10 @@
 
 pub mod frontend;
 pub mod backend;
-pub mod authentication;
 pub mod error;
 
 mod ext;
 
-pub use backend::BackendMessage;
 pub use frontend::FrontendProtocol;
+pub use backend::{BackendProtocol, BackendMessage};
 

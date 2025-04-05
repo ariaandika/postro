@@ -37,13 +37,13 @@ pub fn write<F: FrontendProtocol>(msg: F, buf: &mut BytesMut) {
     msg.encode(&mut *buf);
 
     assert_eq!(
-        buf[offset..].len(),
+        buf.len() - offset,
         PREFIX + size as usize,
         "[BUG] Frontend Message body not equal to size hint"
     );
 }
 
-/// a type which can be encoded into postgres frontend message
+/// A type which can be encoded into postgres frontend message
 pub trait FrontendProtocol {
     /// message type
     const MSGTYPE: u8;
@@ -75,19 +75,13 @@ pub struct Startup<'a> {
     pub replication: Option<&'a str>,
 }
 
-/// See source code for detailed message
-///
-/// Fri Mar 28 07:34:09 PM WIB 2025
-///
-/// <https://www.postgresql.org/docs/current/protocol-message-formats.html#PROTOCOL-MESSAGE-FORMATS-STARTUPMESSAGE>
 impl Startup<'_> {
     pub fn write(self, buf: &mut BytesMut) {
         let offset = buf.len();
 
-        // Int32
         // Length of message contents in bytes, including self.
         // reserve 4 bytes for length
-        buf.put_u32(0);
+        buf.put_i32(0);
 
         // Int32(196608)
         // The protocol version number.
@@ -99,18 +93,14 @@ impl Startup<'_> {
 
         // user: The database user name to connect as. Required; there is no default.
 
-        buf.put_slice(b"user");
-        buf.put_u8(0);
-        buf.put_slice(self.user.as_bytes());
-        buf.put_u8(0);
+        buf.put_nul_string("user");
+        buf.put_nul_string(self.user);
 
         // database: The database to connect to. Defaults to the user name.
 
         if let Some(db) = self.database {
-            buf.put_slice(b"database");
-            buf.put_u8(0);
-            buf.put_slice(db.as_bytes());
-            buf.put_u8(0);
+            buf.put_nul_string("database");
+            buf.put_nul_string(db);
         }
 
         // options: Command-line arguments for the backend.
@@ -126,10 +116,8 @@ impl Startup<'_> {
         //    Value can be true, false, or database, and the default is false.
 
         if let Some(repl) = self.replication {
-            buf.put_slice(b"replication");
-            buf.put_u8(0);
-            buf.put_slice(repl.as_bytes());
-            buf.put_u8(0);
+            buf.put_nul_string("replication");
+            buf.put_nul_string(repl);
         }
 
         // In addition to the above, other parameters may be listed.
@@ -139,7 +127,7 @@ impl Startup<'_> {
         // (after parsing the command-line arguments if any) and will act as session defaults.
 
         // A zero byte is required as a terminator after the last name/value pair.
-        buf.put_u8(0);
+        buf.put_u8(b'\0');
 
         // write the length
         let mut written_buf = &mut buf[offset..];
@@ -147,8 +135,10 @@ impl Startup<'_> {
     }
 }
 
+/// Identifies the message as a Parse-complete indicator.
 #[derive(Debug)]
 pub struct PasswordMessage<'a> {
+    /// The password (encrypted, if requested)
     pub password: &'a str,
 }
 

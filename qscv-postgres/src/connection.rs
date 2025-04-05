@@ -7,8 +7,7 @@ use crate::{
     error::{err, Result},
     message::{
         error::ProtocolError,
-        frontend::{Bind, Execute, Parse, PasswordMessage, Query, Startup, Sync},
-        backend,
+        frontend::{Bind, Execute, Parse, Query, Sync},
         BackendMessage,
     },
     options::PgOptions,
@@ -36,67 +35,10 @@ impl PgConnection {
     pub async fn connect_with(opt: PgOptions) -> Result<Self> {
         let mut stream = PgStream::connect(&opt).await?;
 
-        // https://www.postgresql.org/docs/current/protocol-flow.html#PROTOCOL-FLOW-START-UP
-
-        // To begin a session, a frontend opens a connection to the server and sends a startup message.
-
-        stream.send_startup(Startup {
-            user: &opt.user,
-            database: Some(&opt.dbname),
-            replication: None,
-        });
-        stream.flush().await?;
-
-        // The server then sends an appropriate authentication request message,
-        // to which the frontend must reply with an appropriate authentication response message (such as a password).
-        // For all authentication methods except GSSAPI, SSPI and SASL, there is at most one request and one response.
-        // In some methods, no response at all is needed from the frontend, and so no authentication request occurs.
-        // For GSSAPI, SSPI and SASL, multiple exchanges of packets may be needed to complete the authentication.
-
-        loop {
-            use backend::Authentication::*;
-            let auth = match stream.recv::<BackendMessage>().await?.try_dberror()? {
-                BackendMessage::Authentication(ok) => ok,
-                f => return err!(Protocol,ProtocolError::new(general!(
-                    "unexpected message in startup phase: ({f:?})",
-                ))),
-            };
-            match auth {
-                // we gucci
-                Ok => break,
-                // The frontend must now send a PasswordMessage containing the password in clear-text form
-                CleartextPassword => {
-                    stream.send(PasswordMessage { password: opt.pass.as_ref() });
-                    stream.flush().await?;
-                },
-                // TODO: support more authentication method
-                f => return err!(Protocol,ProtocolError::new(general!(
-                    "authentication {f:#?} is not yet supported",
-                )))
-            }
-        }
-
-        // After having received AuthenticationOk, the frontend must wait for further messages from the server.
-        // In this phase a backend process is being started, and the frontend is just an interested bystander.
-        // It is still possible for the startup attempt to fail (ErrorResponse) or the server to decline support
-        // for the requested minor protocol version (NegotiateProtocolVersion), but in the normal case the backend
-        // will send some ParameterStatus messages, BackendKeyData, and finally ReadyForQuery.
-        //
-        // During this phase the backend will attempt to apply any additional run-time parameter settings that
-        // were given in the startup message. If successful, these values become session defaults.
-        // An error causes ErrorResponse and exit.
-
-        loop {
-            let msg = stream.recv::<BackendMessage>().await?.try_dberror()?;
-            match msg {
-                BackendMessage::ReadyForQuery(_) => break,
-                BackendMessage::BackendKeyData(_) => {}
-                BackendMessage::ParameterStatus(_) => {}
-                f => return err!(Protocol,ProtocolError::new(general!(
-                    "unexpected message in startup phase: {f:#?}",
-                ))),
-            }
-        }
+        let crate::protocol::StartupResponse {
+            backend_key_data: _,
+            param_status: _,
+        } = crate::protocol::startup(&opt, &mut stream).await?;
 
         Ok(Self {
             stream,

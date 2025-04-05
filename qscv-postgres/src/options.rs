@@ -18,6 +18,14 @@ pub struct PgOptions {
     pub(crate) dbname: ByteStr,
 }
 
+impl<'a> From<&'a PgOptions> for startup::StartupOptions<'a> {
+    fn from(me: &'a PgOptions) -> startup::StartupOptions<'a> {
+        startup::StartupOptions::new(me.user.as_ref())
+            .database(me.dbname.as_ref())
+            .password(me.pass.as_ref())
+    }
+}
+
 impl PgOptions {
     // TODO: postgres env var convention
     // pub fn new() { }

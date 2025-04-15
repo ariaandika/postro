@@ -1,4 +1,4 @@
 [workspace]
-members = ["codegen", "qscv-postgres"]
-default-members = ["qscv-postgres"]
+members = ["codegen", "qs"]
+default-members = ["qs"]
 resolver = "2"

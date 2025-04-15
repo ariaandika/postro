@@ -1,5 +1,5 @@
 [package]
-name = "qscv-postgres"
+name = "qs"
 version = "0.1.0"
 edition = "2024"
 

@@ -8,8 +8,8 @@ pub mod io;
 pub mod protocol;
 
 pub mod types;
-pub mod encode;
 pub mod value;
+pub mod encode;
 
 pub mod row_buffer;
 

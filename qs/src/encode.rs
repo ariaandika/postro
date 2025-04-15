@@ -1,4 +1,5 @@
 use crate::types::{AsPgType, Oid};
+use crate::value::ValueRef;
 
 /// postgres encoded value
 #[derive(Debug)]
@@ -47,7 +48,7 @@ impl Encode<'static> for bool {
 impl Encode<'static> for i32 {
     fn encode(self) -> Encoded<'static> {
         Encoded {
-            value: ValueRef::I32(self),
+            value: self.into(),
             oid: i32::PG_TYPE.oid(),
         }
     }
@@ -56,7 +57,7 @@ impl Encode<'static> for i32 {
 impl<'q> Encode<'q> for &'q str {
     fn encode(self) -> Encoded<'q> {
         Encoded {
-            value: ValueRef::Slice(self.as_bytes()),
+            value: self.into(),
             oid: str::PG_TYPE.oid(),
         }
     }
@@ -65,7 +66,7 @@ impl<'q> Encode<'q> for &'q str {
 impl Encode<'static> for String {
     fn encode(self) -> Encoded<'static> {
         Encoded {
-            value: ValueRef::Bytes(self.into_bytes()),
+            value: self.into(),
             oid: String::PG_TYPE.oid(),
         }
     }
@@ -74,19 +75,9 @@ impl Encode<'static> for String {
 impl<'q> Encode<'q> for &'q String {
     fn encode(self) -> Encoded<'q> {
         Encoded {
-            value: ValueRef::Slice(self.as_bytes()),
+            value: self.into(),
             oid: String::PG_TYPE.oid(),
         }
     }
 }
-
-#[derive(Debug)]
-pub enum ValueRef<'q> {
-    Null,
-    I32(i32),
-    Bool(bool),
-    Slice(&'q [u8]),
-    Bytes(<[u8] as ToOwned>::Owned),
-}
-
 

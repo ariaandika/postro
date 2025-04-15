@@ -210,7 +210,7 @@ mod test {
 
     #[test]
     fn test_connect() {
-        use crate::{encode::ValueRef, types::AsPgType};
+        use crate::{value::ValueRef, types::AsPgType};
 
         tokio::runtime::Builder::new_current_thread()
             .enable_all()
@@ -231,8 +231,8 @@ mod test {
                     .unwrap();
 
                 let params = [
-                    Encoded::new(ValueRef::Bytes(b"DeezNutz".into()), str::PG_TYPE.oid()),
-                    Encoded::new(ValueRef::Bytes(b"FooBar".into()), str::PG_TYPE.oid()),
+                    Encoded::new(ValueRef::Slice(&b"DeezNutz"[..]), str::PG_TYPE.oid()),
+                    Encoded::new(ValueRef::Slice(&b"FooBar"[..]), str::PG_TYPE.oid()),
                 ];
 
                 let rows = super::extended_query(

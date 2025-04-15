@@ -311,13 +311,15 @@ where
         2 +
         IntoIterator::into_iter(self.params)
             .fold(0i32, |acc,n|{
-                use crate::encode::{Encoded, ValueRef::*};
+                use crate::{encode::Encoded, value::ValueRef::*};
                 let len_and_data = match Encoded::value(n) {
                     Null => todo!("what the length of NULL ?"),
-                    I32(_) => 4 + 4,
                     Bool(_) => 4 + 1,
-                    Slice(items) => 4 + items.len().to_i32(),
-                    Bytes(items) => 4 + items.len().to_i32(),
+                    Number(_) => 4 + 4,
+                    Text(t) => 4 + t.len().to_i32(),
+                    String(s) => 4 + s.len().to_i32(),
+                    Slice(s) => 4 + s.len().to_i32(),
+                    Bytes(b) => 4 + b.len().to_i32(),
                 };
                 acc + len_and_data
             }) +
@@ -338,16 +340,24 @@ where
 
         buf.put_i16(self.params_len.into_iter().len().to_i16());
         for param in self.params {
-            use crate::encode::{Encoded, ValueRef::*};
+            use crate::{encode::Encoded, value::ValueRef::*};
             match Encoded::value(param) {
                 Null => todo!("how to write NULL ?"),
-                I32(num) => {
+                Number(num) => {
                     buf.put_i32(4);
                     buf.put_i32(*num);
                 },
                 Bool(b) => {
                     buf.put_i32(1);
                     buf.put_u8(*b as _);
+                },
+                Text(t) => {
+                    buf.put_i32(t.len().to_i32());
+                    buf.put_slice(t.as_bytes());
+                },
+                String(s) => {
+                    buf.put_i32(s.len().to_i32());
+                    buf.put_slice(s.as_bytes());
                 },
                 Slice(items) => {
                     buf.put_i32(items.len().to_i32());

@@ -1,7 +1,10 @@
+pub mod stack;
+
 mod bytestr;
 mod general;
 mod url;
 
+pub use stack::Stack;
 pub use bytestr::ByteStr;
 pub use general::GeneralError;
 pub use url::Url;

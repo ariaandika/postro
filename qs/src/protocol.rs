@@ -217,11 +217,15 @@ mod test {
             .build()
             .unwrap()
             .block_on(async {
+                let opt = PgOptions::parse("postgres://cookiejar:cookie@127.0.0.1:5432/postgres").unwrap();
                 let mut conn = PgStream::connect(
-                    &PgOptions::parse("postgres://cookiejar:cookie@127.0.0.1:5432/postgres").unwrap(),
+                    &opt,
                 )
                 .await
                 .unwrap();
+
+                super::startup(&opt, &mut conn).await.unwrap();
+
                 let _ = super::simple_query("select null,4", &mut conn)
                     .await
                     .unwrap();

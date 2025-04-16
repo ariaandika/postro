@@ -1,4 +1,12 @@
+use bytes::BytesMut;
 use std::io;
+
+use crate::{
+    Result,
+    message::{BackendProtocol, FrontendProtocol, frontend::Startup},
+    net::Socket,
+    stream::PgStream,
+};
 
 mod read_buf;
 mod write_all;
@@ -6,14 +14,11 @@ mod write_all;
 pub use read_buf::ReadBuf;
 pub use write_all::WriteAllBuf;
 
-use crate::{
-    message::{frontend::Startup, BackendProtocol, FrontendProtocol},
-    stream::PgStream,
-    Result,
-};
-
 /// A buffered stream which can send and receive postgres message
 pub trait PostgresIo {
+    /// Future returned from [`flush`][PostgresIo::flush].
+    type Flush<'a>: Future<Output = io::Result<()>> where Self: 'a;
+
     /// send message to the backend
     ///
     /// this does not actually write to the underlying io,
@@ -31,7 +36,7 @@ pub trait PostgresIo {
     fn send_startup(&mut self, startup: Startup);
 
     /// actually write buffered messages to underlying io
-    fn flush(&mut self) -> impl Future<Output = io::Result<()>>;
+    fn flush<'a>(&'a mut self) -> Self::Flush<'a>;
 
     /// receive a backend message
     ///
@@ -41,6 +46,8 @@ pub trait PostgresIo {
 }
 
 impl PostgresIo for &mut PgStream {
+    type Flush<'a> = WriteAllBuf<'a, Socket, BytesMut> where Self: 'a;
+
     fn send<F: FrontendProtocol>(&mut self, message: F) {
         PgStream::send(self, message);
     }
@@ -49,7 +56,7 @@ impl PostgresIo for &mut PgStream {
         PgStream::send_startup(self, startup);
     }
 
-    fn flush(&mut self) -> impl Future<Output = io::Result<()>> {
+    fn flush<'a>(&'a mut self) -> Self::Flush<'a> {
         PgStream::flush(self)
     }
 
@@ -59,6 +66,8 @@ impl PostgresIo for &mut PgStream {
 }
 
 impl<P> PostgresIo for &mut P where P: PostgresIo {
+    type Flush<'a> = P::Flush<'a> where Self: 'a;
+
     fn send<F: FrontendProtocol>(&mut self, message: F) {
         P::send(self, message);
     }
@@ -67,7 +76,7 @@ impl<P> PostgresIo for &mut P where P: PostgresIo {
         P::send_startup(self, startup);
     }
 
-    fn flush(&mut self) -> impl Future<Output = io::Result<()>> {
+    fn flush<'a>(&'a mut self) -> Self::Flush<'a> {
         P::flush(self)
     }
 

@@ -1,27 +1,28 @@
 pub mod common;
 pub mod net;
 
+// Protocol
 pub mod message;
-
-pub mod io;
-
-pub mod protocol;
 
 pub mod types;
 pub mod value;
 pub mod encode;
 
+pub mod options;
 pub mod row_buffer;
 
-pub mod options;
+// Connection
+pub mod io;
 pub mod connection;
 pub mod statement;
 mod stream;
 
-// query api
+// Operation
+pub mod protocol;
 pub mod query;
 
 mod error;
+
 
 pub use self::error::{Error, Result};
 pub use self::options::PgOptions;

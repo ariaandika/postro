@@ -1,6 +1,9 @@
-use std::io;
-
-use crate::io::{ReadBuf, WriteAllBuf};
+use std::{
+    io,
+    marker::PhantomPinned,
+    pin::Pin,
+    task::{Context, Poll},
+};
 
 /// an either `TcpStream` or `Socket`, which implement
 /// `AsyncRead` and `AsyncWrite` transparently
@@ -47,18 +50,18 @@ impl Socket {
         }
     }
 
-    pub fn read_buf<'a, B>(&'a mut self, buf: &'a mut B) -> ReadBuf<'a, Self, B>
+    pub fn read_buf<'a, B>(&'a mut self, buf: &'a mut B) -> ReadBuf<'a, B>
     where
         B: bytes::BufMut + ?Sized,
     {
-        ReadBuf::new(self, buf)
+        ReadBuf { socket: self, buf, _pin: PhantomPinned }
     }
 
-    pub fn write_all_buf<'a, B>(&'a mut self, buf: &'a mut B) -> WriteAllBuf<'a, Self, B>
+    pub fn write_all_buf<'a, B>(&'a mut self, buf: &'a mut B) -> WriteAllBuf<'a, B>
     where
-        B: bytes::Buf,
+        B: bytes::Buf + ?Sized,
     {
-        WriteAllBuf::new(self, buf)
+        WriteAllBuf { socket: self, buf, _pin: PhantomPinned }
     }
 }
 
@@ -115,6 +118,53 @@ impl tokio::io::AsyncWrite for Socket {
             #[cfg(unix)]
             Kind::TokioUnixSocket(u) => Pin::new(u).poll_shutdown(cx),
         }
+    }
+}
+
+pin_project_lite::pin_project! {
+    #[derive(Debug)]
+    #[must_use = "futures do nothing unless you `.await` or poll them"]
+    pub struct ReadBuf<'a, B: ?Sized> {
+        socket: &'a mut Socket,
+        buf: &'a mut B,
+        #[pin]
+        _pin: PhantomPinned,
+    }
+}
+
+impl<B> Future for ReadBuf<'_, B>
+where
+    B: bytes::BufMut + ?Sized,
+{
+    type Output = io::Result<usize>;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<usize>> {
+        let me = self.project();
+        super::poll_read(me.socket, me.buf, cx)
+    }
+}
+
+pin_project_lite::pin_project! {
+    /// A future to write some of the buffer to an `AsyncWrite`.
+    #[derive(Debug)]
+    #[must_use = "futures do nothing unless you `.await` or poll them"]
+    pub struct WriteAllBuf<'a, B: ?Sized> {
+        socket: &'a mut Socket,
+        buf: &'a mut B,
+        #[pin]
+        _pin: PhantomPinned,
+    }
+}
+
+impl<B> Future for WriteAllBuf<'_, B>
+where
+    B: bytes::Buf + ?Sized,
+{
+    type Output = io::Result<()>;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        let me = self.project();
+        super::poll_write_all(me.socket, me.buf, cx)
     }
 }
 

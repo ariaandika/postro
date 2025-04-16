@@ -2,7 +2,7 @@ use bytes::BytesMut;
 
 use crate::{
     PgOptions, Result,
-    io::WriteAllBuf,
+    net::WriteAllBuf,
     message::{
         FrontendProtocol,
         backend::BackendProtocol,
@@ -51,7 +51,7 @@ impl PgStream {
     }
 
     /// write buffered message to underlying io
-    pub fn flush(&mut self) -> WriteAllBuf<'_, Socket, BytesMut> {
+    pub fn flush(&mut self) -> WriteAllBuf<'_, BytesMut> {
         self.socket.write_all_buf(&mut self.write_buf)
     }
 

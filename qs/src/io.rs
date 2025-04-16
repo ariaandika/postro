@@ -4,16 +4,10 @@ use std::io;
 use crate::{
     Result,
     message::{BackendProtocol, FrontendProtocol, frontend::Startup},
-    net::Socket,
+    net::WriteAllBuf,
     statement::StatementName,
     stream::{PgStream, Recv},
 };
-
-mod read_buf;
-mod write_all;
-
-pub use read_buf::ReadBuf;
-pub use write_all::WriteAllBuf;
 
 /// A buffered stream which can send and receive postgres message
 pub trait PostgresIo {
@@ -63,7 +57,7 @@ pub trait PostgresIo {
 }
 
 impl PostgresIo for &mut PgStream {
-    type Flush<'a> = WriteAllBuf<'a, Socket, BytesMut> where Self: 'a;
+    type Flush<'a> = WriteAllBuf<'a, BytesMut> where Self: 'a;
 
     type Recv<'a, B> = Recv<'a, B> where B: BackendProtocol, Self: 'a;
 

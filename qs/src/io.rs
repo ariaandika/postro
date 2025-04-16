@@ -52,3 +52,21 @@ impl PostgresIo for &mut PgStream {
     }
 }
 
+impl<P> PostgresIo for &mut P where P: PostgresIo {
+    fn send<F: FrontendProtocol>(&mut self, message: F) {
+        P::send(self, message);
+    }
+
+    fn send_startup(&mut self, startup: Startup) {
+        P::send_startup(self, startup);
+    }
+
+    fn flush(&mut self) -> impl Future<Output = io::Result<()>> {
+        P::flush(self)
+    }
+
+    fn recv<B: BackendProtocol>(&mut self) -> impl Future<Output = Result<B>> {
+        P::recv(self)
+    }
+}
+

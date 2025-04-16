@@ -5,6 +5,7 @@ use crate::{
     Result,
     message::{BackendProtocol, FrontendProtocol, frontend::Startup},
     net::Socket,
+    statement::StatementName,
     stream::{PgStream, Recv},
 };
 
@@ -46,6 +47,19 @@ pub trait PostgresIo {
     /// note that the implementor *should* detect database error,
     /// and return it as [`Result::Err`][std::result::Result::Err]
     fn recv<'a, B: BackendProtocol>(&'a mut self) -> Self::Recv<'a, B>;
+
+    /// Check for already prepared statement
+    fn get_stmt(&mut self, _sql: u64) -> Option<StatementName> {
+        None
+    }
+
+    /// Add new prepared statement.
+    ///
+    /// Return `false` if caching is not supported,
+    /// if so statement will be cleared immediately.
+    fn add_stmt(&mut self, _sql: u64, _id: StatementName) -> bool {
+        false
+    }
 }
 
 impl PostgresIo for &mut PgStream {

@@ -18,6 +18,9 @@ pub mod connection;
 pub mod statement;
 mod stream;
 
+// query api
+pub mod query;
+
 mod error;
 
 pub use self::error::{Error, Result};

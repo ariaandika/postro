@@ -25,6 +25,10 @@ impl<T, const S: usize> Stack<T, S> {
         None
     }
 
+    pub const fn len(&self) -> usize {
+        self.len
+    }
+
     /// Extracts a slice containing the entire stack.
     pub fn as_slice(&self) -> &[T] {
         unsafe { mem::transmute(&self.items[..self.len]) }

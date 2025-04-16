@@ -1,16 +1,17 @@
-use std::num::NonZeroUsize;
 use lru::LruCache;
+use std::num::NonZeroUsize;
 
 use crate::{
     encode::Encoded,
     error::Result,
     message::{
+        BackendMessage,
         error::ProtocolError,
         frontend::{Bind, Execute, Parse, Sync},
-        BackendMessage,
     },
     options::PgOptions,
     row_buffer::RowBuffer,
+    statement::StatementName,
     stream::PgStream,
 };
 
@@ -22,6 +23,8 @@ pub struct PgConnection {
     stmt_id: std::num::NonZeroU32,
     portal_id: std::num::NonZeroU32,
     prepared_stmt: LruCache<String, String>,
+    #[allow(unused)]
+    prepared_stmt2: LruCache<u64, StatementName>,
 }
 
 impl PgConnection {
@@ -44,6 +47,7 @@ impl PgConnection {
             stmt_id: std::num::NonZeroU32::new(1).unwrap(),
             portal_id: std::num::NonZeroU32::new(1).unwrap(),
             prepared_stmt: LruCache::new(DEFAULT_PREPARED_STMT_CACHE),
+            prepared_stmt2: LruCache::new(DEFAULT_PREPARED_STMT_CACHE),
         })
     }
 

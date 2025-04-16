@@ -1,5 +1,9 @@
 use std::io;
 
+mod read_buf;
+
+pub use read_buf::ReadBuf;
+
 use crate::{
     message::{frontend::Startup, BackendProtocol, FrontendProtocol},
     stream::PgStream,

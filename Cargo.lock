@@ -178,6 +178,7 @@ dependencies = [
  "bytes",
  "itoa",
  "lru",
+ "pin-project-lite",
  "thiserror",
  "tokio",
 ]

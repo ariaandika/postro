@@ -19,6 +19,7 @@ pub trait PostgresIo {
     /// Future returned from [`flush`][PostgresIo::flush].
     type Flush<'a>: Future<Output = io::Result<()>> where Self: 'a;
 
+    /// Future returned from [`recv`][PostgresIo::recv].
     type Recv<'a, B>: Future<Output = Result<B>> where B: BackendProtocol, Self: 'a;
 
     /// send message to the backend

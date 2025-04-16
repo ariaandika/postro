@@ -1,12 +1,14 @@
-use std::io;
 use bytes::{Buf, BytesMut};
 
 use crate::{
-    common::BoxFuture, message::{
+    PgOptions, Result,
+    io::WriteAllBuf,
+    message::{
+        FrontendProtocol,
         backend::BackendProtocol,
         frontend::{self, Startup},
-        FrontendProtocol,
-    }, net::Socket, PgOptions, Result
+    },
+    net::Socket,
 };
 
 const DEFAULT_BUF_CAPACITY: usize = 1024;
@@ -49,7 +51,7 @@ impl PgStream {
     }
 
     /// write buffered message to underlying io
-    pub fn flush(&mut self) -> BoxFuture<io::Result<()>> {
+    pub fn flush(&mut self) -> WriteAllBuf<'_, Socket, BytesMut> {
         self.socket.write_all_buf(&mut self.write_buf)
     }
 

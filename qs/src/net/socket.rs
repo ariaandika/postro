@@ -1,6 +1,6 @@
 use std::io;
 
-use crate::{common::BoxFuture, io::ReadBuf};
+use crate::io::{ReadBuf, WriteAllBuf};
 
 /// an either `TcpStream` or `Socket`, which implement
 /// `AsyncRead` and `AsyncWrite` transparently
@@ -54,21 +54,11 @@ impl Socket {
         ReadBuf::new(self, buf)
     }
 
-    pub fn write_all_buf<'a, B>(&'a mut self, buf: &'a mut B) -> BoxFuture<'a, io::Result<()>>
+    pub fn write_all_buf<'a, B>(&'a mut self, buf: &'a mut B) -> WriteAllBuf<'a, Self, B>
     where
         B: bytes::Buf,
     {
-        #[cfg(feature = "tokio")]
-        {
-            // can only be Box because the future type is private
-            Box::pin(tokio::io::AsyncWriteExt::write_all_buf(self, buf))
-        }
-
-        #[cfg(not(feature = "tokio"))]
-        {
-            let _ = buf;
-            panic!("runtime disabled")
-        }
+        WriteAllBuf::new(self, buf)
     }
 }
 

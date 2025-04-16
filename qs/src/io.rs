@@ -1,8 +1,10 @@
 use std::io;
 
 mod read_buf;
+mod write_all;
 
 pub use read_buf::ReadBuf;
+pub use write_all::WriteAllBuf;
 
 use crate::{
     message::{frontend::Startup, BackendProtocol, FrontendProtocol},

@@ -59,7 +59,10 @@ impl BytesExt for Bytes {
         let Some(end) = self.iter().position(|e|matches!(e,b'\0')) else {
             return Err(protocol_err!("no nul termination for string"))
         };
-        match String::from_utf8(self.split_to(end).into()) {
+        let string = self.split_to(end).into();
+        // nul
+        bytes::Buf::advance(self, 1);
+        match String::from_utf8(string) {
             Ok(ok) => Ok(ok),
             Err(err) => Err(protocol_err!("non UTF-8 string: {err}")),
         }

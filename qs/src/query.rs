@@ -5,8 +5,8 @@ use crate::{
     common::Stack,
     encode::{Encode, Encoded},
     io::PostgresIo,
+    row::{RowDecoder, RowBuffer},
     message::{backend, frontend},
-    row_buffer::RowBuffer,
     statement::{PortalName, StatementName},
 };
 
@@ -54,10 +54,9 @@ where
             buf.finish()
         };
 
-        let stmt = if !self.persistent {
-            StatementName::unnamed()
-        } else {
-            match self.io.get_stmt(sqlid) {
+        let stmt = match !self.persistent {
+            true => StatementName::unnamed(),
+            false => match self.io.get_stmt(sqlid) {
                 Some(ok) => ok,
                 None => {
                     let stmt = StatementName::next();
@@ -73,7 +72,7 @@ where
                     self.io.recv::<backend::ParseComplete>().await?;
                     stmt
                 }
-            }
+            },
         };
 
         let portal = PortalName::unnamed();
@@ -87,6 +86,10 @@ where
             params: self.params.as_slice(),
             results_format_len: 1,
             results_format_code: [1],
+        });
+        self.io.send(frontend::Describe {
+            kind: b'P',
+            name: portal.as_str(),
         });
         self.io.send(frontend::Execute {
             portal_name: portal.as_str(),
@@ -103,20 +106,23 @@ where
             use backend::BackendMessage::*;
             use crate::message::error::ProtocolError;
             match self.io.recv().await? {
-                DataRow(backend::DataRow { row_buffer }) => {
+                DataRow(datarow) => {
                     // TODO: ROW BUFFER & FROM_ROW HAVE NO API YET
-                    rows.push(row_buffer)
+                    rows.push(RowBuffer::new(datarow))
                 },
                 CommandComplete(_) => break,
+                RowDescription(rowdesc) => {
+                    RowDecoder::new(rowdesc).for_each(|row|{dbg!(row);});
+                },
+                ErrorResponse(e) => {
+                    dbg!(e);
+                }
                 f => Err(ProtocolError::unexpected_phase(f.msgtype(), "extended query"))?,
             }
         }
 
         let should_close = match (self.persistent,!stmt.is_unnamed()) {
-            (true, true) => {
-                let ok = self.io.add_stmt(sqlid, stmt.clone());
-                !ok
-            }
+            (true, true) => !self.io.add_stmt(sqlid, stmt.clone()),
             (_, is_named) => is_named,
         };
 

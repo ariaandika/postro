@@ -2,9 +2,9 @@
 use bytes::{Buf, Bytes};
 
 use super::{
-    decoder::RowInfo, error::{DatabaseError, ProtocolError}, ext::BytesExt
+    error::{DatabaseError, ProtocolError},
+    ext::BytesExt,
 };
-use crate::row_buffer::RowBuffer;
 
 // NOTE: Apparantly, number signess in protocol is good luck figuring out by postgres
 
@@ -248,24 +248,11 @@ impl BackendProtocol for ErrorResponse {
 pub struct RowDescription {
     /// Specifies the number of fields in a row (can be zero).
     pub field_len: u16,
-    n: u16,
-    body: Bytes,
+    pub body: Bytes,
 }
 
 impl RowDescription {
     pub const MSGTYPE: u8 = b'T';
-}
-
-impl Iterator for RowDescription {
-    type Item = RowInfo;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.n == self.field_len {
-            return None;
-        }
-        self.n += 1;
-        Some(RowInfo::new(&mut self.body))
-    }
 }
 
 impl BackendProtocol for RowDescription {
@@ -273,7 +260,6 @@ impl BackendProtocol for RowDescription {
         assert_msgtype!(RowDescription, msgtype);
         Ok(Self {
             field_len: body.get_u16(),
-            n: 0,
             body,
         })
     }
@@ -282,7 +268,9 @@ impl BackendProtocol for RowDescription {
 #[derive(Debug)]
 /// Identifies the message as a data row.
 pub struct DataRow {
-    pub row_buffer: RowBuffer,
+    /// The number of column values that follow (possibly zero).
+    pub column_len: u16,
+    pub body: Bytes,
 }
 
 impl DataRow {
@@ -290,16 +278,12 @@ impl DataRow {
 }
 
 impl BackendProtocol for DataRow {
-    fn decode(msgtype: u8, mut body: Bytes) -> Result<Self,ProtocolError> {
-        assert_msgtype!(DataRow,msgtype);
-
-        // The number of column values that follow (possibly zero).
-        let col_values_len = body.get_i16();
-
-        // lazily decode row
-        let row_buffer = RowBuffer::new(col_values_len, body);
-
-        Ok(Self { row_buffer })
+    fn decode(msgtype: u8, mut body: Bytes) -> Result<Self, ProtocolError> {
+        assert_msgtype!(DataRow, msgtype);
+        Ok(Self {
+            column_len: body.get_u16(),
+            body,
+        })
     }
 }
 

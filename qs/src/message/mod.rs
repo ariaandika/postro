@@ -65,12 +65,11 @@
 //! Keep in mind that binary representations for complex data types might change across server versions;
 //! the text format is usually the more portable choice.
 
-pub mod decoder;
 pub mod frontend;
 pub mod backend;
 pub mod error;
 
-mod ext;
+pub mod ext;
 
 pub use frontend::FrontendProtocol;
 pub use backend::{BackendProtocol, BackendMessage};

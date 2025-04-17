@@ -4,7 +4,7 @@ use crate::{
     io::PostgresIo,
     message::{backend, error::ProtocolError, frontend, BackendMessage},
     options::startup::StartupOptions,
-    row_buffer::RowBuffer,
+    row::RowBuffer,
     Result,
 };
 
@@ -107,7 +107,7 @@ pub async fn simple_query<IO: PostgresIo>(sql: &str, mut io: IO) -> Result<Vec<R
             // This will be followed by a DataRow message for each row being returned to the frontend.
             RowDescription(_row) => { },
             // One of the set of rows returned by a SELECT, FETCH, etc. query.
-            DataRow(row) => rows.push(row.row_buffer),
+            DataRow(datarow) => rows.push(RowBuffer::new(datarow)),
             // An SQL command completed normally
             CommandComplete(_tag) => { }
             f => Err(ProtocolError::unexpected_phase(f.msgtype(), "simple query"))?,
@@ -181,7 +181,7 @@ pub async fn extended_query<IO: PostgresIo>(
     loop {
         use BackendMessage::*;
         match io.recv().await? {
-            DataRow(row) => rows.push(row.row_buffer),
+            DataRow(datarow) => rows.push(RowBuffer::new(datarow)),
             CommandComplete(_) => break,
             f => Err(ProtocolError::unexpected_phase(f.msgtype(), "extended query"))?,
         }

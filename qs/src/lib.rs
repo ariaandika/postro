@@ -10,7 +10,7 @@ pub mod types;
 pub mod message;
 
 pub mod encode;
-pub mod row_buffer;
+pub mod row;
 
 // Connection
 pub mod io;

@@ -2,10 +2,11 @@
 use bytes::{Buf, Bytes};
 
 use super::{
-    error::{DatabaseError, ProtocolError},
-    ext::BytesExt,
+    decoder::RowInfo, error::{DatabaseError, ProtocolError}, ext::BytesExt
 };
 use crate::row_buffer::RowBuffer;
+
+// NOTE: Apparantly, number signess in protocol is good luck figuring out by postgres
 
 /// A type that can be decoded into postgres backend message
 pub trait BackendProtocol: Sized {
@@ -246,47 +247,34 @@ impl BackendProtocol for ErrorResponse {
 #[derive(Debug)]
 pub struct RowDescription {
     /// Specifies the number of fields in a row (can be zero).
-    pub field_len: i16,
-    pub field_name: String,
-    pub table_oid: i32,
-    pub attribute_len: i16,
-    pub data_type: i32,
-    pub data_type_size: i16,
-    pub type_modifier: i32,
-    pub format_code: i16,
+    pub field_len: u16,
+    n: u16,
+    body: Bytes,
 }
 
 impl RowDescription {
     pub const MSGTYPE: u8 = b'T';
 }
 
+impl Iterator for RowDescription {
+    type Item = RowInfo;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.n == self.field_len {
+            return None;
+        }
+        self.n += 1;
+        Some(RowInfo::new(&mut self.body))
+    }
+}
+
 impl BackendProtocol for RowDescription {
-    fn decode(msgtype: u8, mut body: Bytes) -> Result<Self,ProtocolError> {
-        assert_msgtype!(RowDescription,msgtype);
+    fn decode(msgtype: u8, mut body: Bytes) -> Result<Self, ProtocolError> {
+        assert_msgtype!(RowDescription, msgtype);
         Ok(Self {
-            // Int16 Specifies the number of fields in a row (can be zero).
-            field_len: body.get_i16(),
-            // Int16 Specifies the number of fields in a row (can be zero).
-            field_name: body.get_nul_string()?,
-            // If the field can be identified as a column of a specific table,
-            // the object ID of the table; otherwise zero
-            table_oid: body.get_i32(),
-            // If the field can be identified as a column of a specific table,
-            // the attribute number of the column; otherwise zero.
-            attribute_len: body.get_i16(),
-            // The object ID of the field's data type.
-            data_type: body.get_i32(),
-            // The data type size (see pg_type.typlen).
-            // Note that negative values denote variable-width types.
-            data_type_size: body.get_i16(),
-            // The type modifier (see pg_attribute.atttypmod).
-            // The meaning of the modifier is type-specific.
-            type_modifier: body.get_i32(),
-            // The format code being used for the field.
-            // Currently will be zero (text) or one (binary).
-            // In a RowDescription returned from the statement variant of Describe,
-            // the format code is not yet known and will always be zero.
-            format_code: body.get_i16(),
+            field_len: body.get_u16(),
+            n: 0,
+            body,
         })
     }
 }

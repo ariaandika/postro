@@ -1,4 +1,4 @@
 [workspace]
-members = ["codegen", "qs"]
+members = ["codegen", "example", "qs"]
 default-members = ["qs"]
 resolver = "2"

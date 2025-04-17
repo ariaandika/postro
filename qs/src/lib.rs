@@ -24,7 +24,8 @@ pub mod query;
 mod error;
 
 
-pub use self::error::{Error, Result};
 pub use self::options::PgOptions;
 pub use self::connection::PgConnection;
+pub use self::query::query;
+pub use self::error::{Error, Result};
 

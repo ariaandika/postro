@@ -1,14 +1,20 @@
 use std::hash::{DefaultHasher, Hash, Hasher};
 
 use crate::{
-    common::Stack, encode::{Encode, Encoded}, io::PostgresIo, message::{backend, frontend}, row_buffer::RowBuffer, statement::{PortalName, StatementName}, Result
+    Result,
+    common::Stack,
+    encode::{Encode, Encoded},
+    io::PostgresIo,
+    message::{backend, frontend},
+    row_buffer::RowBuffer,
+    statement::{PortalName, StatementName},
 };
 
 pub trait FromRow: Sized {
     fn from_row(row: String) -> Result<Self>;
 }
 
-pub fn query<'sql, 'val, IO: PostgresIo>(sql: &'sql str, io: IO) -> Query<'sql, 'val, IO> {
+pub fn query<'val, IO: PostgresIo>(sql: &str, io: IO) -> Query<'_, 'val, IO> {
     Query { sql, io, params: Stack::with_size(), persistent: true }
 }
 
@@ -19,7 +25,7 @@ pub struct Query<'sql, 'val, IO> {
     persistent: bool,
 }
 
-impl<'sql, 'val, IO> Query<'sql, 'val, IO> {
+impl<'val, IO> Query<'_, 'val, IO> {
     /// Disable persistent prepared statement.
     ///
     /// This will use unnamed prepared statement under the hood,
@@ -37,7 +43,7 @@ impl<'sql, 'val, IO> Query<'sql, 'val, IO> {
     }
 }
 
-impl<'sql, 'val, IO> Query<'sql, 'val, IO>
+impl<IO> Query<'_, '_, IO>
 where
     IO: PostgresIo,
 {

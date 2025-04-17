@@ -1,12 +1,12 @@
 use lru::LruCache;
 use std::num::NonZeroUsize;
 
-#[allow(unused)]
 use crate::{
-    error::Result,
+    Result,
     io::PostgresIo,
     message::{BackendProtocol, FrontendProtocol, frontend},
     options::PgOptions,
+    protocol,
     statement::StatementName,
     stream::PgStream,
 };
@@ -14,14 +14,9 @@ use crate::{
 const DEFAULT_PREPARED_STMT_CACHE: NonZeroUsize = NonZeroUsize::new(24).unwrap();
 
 #[derive(Debug)]
-#[allow(unused)]
 pub struct PgConnection {
     stream: PgStream,
-    stmt_id: std::num::NonZeroU32,
-    portal_id: std::num::NonZeroU32,
-    prepared_stmt: LruCache<String, String>,
-    #[allow(unused)]
-    prepared_stmt2: LruCache<u64, StatementName>,
+    stmts: LruCache<u64, StatementName>,
 }
 
 impl PgConnection {
@@ -34,17 +29,14 @@ impl PgConnection {
     pub async fn connect_with(opt: PgOptions) -> Result<Self> {
         let mut stream = PgStream::connect(&opt).await?;
 
-        let crate::protocol::StartupResponse {
+        let protocol::StartupResponse {
             backend_key_data: _,
             param_status: _,
-        } = crate::protocol::startup(&opt, &mut stream).await?;
+        } = protocol::startup(&opt, &mut stream).await?;
 
         Ok(Self {
             stream,
-            stmt_id: std::num::NonZeroU32::new(1).unwrap(),
-            portal_id: std::num::NonZeroU32::new(1).unwrap(),
-            prepared_stmt: LruCache::new(DEFAULT_PREPARED_STMT_CACHE),
-            prepared_stmt2: LruCache::new(DEFAULT_PREPARED_STMT_CACHE),
+            stmts: LruCache::new(DEFAULT_PREPARED_STMT_CACHE),
         })
     }
 }
@@ -59,15 +51,24 @@ impl PostgresIo for PgConnection {
     }
 
     fn send_startup(&mut self, startup: frontend::Startup) {
-        PostgresIo::send_startup(&mut &mut self.stream, startup);
+        PostgresIo::send_startup(&mut self.stream, startup);
     }
 
-    fn flush<'a>(&'a mut self) -> Self::Flush<'a> {
+    fn flush(&mut self) -> Self::Flush<'_> {
         PostgresIo::flush(&mut self.stream)
     }
 
-    fn recv<'a, B: BackendProtocol>(&'a mut self) -> Self::Recv<'a, B> {
+    fn recv<B: BackendProtocol>(&mut self) -> Self::Recv<'_, B> {
         PostgresIo::recv(&mut self.stream)
+    }
+
+    fn get_stmt(&mut self, sqlid: u64) -> Option<StatementName> {
+        self.stmts.get(&sqlid).cloned()
+    }
+
+    fn add_stmt(&mut self, sql: u64, id: StatementName) -> bool {
+        self.stmts.push(sql, id);
+        true
     }
 }
 

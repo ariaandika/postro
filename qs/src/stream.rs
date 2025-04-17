@@ -48,11 +48,11 @@ impl PostgresIo for PgStream {
         msg.write(&mut self.write_buf);
     }
 
-    fn flush<'a>(&'a mut self) -> Self::Flush<'a> {
+    fn flush(&mut self) -> Self::Flush<'_> {
         self.socket.write_all_buf(&mut self.write_buf)
     }
 
-    fn recv<'a, B: BackendProtocol>(&'a mut self) -> Self::Recv<'a, B> {
+    fn recv<B: BackendProtocol>(&mut self) -> Self::Recv<'_, B> {
         Recv::new(self)
     }
 }
@@ -92,7 +92,7 @@ mod recv {
     }
 
     #[cfg(feature = "tokio")]
-    impl<'s, B> Future for Recv<'s, B>
+    impl<B> Future for Recv<'_, B>
     where
         B: crate::message::BackendProtocol
     {
@@ -157,7 +157,7 @@ mod recv {
     }
 
     #[cfg(not(feature = "tokio"))]
-    impl<'s, B> Future for Recv<'s, B> {
+    impl<B> Future for Recv<'_, B> {
         type Output = Result<B>;
 
         fn poll(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Self::Output> {

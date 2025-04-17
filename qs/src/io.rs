@@ -2,7 +2,7 @@ use std::io;
 
 use crate::{
     Result,
-    message::{BackendProtocol, FrontendProtocol, frontend::Startup},
+    message::{BackendProtocol, FrontendProtocol, frontend},
     statement::StatementName,
 };
 
@@ -22,24 +22,28 @@ pub trait PostgresIo {
     /// use [`flush`][`PostgresIo::flush`] to actually send the message
     fn send<F: FrontendProtocol>(&mut self, message: F);
 
-    /// send [`Startup`] message to the backend
+    /// send [`Startup`][1] message to the backend
     ///
     /// For historical reasons, the very first message sent by the client (the startup message)
     /// has no initial message-type byte.
     ///
-    /// Thus, [`Startup`] does not implement [`FrontendProtocol`]
-    fn send_startup(&mut self, startup: Startup);
+    /// Thus, [`Startup`][1] does not implement [`FrontendProtocol`]
+    ///
+    /// [1]: frontend::Startup
+    fn send_startup(&mut self, startup: frontend::Startup);
 
     /// actually write buffered messages to underlying io
-    fn flush<'a>(&'a mut self) -> Self::Flush<'a>;
+    fn flush(&mut self) -> Self::Flush<'_>;
 
     /// receive a backend message
     ///
     /// note that the implementor *should* detect database error,
     /// and return it as [`Result::Err`][std::result::Result::Err]
-    fn recv<'a, B: BackendProtocol>(&'a mut self) -> Self::Recv<'a, B>;
+    fn recv<B: BackendProtocol>(&mut self) -> Self::Recv<'_, B>;
 
     /// Check for already prepared statement
+    ///
+    /// Only if the io support statement caching.
     fn get_stmt(&mut self, _sql: u64) -> Option<StatementName> {
         None
     }
@@ -62,15 +66,15 @@ impl<P> PostgresIo for &mut P where P: PostgresIo {
         P::send(self, message);
     }
 
-    fn send_startup(&mut self, startup: Startup) {
+    fn send_startup(&mut self, startup: frontend::Startup) {
         P::send_startup(self, startup);
     }
 
-    fn flush<'a>(&'a mut self) -> Self::Flush<'a> {
+    fn flush(&mut self) -> Self::Flush<'_> {
         P::flush(self)
     }
 
-    fn recv<'a, B: BackendProtocol>(&'a mut self) -> Self::Recv<'a, B> {
+    fn recv<B: BackendProtocol>(&mut self) -> Self::Recv<'_, B> {
         P::recv(self)
     }
 }

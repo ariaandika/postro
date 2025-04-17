@@ -2,19 +2,19 @@ pub mod common;
 pub mod net;
 
 // Protocol
-pub mod message;
+pub mod statement;
 
+pub mod message;
 pub mod types;
+pub mod options;
+
 pub mod value;
 pub mod encode;
-
-pub mod options;
 pub mod row_buffer;
 
 // Connection
 pub mod io;
 pub mod connection;
-pub mod statement;
 mod stream;
 
 // Operation

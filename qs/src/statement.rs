@@ -1,107 +1,90 @@
-use std::sync::atomic::{AtomicU16, Ordering};
+use std::sync::atomic::Ordering;
 
-use crate::encode::{Encode, Encoded};
+type AtomicId = std::sync::atomic::AtomicU16;
 
-pub(crate) const MAX_QUERY_BIND: usize = 16;
+#[derive(Clone, PartialEq, Eq)]
+pub struct Id([u8; 6]);
 
-pub struct Statement<'a> {
-    sql: &'a str,
-    args_len: usize,
-    args: [Encoded<'a>;MAX_QUERY_BIND],
-}
-
-impl<'a> Statement<'a> {
-    pub fn new(sql: &'a str) -> Self {
-        Self { sql, args_len: 0, args: <_>::default() }
+impl Id {
+    pub(crate) fn unnamed() -> Self {
+        Self([b'?'; 6])
     }
 
-    pub fn bind<E: Encode<'a>>(&mut self, value: E) {
-        if self.args_len == MAX_QUERY_BIND {
-            panic!("maximum query bind reached")
-        }
+    pub(crate) fn next(atomic: &AtomicId) -> Self {
+        let id = atomic.fetch_add(1, Ordering::SeqCst);
+        let mut buf = [b'_',b'q',b's',b'_',b'_',b'_'];
 
-        self.args[self.args_len] = value.encode();
-        self.args_len += 1;
-    }
-
-    pub fn sql(&self) -> &str {
-        self.sql
-    }
-
-    pub fn args(&self) -> &[Encoded<'a>] {
-        &self.args[..self.args_len]
-    }
-}
-
-
-
-static STMT_NAME: AtomicU16 = AtomicU16::new(0);
-
-#[derive(Debug, Clone)]
-pub struct StatementName([u8;6]);
-
-impl StatementName {
-    pub fn unnamed() -> StatementName {
-        StatementName([0,0,0,0,0,0])
-    }
-
-    pub fn next() -> StatementName {
-        let mut buf = [95u8;6];
-        let id = STMT_NAME.fetch_add(1, Ordering::SeqCst);
         let mut b = itoa::Buffer::new();
         let id = b.format(id);
-
-        buf[..3].copy_from_slice(b"_qs");
-
-        let i = &id.as_bytes().get(..3).unwrap_or(id.as_bytes());
+        let i = id.as_bytes().get(..3).unwrap_or(id.as_bytes());
         buf[3..3 + i.len()].copy_from_slice(i);
 
-        std::str::from_utf8(&buf[..]).expect("itoa's fault");
-        StatementName(buf)
-    }
-
-    pub fn is_unnamed(&self) -> bool {
-        self.0[0] == 0
+        Self(buf)
     }
 
     pub fn as_str(&self) -> &str {
         if self.is_unnamed() {
             return "";
         }
-        // SAFETY: check on construction and is immutable
+        // SAFETY: string only construction and is immutable
         unsafe { std::str::from_utf8_unchecked(&self.0[..]) }
+    }
+
+    pub fn is_unnamed(&self) -> bool {
+        self.0[0] == b'?'
     }
 }
 
-pub fn next_stmt_name() -> StatementName {
-    StatementName::next()
-}
-
-
-static PORTAL_NAME: AtomicU16 = AtomicU16::new(0);
-
-#[derive(Debug)]
-pub struct PortalName([u8;6]);
-
-impl PortalName {
-    pub fn as_str(&self) -> &str {
-        // SAFETY: check on construction and is immutable
-        unsafe { std::str::from_utf8_unchecked(&self.0[..]) }
+impl std::fmt::Display for Id {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.write_str(self.as_str())
     }
 }
 
-pub fn next_portal_name() -> PortalName {
-    let mut buf = [0u8;6];
-    let id = PORTAL_NAME.fetch_add(1, Ordering::SeqCst);
-    let mut b = itoa::Buffer::new();
-    let id = b.format(id);
-
-    buf[..3].copy_from_slice(b"_qs");
-
-    let i = &id.as_bytes().get(..3).unwrap_or(id.as_bytes());
-    buf[3..3 + i.len()].copy_from_slice(i);
-
-    std::str::from_utf8(&buf[..]).expect("itoa's fault");
-    PortalName(buf)
+impl std::fmt::Debug for Id {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.debug_tuple("Id").field(&self.as_str()).finish()
+    }
 }
+
+macro_rules! delegate {
+    ($name:ident) => {
+        #[derive(Clone)]
+        pub struct $name(Id);
+
+        impl $name {
+            pub(crate) fn unnamed() -> Self {
+                Self(Id::unnamed())
+            }
+
+            pub(crate) fn next() -> Self {
+                static ID: AtomicId = AtomicId::new(0);
+                Self(Id::next(&ID))
+            }
+        }
+
+        impl std::ops::Deref for $name {
+            type Target = Id;
+
+            fn deref(&self) -> &Self::Target {
+                &self.0
+            }
+        }
+
+        impl std::fmt::Debug for $name {
+            fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                f.debug_tuple(stringify!($name)).field(&self.as_str()).finish()
+            }
+        }
+
+        impl std::fmt::Display for $name {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.write_str(self.as_str())
+            }
+        }
+    };
+}
+
+delegate!(StatementName);
+delegate!(PortalName);
 

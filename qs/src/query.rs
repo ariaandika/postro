@@ -1,13 +1,7 @@
 use std::hash::{DefaultHasher, Hash, Hasher};
 
 use crate::{
-    Result,
-    common::Stack,
-    encode::{Encode, Encoded},
-    io::PostgresIo,
-    message::{backend, frontend},
-    row_buffer::RowBuffer,
-    statement::StatementName,
+    common::Stack, encode::{Encode, Encoded}, io::PostgresIo, message::{backend, frontend}, row_buffer::RowBuffer, statement::{PortalName, StatementName}, Result
 };
 
 pub trait FromRow: Sized {
@@ -76,8 +70,10 @@ where
             }
         };
 
+        let portal = PortalName::unnamed();
+
         self.io.send(frontend::Bind {
-            portal_name: "",
+            portal_name: portal.as_str(),
             prepare_name: stmt.as_str(),
             params_format_len: 1,
             params_format_code: [1],
@@ -87,7 +83,7 @@ where
             results_format_code: [1],
         });
         self.io.send(frontend::Execute {
-            portal_name: "",
+            portal_name: portal.as_str(),
             max_row: 0,
         });
         self.io.send(frontend::Flush);

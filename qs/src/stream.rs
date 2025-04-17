@@ -2,17 +2,14 @@ use bytes::BytesMut;
 
 use crate::{
     PgOptions, Result,
-    net::WriteAllBuf,
-    message::{
-        FrontendProtocol,
-        backend::BackendProtocol,
-        frontend::{self, Startup},
-    },
-    net::Socket,
+    io::PostgresIo,
+    message::{BackendProtocol, FrontendProtocol, frontend},
+    net::{Socket, WriteAllBuf},
 };
 
 const DEFAULT_BUF_CAPACITY: usize = 1024;
 
+/// Buffered connection to postgres.
 #[derive(Debug)]
 pub struct PgStream {
     socket: Socket,
@@ -33,60 +30,32 @@ impl PgStream {
             write_buf: BytesMut::with_capacity(DEFAULT_BUF_CAPACITY),
         })
     }
+}
 
-    pub fn send_startup(&mut self, msg: Startup) {
-        msg.write(&mut self.write_buf);
-    }
+impl PostgresIo for PgStream {
+    type Flush<'a> = WriteAllBuf<'a, BytesMut> where Self: 'a;
 
-    /// send frontend message to a buffer
-    ///
-    /// just calling this function, msg only written to a buffer
-    ///
-    /// polling the returned `Flush` will actually flush the underlying io
-    pub fn send<E>(&mut self, msg: E)
+    type Recv<'a, B> = Recv<'a, B> where B: BackendProtocol, Self: 'a;
+
+    fn send<E>(&mut self, msg: E)
     where
         E: FrontendProtocol,
     {
         frontend::write(msg, &mut self.write_buf);
     }
 
-    /// write buffered message to underlying io
-    pub fn flush(&mut self) -> WriteAllBuf<'_, BytesMut> {
+    fn send_startup(&mut self, msg: frontend::Startup) {
+        msg.write(&mut self.write_buf);
+    }
+
+    fn flush<'a>(&'a mut self) -> Self::Flush<'a> {
         self.socket.write_all_buf(&mut self.write_buf)
     }
 
-    /// receive a single message
-    pub fn recv<B: BackendProtocol>(&mut self) -> Recv<B> {
+    fn recv<'a, B: BackendProtocol>(&'a mut self) -> Self::Recv<'a, B> {
         Recv::new(self)
     }
-
 }
-
-// pub async fn recv<B: BackendProtocol>(&mut self) -> Result<B> {
-//     loop {
-//         let Some(mut header) = self.read_buf.get(..5) else {
-//             self.read_buf.reserve(1024);
-//             self.socket.read_buf(&mut self.read_buf).await?;
-//             continue;
-//         };
-//
-//         let msgtype = header.get_u8();
-//         let len = header.get_i32() as _;
-//
-//         if self.read_buf.len() - 1/*msgtype*/ < len {
-//             self.read_buf.reserve(1 + len);
-//             self.socket.read_buf(&mut self.read_buf).await?;
-//             continue;
-//         }
-//
-//         self.read_buf.advance(5);
-//         let body = self.read_buf.split_to(len - 4).freeze();
-//
-//         let msg = B::decode(msgtype, body)?;
-//
-//         return Ok(msg)
-//     }
-// }
 
 pub use recv::Recv;
 
@@ -119,17 +88,6 @@ mod recv {
     impl<'s, B> Recv<'s, B> {
         pub fn new(stream: &'s mut PgStream) -> Self {
             Self { stream, state: State::Read, _p: PhantomData }
-        }
-    }
-
-    #[cfg(not(feature = "tokio"))]
-    impl<'s, B> Future for Recv<'s, B> {
-        type Output = Result<B>;
-
-        fn poll(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Self::Output> {
-            let _ = &self.stream.read_buf;
-            let _ = State::ReadSocket;
-            panic!("runtime disabled")
         }
     }
 
@@ -198,50 +156,15 @@ mod recv {
         }
     }
 
-    // impl<'pgstream, 'a, B> Future for Recv<'pgstream, 'a, B>
-    // where
-    //     B: BackendProtocol
-    // {
-    //     type Output = Result<B>;
-    //
-    //     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-    //         use std::mem;
-    //
-    //         loop {
-    //             let foo = mem::take(&mut self.as_mut().project());
-    //             match foo {
-    //                 RecvProject::Read { stream } => {
-    //                     let Some(mut header) = stream.read_buf.get(..5) else {
-    //                         stream.read_buf.reserve(1024);
-    //                         let f = stream.socket.read_buf(&mut stream.read_buf);
-    //                         self.set(Self::ReadBuf { stream, f });
-    //                         continue;
-    //                     };
-    //
-    //                     todo!()
-    //                 }
-    //                 RecvProject::ReadBuf { stream, f } => todo!(),
-    //                 _ => todo!()
-    //             }
-    //
-    //             // let msgtype = header.get_u8();
-    //             // let len = header.get_i32() as _;
-    //             //
-    //             // if self.read_buf.len() - 1/*msgtype*/ < len {
-    //             //     self.read_buf.reserve(1 + len);
-    //             //     self.socket.read_buf(&mut self.read_buf).await?;
-    //             //     continue;
-    //             // }
-    //             //
-    //             // self.read_buf.advance(5);
-    //             // let body = self.read_buf.split_to(len - 4).freeze();
-    //             //
-    //             // let msg = B::decode(msgtype, body)?;
-    //             //
-    //             // return Ok(msg)
-    //         }
-    //     }
-    // }
-}
+    #[cfg(not(feature = "tokio"))]
+    impl<'s, B> Future for Recv<'s, B> {
+        type Output = Result<B>;
 
+        fn poll(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Self::Output> {
+            let _ = &self.stream.read_buf;
+            let _ = State::ReadSocket;
+            panic!("runtime disabled")
+        }
+    }
+}
 

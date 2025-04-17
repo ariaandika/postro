@@ -1,12 +1,9 @@
-use bytes::BytesMut;
 use std::io;
 
 use crate::{
     Result,
     message::{BackendProtocol, FrontendProtocol, frontend::Startup},
-    net::WriteAllBuf,
     statement::StatementName,
-    stream::{PgStream, Recv},
 };
 
 /// A buffered stream which can send and receive postgres message
@@ -53,28 +50,6 @@ pub trait PostgresIo {
     /// if so statement will be cleared immediately.
     fn add_stmt(&mut self, _sql: u64, _id: StatementName) -> bool {
         false
-    }
-}
-
-impl PostgresIo for &mut PgStream {
-    type Flush<'a> = WriteAllBuf<'a, BytesMut> where Self: 'a;
-
-    type Recv<'a, B> = Recv<'a, B> where B: BackendProtocol, Self: 'a;
-
-    fn send<F: FrontendProtocol>(&mut self, message: F) {
-        PgStream::send(self, message);
-    }
-
-    fn send_startup(&mut self, startup: Startup) {
-        PgStream::send_startup(self, startup);
-    }
-
-    fn flush<'a>(&'a mut self) -> Self::Flush<'a> {
-        PgStream::flush(self)
-    }
-
-    fn recv<'a, B: BackendProtocol>(&'a mut self) -> Self::Recv<'a, B> {
-        PgStream::recv(self)
     }
 }
 

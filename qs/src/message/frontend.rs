@@ -8,7 +8,6 @@ use super::ext::{BufMutExt, StrExt, UsizeExt};
 // CopyData('d')
 // CopyDone('c')
 // CopyFail('f')
-// Describe('D')
 // FunctionCall('F')
 // GSSENCRequest
 // GSSENCResponse('p')
@@ -424,4 +423,27 @@ impl FrontendProtocol for Close<'_> {
         buf.put_nul_string(self.name);
     }
 }
+
+/// Identifies the message as a Describe command.
+pub struct Describe<'a> {
+    /// 'S' to describe a prepared statement; or 'P' to describe a portal.
+    pub kind: u8,
+    /// The name of the prepared statement or portal to describe
+    /// (an empty string selects the unnamed prepared statement or portal).
+    pub name: &'a str,
+}
+
+impl FrontendProtocol for Describe<'_> {
+    const MSGTYPE: u8 = b'D';
+
+    fn size_hint(&self) -> i32 {
+        1 + self.name.nul_string_len()
+    }
+
+    fn encode(self, mut buf: impl BufMut) {
+        buf.put_u8(self.kind);
+        buf.put_nul_string(self.name);
+    }
+}
+
 

@@ -67,7 +67,7 @@ mod recv {
     };
 
     use super::PgStream;
-    use crate::Result;
+    use crate::{message::{backend::ErrorResponse, BackendProtocol}, Error, Result};
 
     pin_project_lite::pin_project! {
         #[derive(Debug)]
@@ -125,6 +125,11 @@ mod recv {
 
                         stream.read_buf.advance(5);
                         let body = stream.read_buf.split_to(len - 4).freeze();
+
+                        if msgtype == ErrorResponse::MSGTYPE {
+                            let err = ErrorResponse::decode(msgtype, body).unwrap();
+                            return Poll::Ready(Err(Error::Database(err.to_db_error())));
+                        }
 
                         let msg = B::decode(msgtype, body)?;
 

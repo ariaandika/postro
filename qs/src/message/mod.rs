@@ -65,6 +65,7 @@
 //! Keep in mind that binary representations for complex data types might change across server versions;
 //! the text format is usually the more portable choice.
 
+pub mod codec;
 pub mod frontend;
 pub mod backend;
 pub mod error;

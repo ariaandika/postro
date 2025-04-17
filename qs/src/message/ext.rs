@@ -2,6 +2,7 @@ use bytes::{BufMut, Bytes};
 
 use super::error::{ProtocolError, protocol_err};
 
+/// Integer signess in postgres docs is awful.
 pub trait UsizeExt {
     /// length is usize in rust, while postgres want i32,
     /// this will panic when overflow instead of wrapping
@@ -9,6 +10,9 @@ pub trait UsizeExt {
     /// length is usize in rust, while sometime postgres want i16,
     /// this will panic when overflow instead of wrapping
     fn to_i16(self) -> i16;
+    /// length is usize in rust, while sometime postgres want u16,
+    /// this will panic when overflow instead of wrapping
+    fn to_u16(self) -> u16;
 }
 
 impl UsizeExt for usize {
@@ -21,6 +25,13 @@ impl UsizeExt for usize {
 
     fn to_i16(self) -> i16 {
         match i16::try_from(self) {
+            Ok(ok) => ok,
+            Err(err) => panic!("message size too large for protocol: {err}"),
+        }
+    }
+
+    fn to_u16(self) -> u16 {
+        match u16::try_from(self) {
             Ok(ok) => ok,
             Err(err) => panic!("message size too large for protocol: {err}"),
         }

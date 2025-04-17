@@ -5,8 +5,8 @@ use crate::{
     common::Stack,
     encode::{Encode, Encoded},
     io::PostgresIo,
-    row::{RowDecoder, RowBuffer},
-    message::{backend, frontend},
+    message::{backend, codec::PgFormat, frontend},
+    row::{RowBuffer, RowDecoder},
     statement::{PortalName, StatementName},
 };
 
@@ -79,13 +79,13 @@ where
 
         self.io.send(frontend::Bind {
             portal_name: portal.as_str(),
-            prepare_name: stmt.as_str(),
-            params_format_len: 1,
-            params_format_code: [1],
-            params_len: self.params.as_slice(),
+            stmt_name: stmt.as_str(),
+            param_formats_len: 1,
+            param_formats: [PgFormat::Binary],
+            params_len: self.params.len().try_into().unwrap(),
             params: self.params.as_slice(),
-            results_format_len: 1,
-            results_format_code: [1],
+            result_formats_len: 1,
+            result_formats: [PgFormat::Binary],
         });
         self.io.send(frontend::Describe {
             kind: b'P',

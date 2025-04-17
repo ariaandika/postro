@@ -1,11 +1,11 @@
 //! Postgres Protocol Operations
 use crate::{
+    Result,
     common::general,
     io::PostgresIo,
-    message::{backend, error::ProtocolError, frontend, BackendMessage},
+    message::{BackendMessage, backend, codec::PgFormat, error::ProtocolError, frontend},
     options::startup::StartupOptions,
     row::RowBuffer,
-    Result,
 };
 
 /// startup phase successful response
@@ -142,13 +142,13 @@ pub async fn extended_query<IO: PostgresIo>(
 
     io.send(frontend::Bind {
         portal_name: PORTAL_NAME,
-        prepare_name: PREPARE_NAME,
-        params_format_len: 1,
-        params_format_code: [1],
-        params_len: args,
+        stmt_name: PREPARE_NAME,
+        param_formats_len: 1,
+        param_formats: [PgFormat::Binary],
+        params_len: args.len().try_into().unwrap(),
         params: args,
-        results_format_len: 1,
-        results_format_code: [1],
+        result_formats_len: 1,
+        result_formats: [PgFormat::Binary],
     });
 
     // Once a portal exists, it can be executed using an Execute message

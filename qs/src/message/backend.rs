@@ -12,47 +12,67 @@ pub trait BackendProtocol: Sized {
     fn decode(msgtype: u8, body: Bytes) -> Result<Self,ProtocolError>;
 }
 
-macro_rules! assert_msgtype {
-    ($self:ident,$typ:ident) => {
-        if $self::MSGTYPE != $typ {
-            return Err(ProtocolError::unexpected(stringify!($self),$self::MSGTYPE,$typ))
-        }
-    };
-}
-
 /// Postgres backend messages
 #[derive(Debug)]
 pub enum BackendMessage {
     Authentication(Authentication),
     BackendKeyData(BackendKeyData),
-    NoticeResponse(NoticeResponse),
-    ErrorResponse(ErrorResponse),
-    ParameterStatus(ParameterStatus),
-    ReadyForQuery(ReadyForQuery),
-    RowDescription(RowDescription),
-    DataRow(DataRow),
-    CommandComplete(CommandComplete),
-    ParseComplete(ParseComplete),
     BindComplete(BindComplete),
     CloseComplete(CloseComplete),
+    CommandComplete(CommandComplete),
+    DataRow(DataRow),
+    ErrorResponse(ErrorResponse),
+    EmptyQueryResponse(EmptyQueryResponse),
+    NegotiateProtocolVersion(NegotiateProtocolVersion),
+    NoData(NoData),
+    NoticeResponse(NoticeResponse),
+    ParameterDescription(ParameterDescription),
+    ParameterStatus(ParameterStatus),
+    ParseComplete(ParseComplete),
+    PortalSuspended(PortalSuspended),
+    ReadyForQuery(ReadyForQuery),
+    RowDescription(RowDescription),
 }
 
-impl BackendProtocol for BackendMessage {
-    fn decode(msgtype: u8, body: Bytes) -> Result<Self, ProtocolError> {
-        macro_rules! match_type {
-            ($($name:ident,)*) => {
-                match msgtype {
+macro_rules! match_backend {
+    ($($name:ident,)*) => {
+        impl BackendMessage {
+            pub fn msgtype(&self) -> u8 {
+                match self {
+                    $(Self::$name(_) => $name::MSGTYPE,)*
+                }
+            }
+        }
+        impl BackendProtocol for BackendMessage {
+            fn decode(msgtype: u8, body: Bytes) -> Result<Self, ProtocolError> {
+                let message = match msgtype {
                     $($name::MSGTYPE => Self::$name(<$name as BackendProtocol>::decode(msgtype, body)?),)*
                     _ => return Err(ProtocolError::unknown(msgtype)),
-                }
-            };
+                };
+                Ok(message)
+            }
         }
-        let message = match_type! {
-            Authentication, BackendKeyData, NoticeResponse, ErrorResponse, ParameterStatus,
-            ReadyForQuery, RowDescription, DataRow, CommandComplete, ParseComplete, BindComplete, CloseComplete,
-        };
-        Ok(message)
-    }
+    };
+}
+
+match_backend! {
+    Authentication,
+    BackendKeyData,
+    BindComplete,
+    CloseComplete,
+    CommandComplete,
+    DataRow,
+    ErrorResponse,
+    EmptyQueryResponse,
+    NegotiateProtocolVersion,
+    NoData,
+    NoticeResponse,
+    ParameterDescription,
+    ParameterStatus,
+    ParseComplete,
+    PortalSuspended,
+    ReadyForQuery,
+    RowDescription,
 }
 
 impl BackendMessage {
@@ -62,20 +82,14 @@ impl BackendMessage {
             ok => Ok(ok),
         }
     }
+}
 
-    pub fn msgtype(&self) -> u8 {
-        macro_rules! match_type {
-            ($($name:ident,)*) => {
-                match self {
-                    $(Self::$name(_) => $name::MSGTYPE,)*
-                }
-            };
+macro_rules! assert_msgtype {
+    ($self:ident,$typ:ident) => {
+        if $self::MSGTYPE != $typ {
+            return Err(ProtocolError::unexpected(stringify!($self),$self::MSGTYPE,$typ))
         }
-        match_type! {
-            Authentication, BackendKeyData, NoticeResponse, ErrorResponse, ParameterStatus,
-            ReadyForQuery, RowDescription, DataRow, CommandComplete, ParseComplete, BindComplete, CloseComplete,
-        }
-    }
+    };
 }
 
 /// Identifies the message as an authentication request.
@@ -173,21 +187,6 @@ impl BackendProtocol for ParameterStatus {
             name: body.get_nul_string()?,
             value: body.get_nul_string()?,
         })
-    }
-}
-
-/// Identifies the message type. ReadyForQuery is sent whenever the backend is ready for a new query cycle.
-#[derive(Debug)]
-pub struct ReadyForQuery;
-
-impl ReadyForQuery {
-    pub const MSGTYPE: u8 = b'Z';
-}
-
-impl BackendProtocol for ReadyForQuery {
-    fn decode(msgtype: u8, _: Bytes) -> Result<Self,ProtocolError> {
-        assert_msgtype!(ReadyForQuery,msgtype);
-        Ok(Self)
     }
 }
 
@@ -309,7 +308,7 @@ impl BackendProtocol for DataRow {
         // The number of column values that follow (possibly zero).
         let col_values_len = body.get_i16();
 
-        // lazily decode row without allocating `Vec`
+        // lazily decode row
         let row_buffer = RowBuffer::new(col_values_len, body);
 
         Ok(Self { row_buffer })
@@ -357,49 +356,104 @@ impl BackendProtocol for CommandComplete {
     }
 }
 
-/// Identifies the message as a Parse-complete indicator.
+/// Identifies the message as a protocol version negotiation message.
 #[derive(Debug)]
-pub struct ParseComplete;
-
-impl ParseComplete {
-    pub const MSGTYPE: u8 = b'1';
+pub struct NegotiateProtocolVersion {
+    /// Newest minor protocol version supported by the server for the major protocol version requested by the client.
+    pub minor: i32,
+    /// Number of protocol options not recognized by the server.
+    pub len: i32,
+    /// Then, for protocol option not recognized by the server, there is the following:
+    pub opt_names: Bytes,
 }
 
-impl BackendProtocol for ParseComplete {
-    fn decode(msgtype: u8, _: Bytes) -> Result<Self,ProtocolError> {
-        assert_msgtype!(ParseComplete,msgtype);
-        Ok(Self)
+impl NegotiateProtocolVersion {
+    pub const MSGTYPE: u8 = b'v';
+}
+
+impl BackendProtocol for NegotiateProtocolVersion {
+    fn decode(msgtype: u8, mut body: Bytes) -> Result<Self,ProtocolError> {
+        assert_msgtype!(NegotiateProtocolVersion,msgtype);
+        Ok(Self {
+            minor: body.get_i32(),
+            len: body.get_i32(),
+            opt_names: body,
+        })
     }
 }
 
-
-/// Identifies the message as a Bind-complete indicator.
+/// Identifies the message as a parameter description.
 #[derive(Debug)]
-pub struct BindComplete;
-
-impl BindComplete {
-    pub const MSGTYPE: u8 = b'2';
+pub struct ParameterDescription {
+    /// The number of parameters used by the statement (can be zero).
+    pub param_len: i16,
+    /// Then, for each parameter, there is the following:
+    ///
+    /// Specifies the object ID of the parameter data type.
+    pub oids: Bytes,
 }
 
-impl BackendProtocol for BindComplete {
-    fn decode(msgtype: u8, _: Bytes) -> Result<Self,ProtocolError> {
-        assert_msgtype!(BindComplete,msgtype);
-        Ok(Self)
+impl ParameterDescription  {
+    pub const MSGTYPE: u8 = b't';
+}
+
+impl BackendProtocol for ParameterDescription {
+    fn decode(msgtype: u8, mut body: Bytes) -> Result<Self,ProtocolError> {
+        assert_msgtype!(ParameterDescription,msgtype);
+        Ok(Self {
+            param_len: body.get_i16(),
+            oids: body,
+        })
     }
 }
 
-/// Identifies the message as a Close-complete indicator.
-#[derive(Debug)]
-pub struct CloseComplete;
+macro_rules! unit_msg {
+    ($(
+        $(#[$doc:meta])* struct $name:ident, $ty:literal;
+    )*) => {$(
+            $(#[$doc])*
+            #[derive(Debug)]
+            pub struct $name;
 
-impl CloseComplete {
-    pub const MSGTYPE: u8 = b'3';
+            impl $name {
+                pub const MSGTYPE: u8 = $ty;
+            }
+
+            impl BackendProtocol for $name {
+                fn decode(msgtype: u8, _: Bytes) -> Result<Self,ProtocolError> {
+                    if $name::MSGTYPE != msgtype {
+                        return Err(ProtocolError::unexpected(stringify!($name),$name::MSGTYPE,msgtype))
+                    }
+                    Ok(Self)
+                }
+            }
+    )*};
 }
 
-impl BackendProtocol for CloseComplete {
-    fn decode(msgtype: u8, _: Bytes) -> Result<Self,ProtocolError> {
-        assert_msgtype!(CloseComplete,msgtype);
-        Ok(Self)
-    }
+unit_msg! {
+    /// Identifies the message as a Bind-complete indicator.
+    struct BindComplete, b'2';
+
+    /// Identifies the message as a Close-complete indicator.
+    struct CloseComplete, b'3';
+
+    /// Identifies the message as a response to an empty query string.
+    ///
+    /// This substitutes for CommandComplete.
+    struct EmptyQueryResponse, b'I';
+
+    /// Identifies the message as a no-data indicator.
+    struct NoData, b'n';
+
+    /// Identifies the message as a Parse-complete indicator.
+    struct ParseComplete, b'1';
+
+    /// Identifies the message as a portal-suspended indicator.
+    ///
+    /// Note this only appears if an Execute message's row-count limit was reached.
+    struct PortalSuspended, b's';
+
+    /// Identifies the message type. ReadyForQuery is sent whenever the backend is ready for a new query cycle.
+    struct ReadyForQuery, b'Z';
 }
 

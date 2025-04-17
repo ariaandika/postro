@@ -12,12 +12,12 @@ impl Id {
 
     pub(crate) fn next(atomic: &AtomicId) -> Self {
         let id = atomic.fetch_add(1, Ordering::SeqCst);
-        let mut buf = [b'_',b'q',b's',b'_',b'_',b'_'];
+        let mut buf = [b'q', b'0',b'0',b'0',b'0',b'0'];
 
         let mut b = itoa::Buffer::new();
         let id = b.format(id);
-        let i = id.as_bytes().get(..3).unwrap_or(id.as_bytes());
-        buf[3..3 + i.len()].copy_from_slice(i);
+        let i = id.as_bytes();
+        buf[1..1 + i.len()].copy_from_slice(i);
 
         Self(buf)
     }
@@ -47,16 +47,24 @@ impl std::fmt::Debug for Id {
     }
 }
 
+impl AsRef<str> for Id {
+    fn as_ref(&self) -> &str {
+        self.as_str()
+    }
+}
+
 macro_rules! delegate {
     ($name:ident) => {
-        #[derive(Clone)]
+        #[derive(Clone, PartialEq, Eq)]
         pub struct $name(Id);
 
         impl $name {
+            #[allow(unused)]
             pub(crate) fn unnamed() -> Self {
                 Self(Id::unnamed())
             }
 
+            #[allow(unused)]
             pub(crate) fn next() -> Self {
                 static ID: AtomicId = AtomicId::new(0);
                 Self(Id::next(&ID))

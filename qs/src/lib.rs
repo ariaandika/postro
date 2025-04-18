@@ -33,8 +33,8 @@
 //! Fetch api require a type that can [`Decode`] a set of [`Row`]s.
 
 mod common;
-mod net;
 mod io;
+mod net;
 
 // Protocol
 pub mod types;

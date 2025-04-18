@@ -7,7 +7,7 @@ use crate::{
 };
 
 /// A buffered stream which can send and receive postgres message
-pub trait PostgresIo {
+pub trait PgTransport {
     /// Future returned from [`flush`][PostgresIo::flush].
     type Flush<'a>: Future<Output = io::Result<()>> where Self: 'a;
 
@@ -57,7 +57,7 @@ pub trait PostgresIo {
     }
 }
 
-impl<P> PostgresIo for &mut P where P: PostgresIo {
+impl<P> PgTransport for &mut P where P: PgTransport {
     type Flush<'a> = P::Flush<'a> where Self: 'a;
 
     type Recv<'a, B> = P::Recv<'a, B> where B: BackendProtocol, Self: 'a;

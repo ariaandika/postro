@@ -2,7 +2,7 @@
 use crate::{
     Result,
     common::general,
-    io::PostgresIo,
+    transport::PgTransport,
     message::{BackendMessage, backend, codec::PgFormat, error::ProtocolError, frontend},
     options::startup::StartupOptions,
     row::RowBuffer,
@@ -17,7 +17,7 @@ pub struct StartupResponse {
 /// perform a startup message
 ///
 /// <https://www.postgresql.org/docs/17/protocol-flow.html#PROTOCOL-FLOW-START-UP>
-pub async fn startup<'a, IO: PostgresIo>(
+pub async fn startup<'a, IO: PgTransport>(
     opt: impl Into<StartupOptions<'a>>,
     mut io: IO,
 ) -> Result<StartupResponse> {
@@ -92,7 +92,7 @@ pub async fn startup<'a, IO: PostgresIo>(
 /// perform a simple query
 ///
 /// <https://www.postgresql.org/docs/current/protocol-flow.html#PROTOCOL-FLOW-SIMPLE-QUERY>
-pub async fn simple_query<IO: PostgresIo>(sql: &str, mut io: IO) -> Result<Vec<RowBuffer>> {
+pub async fn simple_query<IO: PgTransport>(sql: &str, mut io: IO) -> Result<Vec<RowBuffer>> {
     io.send(frontend::Query { sql });
     io.flush().await?;
 
@@ -123,7 +123,7 @@ pub async fn simple_query<IO: PostgresIo>(sql: &str, mut io: IO) -> Result<Vec<R
 /// and closed on query completion
 ///
 /// <https://www.postgresql.org/docs/current/protocol-flow.html#PROTOCOL-FLOW-EXT-QUERY>
-pub async fn extended_query<IO: PostgresIo>(
+pub async fn extended_query<IO: PgTransport>(
     sql: &str,
     args: &[crate::encode::Encoded<'_>],
     mut io: IO,

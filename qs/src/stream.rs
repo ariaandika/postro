@@ -2,7 +2,7 @@ use bytes::BytesMut;
 
 use crate::{
     PgOptions, Result,
-    io::PostgresIo,
+    transport::PgTransport,
     message::{BackendProtocol, FrontendProtocol, frontend},
     net::{Socket, WriteAllBuf},
 };
@@ -32,7 +32,7 @@ impl PgStream {
     }
 }
 
-impl PostgresIo for PgStream {
+impl PgTransport for PgStream {
     type Flush<'a> = WriteAllBuf<'a, BytesMut> where Self: 'a;
 
     type Recv<'a, B> = Recv<'a, B> where B: BackendProtocol, Self: 'a;

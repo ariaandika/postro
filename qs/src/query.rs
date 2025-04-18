@@ -4,7 +4,7 @@ use crate::{
     Result,
     common::Stack,
     encode::{Encode, Encoded},
-    io::PostgresIo,
+    transport::PgTransport,
     message::{backend, codec::PgFormat, frontend},
     row::{RowBuffer, RowDecoder},
     statement::{PortalName, StatementName},
@@ -14,7 +14,7 @@ pub trait FromRow: Sized {
     fn from_row(row: String) -> Result<Self>;
 }
 
-pub fn query<'val, IO: PostgresIo>(sql: &str, io: IO) -> Query<'_, 'val, IO> {
+pub fn query<'val, IO: PgTransport>(sql: &str, io: IO) -> Query<'_, 'val, IO> {
     Query { sql, io, params: Stack::with_size(), persistent: true }
 }
 
@@ -45,7 +45,7 @@ impl<'val, IO> Query<'_, 'val, IO> {
 
 impl<IO> Query<'_, '_, IO>
 where
-    IO: PostgresIo,
+    IO: PgTransport,
 {
     pub async fn fetch_all<R>(mut self) -> Result<Vec<RowBuffer>> {
         let sqlid = {

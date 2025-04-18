@@ -3,7 +3,7 @@ use std::num::NonZeroUsize;
 
 use crate::{
     Result,
-    io::PostgresIo,
+    transport::PgTransport,
     message::{BackendProtocol, FrontendProtocol, frontend},
     options::PgOptions,
     protocol,
@@ -41,25 +41,25 @@ impl PgConnection {
     }
 }
 
-impl PostgresIo for PgConnection {
-    type Flush<'a> = <&'a mut PgStream as PostgresIo>::Flush<'a> where Self: 'a;
+impl PgTransport for PgConnection {
+    type Flush<'a> = <&'a mut PgStream as PgTransport>::Flush<'a> where Self: 'a;
 
-    type Recv<'a, B> = <&'a mut PgStream as PostgresIo>::Recv<'a, B> where B: BackendProtocol, Self: 'a;
+    type Recv<'a, B> = <&'a mut PgStream as PgTransport>::Recv<'a, B> where B: BackendProtocol, Self: 'a;
 
     fn send<F: FrontendProtocol>(&mut self, message: F) {
-        PostgresIo::send(&mut self.stream, message);
+        PgTransport::send(&mut self.stream, message);
     }
 
     fn send_startup(&mut self, startup: frontend::Startup) {
-        PostgresIo::send_startup(&mut self.stream, startup);
+        PgTransport::send_startup(&mut self.stream, startup);
     }
 
     fn flush(&mut self) -> Self::Flush<'_> {
-        PostgresIo::flush(&mut self.stream)
+        PgTransport::flush(&mut self.stream)
     }
 
     fn recv<B: BackendProtocol>(&mut self) -> Self::Recv<'_, B> {
-        PostgresIo::recv(&mut self.stream)
+        PgTransport::recv(&mut self.stream)
     }
 
     fn get_stmt(&mut self, sqlid: u64) -> Option<StatementName> {

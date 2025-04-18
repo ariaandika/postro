@@ -140,7 +140,7 @@ where
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<usize>> {
         let me = self.project();
-        super::poll_read(me.socket, me.buf, cx)
+        crate::io::poll_read(me.socket, me.buf, cx)
     }
 }
 
@@ -164,7 +164,7 @@ where
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
         let me = self.project();
-        super::poll_write_all(me.socket, me.buf, cx)
+        crate::io::poll_write_all(me.socket, me.buf, cx)
     }
 }
 

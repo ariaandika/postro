@@ -3,7 +3,7 @@ use bytes::BytesMut;
 use crate::{
     PgOptions, Result,
     transport::PgTransport,
-    message::{BackendProtocol, FrontendProtocol, frontend},
+    postgres::{BackendProtocol, FrontendProtocol, frontend},
     net::{Socket, WriteAllBuf},
 };
 
@@ -67,7 +67,7 @@ mod recv {
     };
 
     use super::PgStream;
-    use crate::{message::{backend::ErrorResponse, BackendProtocol}, Error, Result};
+    use crate::{postgres::{backend::ErrorResponse, BackendProtocol}, Error, Result};
 
     pin_project_lite::pin_project! {
         #[derive(Debug)]
@@ -94,7 +94,7 @@ mod recv {
     #[cfg(feature = "tokio")]
     impl<B> Future for Recv<'_, B>
     where
-        B: crate::message::BackendProtocol
+        B: crate::postgres::BackendProtocol
     {
         type Output = Result<B>;
 

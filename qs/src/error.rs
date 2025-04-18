@@ -2,7 +2,7 @@ use std::io;
 
 use crate::{
     common::BoxError,
-    message::error::{DatabaseError, ProtocolError},
+    postgres::error::{DatabaseError, ProtocolError},
 };
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;

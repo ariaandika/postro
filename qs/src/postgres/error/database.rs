@@ -1,6 +1,6 @@
 use bytes::Bytes;
 
-use crate::{common::{BytesRef, LossyStr}, message::backend::NoticeResponse};
+use crate::{common::{BytesRef, LossyStr}, postgres::backend::NoticeResponse};
 
 /// Lazily Decode error from [`ErrorResponse`] body
 ///

@@ -38,7 +38,6 @@ mod net;
 mod ext;
 
 // Protocol
-mod message;
 pub mod postgres;
 
 // Codec

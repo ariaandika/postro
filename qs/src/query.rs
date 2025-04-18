@@ -5,7 +5,7 @@ use crate::{
     common::Stack,
     encode::{Encode, Encoded},
     transport::PgTransport,
-    message::{backend, PgFormat, frontend},
+    postgres::{backend, PgFormat, frontend},
     row::{RowBuffer, RowDecoder},
     statement::{PortalName, StatementName},
 };
@@ -104,7 +104,7 @@ where
 
         loop {
             use backend::BackendMessage::*;
-            use crate::message::error::ProtocolError;
+            use crate::postgres::error::ProtocolError;
             match self.io.recv().await? {
                 DataRow(datarow) => {
                     // TODO: ROW BUFFER & FROM_ROW HAVE NO API YET
@@ -138,7 +138,7 @@ where
 
         loop {
             use backend::BackendMessage::*;
-            use crate::message::error::ProtocolError;
+            use crate::postgres::error::ProtocolError;
             match self.io.recv().await? {
                 CloseComplete(_) => {}
                 ReadyForQuery(_) => break,

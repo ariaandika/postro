@@ -4,7 +4,7 @@ use std::num::NonZeroUsize;
 use crate::{
     Result,
     transport::PgTransport,
-    message::{BackendProtocol, FrontendProtocol, frontend},
+    postgres::{BackendProtocol, FrontendProtocol, frontend},
     options::PgOptions,
     protocol,
     statement::StatementName,

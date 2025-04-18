@@ -1,6 +1,6 @@
 use bytes::{Buf, Bytes};
 
-use crate::message::{backend::{DataRow, RowDescription}, ext::BytesExt};
+use crate::postgres::{backend::{DataRow, RowDescription}, ext::BytesExt};
 
 pub struct RowDecoder {
     field_len: u16,

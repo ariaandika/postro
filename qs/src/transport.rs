@@ -2,7 +2,7 @@ use std::io;
 
 use crate::{
     Result,
-    message::{BackendProtocol, FrontendProtocol, frontend},
+    postgres::{BackendProtocol, FrontendProtocol, frontend},
     statement::StatementName,
 };
 

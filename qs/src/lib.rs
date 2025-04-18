@@ -32,22 +32,26 @@
 //!
 //! Fetch api require a type that can [`Decode`] a set of [`Row`]s.
 
-pub mod common;
-pub mod net;
+mod common;
+mod net;
+mod io;
 
 // Protocol
-pub mod options;
-pub mod statement;
-pub mod value;
 pub mod types;
-
 pub mod message;
+pub mod postgres;
 
+// Codec
 pub mod encode;
+pub mod value;
+
+// Component
+pub mod statement;
 pub mod row;
 
 // Connection
-pub mod io;
+pub mod options;
+mod transport;
 mod stream;
 mod connection;
 

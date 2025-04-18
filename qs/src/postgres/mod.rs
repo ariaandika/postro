@@ -72,9 +72,6 @@ pub mod frontend;
 pub mod backend;
 pub mod error;
 
-pub mod ext;
-
-
 pub use pg_type::{Oid, PgType};
 pub use pg_format::PgFormat;
 

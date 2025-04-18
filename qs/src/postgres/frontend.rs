@@ -3,11 +3,11 @@
 //! All struct fields here mirror the actual message sent to postgres.
 use bytes::{BufMut, BytesMut};
 
-use super::{
-    Oid, PgFormat,
+use super::{Oid, PgFormat};
+use crate::{
+    encode::Encoded,
     ext::{BufMutExt, StrExt, UsizeExt},
 };
-use crate::encode::Encoded;
 
 // Other Frontend Message:
 // CancelRequest

@@ -1,10 +1,8 @@
 //! Postgres Backend Messages
 use bytes::{Buf, Bytes};
 
-use super::{
-    error::{DatabaseError, ProtocolError},
-    ext::BytesExt,
-};
+use super::error::{DatabaseError, ProtocolError};
+use crate::ext::BytesExt;
 
 // NOTE: Apparantly, number signess in protocol is good luck figuring out by postgres
 

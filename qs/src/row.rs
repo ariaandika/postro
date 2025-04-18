@@ -58,9 +58,7 @@ pub struct RowInfo {
 impl RowInfo {
     pub(crate) fn new(body: &mut Bytes) -> Self {
         Self {
-            field_name: body
-                .get_nul_string()
-                .expect("invalid RowDescription from postgres"),
+            field_name: body.get_nul_string(),
             table_oid: body.get_u32(),
             attribute_len: body.get_u16(),
             data_type: body.get_u32(),

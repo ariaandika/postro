@@ -185,8 +185,8 @@ impl BackendProtocol for ParameterStatus {
     fn decode(msgtype: u8, mut body: Bytes) -> Result<Self,ProtocolError> {
         assert_msgtype!(ParameterStatus,msgtype);
         Ok(Self {
-            name: body.get_nul_string()?,
-            value: body.get_nul_string()?,
+            name: body.get_nul_string(),
+            value: body.get_nul_string(),
         })
     }
 }

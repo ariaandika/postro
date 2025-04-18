@@ -35,6 +35,7 @@
 mod common;
 mod io;
 mod net;
+mod ext;
 
 // Protocol
 mod message;

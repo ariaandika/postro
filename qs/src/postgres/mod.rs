@@ -65,12 +65,18 @@
 //! Keep in mind that binary representations for complex data types might change across server versions;
 //! the text format is usually the more portable choice.
 
-pub mod codec;
+mod pg_type;
+mod pg_format;
+
 pub mod frontend;
 pub mod backend;
 pub mod error;
 
 pub mod ext;
+
+
+pub use pg_type::{Oid, PgType};
+pub use pg_format::PgFormat;
 
 pub use frontend::FrontendProtocol;
 pub use backend::{BackendProtocol, BackendMessage};

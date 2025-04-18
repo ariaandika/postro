@@ -3,12 +3,11 @@
 //! All struct fields here mirror the actual message sent to postgres.
 use bytes::{BufMut, BytesMut};
 
-use crate::encode::Encoded;
-
 use super::{
-    codec::PgFormat,
+    Oid, PgFormat,
     ext::{BufMutExt, StrExt, UsizeExt},
 };
+use crate::encode::Encoded;
 
 // Other Frontend Message:
 // CancelRequest
@@ -207,7 +206,7 @@ pub struct Parse<'a,I> {
 
 impl<I> FrontendProtocol for Parse<'_,I>
 where
-    I: IntoIterator<Item = i32>
+    I: IntoIterator<Item = Oid>
 {
     const MSGTYPE: u8 = b'P';
 
@@ -223,7 +222,7 @@ where
         buf.put_nul_string(self.sql);
         buf.put_i16(self.data_types_len);
         for dt in self.data_types {
-            buf.put_i32(dt);
+            buf.put_u32(dt);
         }
     }
 }

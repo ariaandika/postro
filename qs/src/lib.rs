@@ -37,8 +37,7 @@ mod io;
 mod net;
 
 // Protocol
-pub mod types;
-pub mod message;
+mod message;
 pub mod postgres;
 
 // Codec

@@ -5,7 +5,7 @@ use crate::{
     common::Stack,
     encode::{Encode, Encoded},
     transport::PgTransport,
-    message::{backend, codec::PgFormat, frontend},
+    message::{backend, PgFormat, frontend},
     row::{RowBuffer, RowDecoder},
     statement::{PortalName, StatementName},
 };

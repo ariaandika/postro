@@ -3,7 +3,7 @@ use crate::{
     Result,
     common::general,
     transport::PgTransport,
-    message::{BackendMessage, backend, codec::PgFormat, error::ProtocolError, frontend},
+    message::{BackendMessage, backend, PgFormat, error::ProtocolError, frontend},
     options::startup::StartupOptions,
     row::RowBuffer,
 };
@@ -210,7 +210,7 @@ mod test {
 
     #[test]
     fn test_connect() {
-        use crate::{value::ValueRef, types::AsPgType};
+        use crate::{value::ValueRef, postgres::PgType};
 
         tokio::runtime::Builder::new_current_thread()
             .enable_all()
@@ -231,8 +231,8 @@ mod test {
                     .unwrap();
 
                 let params = [
-                    Encoded::new(ValueRef::Slice(&b"DeezNutz"[..]), str::PG_TYPE.oid()),
-                    Encoded::new(ValueRef::Slice(&b"FooBar"[..]), str::PG_TYPE.oid()),
+                    Encoded::new(ValueRef::Slice(&b"DeezNutz"[..]), str::OID),
+                    Encoded::new(ValueRef::Slice(&b"FooBar"[..]), str::OID),
                 ];
 
                 let rows = super::extended_query(

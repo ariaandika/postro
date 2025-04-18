@@ -1,4 +1,4 @@
-use crate::types::{AsPgType, Oid};
+use crate::postgres::{PgType, Oid};
 use crate::value::ValueRef;
 
 /// postgres encoded value
@@ -12,7 +12,7 @@ impl Default for Encoded<'_> {
     fn default() -> Self {
         Self {
             value: ValueRef::Null,
-            oid: <()>::PG_TYPE.oid(),
+            oid: <()>::OID,
         }
     }
 }
@@ -26,7 +26,7 @@ impl<'q> Encoded<'q> {
         &self.value
     }
 
-    pub fn oid(&self) -> i32 {
+    pub fn oid(&self) -> Oid {
         self.oid
     }
 }
@@ -40,7 +40,7 @@ impl Encode<'static> for bool {
     fn encode(self) -> Encoded<'static> {
         Encoded {
             value: ValueRef::Bool(self),
-            oid: bool::PG_TYPE.oid(),
+            oid: bool::OID,
         }
     }
 }
@@ -49,7 +49,7 @@ impl Encode<'static> for i32 {
     fn encode(self) -> Encoded<'static> {
         Encoded {
             value: self.into(),
-            oid: i32::PG_TYPE.oid(),
+            oid: i32::OID,
         }
     }
 }
@@ -58,7 +58,7 @@ impl<'q> Encode<'q> for &'q str {
     fn encode(self) -> Encoded<'q> {
         Encoded {
             value: self.into(),
-            oid: str::PG_TYPE.oid(),
+            oid: str::OID,
         }
     }
 }
@@ -67,7 +67,7 @@ impl Encode<'static> for String {
     fn encode(self) -> Encoded<'static> {
         Encoded {
             value: self.into(),
-            oid: String::PG_TYPE.oid(),
+            oid: String::OID,
         }
     }
 }
@@ -76,7 +76,7 @@ impl<'q> Encode<'q> for &'q String {
     fn encode(self) -> Encoded<'q> {
         Encoded {
             value: self.into(),
-            oid: String::PG_TYPE.oid(),
+            oid: String::OID,
         }
     }
 }

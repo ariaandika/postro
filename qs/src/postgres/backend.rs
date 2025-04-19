@@ -97,40 +97,49 @@ macro_rules! assert_msgtype {
             return Err(ProtocolError::unexpected(Self::MSGTYPE,$typ))
         }
     };
-    ($self:ident,$typ:ident) => {
-        if $self::MSGTYPE != $typ {
-            return Err(ProtocolError::unexpected($self::MSGTYPE,$typ))
-        }
-    };
 }
 
 /// Identifies the message as an authentication request.
 #[derive(Debug)]
 pub enum Authentication {
-    /// Int32(0) Specifies that the authentication was successful.
+    /// Specifies that the authentication was successful.
     Ok,
-    /// Int32(2) Specifies that Kerberos V5 authentication is required.
+    /// Specifies that Kerberos V5 authentication is required.
     KerberosV5,
-    /// Int32(3) Specifies that a clear-text password is required.
+    /// Specifies that a clear-text password is required.
     CleartextPassword,
-    /// Int32(5) Specifies that an MD5-encrypted password is required.
-    /// Byte4 The salt to use when encrypting the password.
+    /// Specifies that an MD5-encrypted password is required.
     MD5Password {
-        salt: u32
+        /// The salt to use when encrypting the password.
+        salt: [u8;4],
     },
-    /// Int32(7) Specifies that GSSAPI authentication is required.
+    /// Specifies that GSSAPI authentication is required.
     GSS,
-    /// Int32(9) Specifies that SSPI authentication is required.
+    /// GSSAPI or SSPI authentication data.
+    GSSContinue {
+        data: Bytes,
+    },
+    /// Specifies that SSPI authentication is required.
     SSPI,
-    /// Int32(10) Specifies that SASL authentication is required.
-    ///   The message body is a list of SASL authentication mechanisms,
-    ///   in the server's order of preference. A zero byte is required
-    ///   as terminator after the last authentication mechanism name.
-    ///   For each mechanism, there is the following:
-    /// String Name of a SASL authentication mechanism.
-    /// TODO: SASL not yet supported
-    /// there are more protocol for SASL control flow
-    SASL,
+    /// Specifies that SASL authentication is required.
+    SASL {
+        /// The message body is a list of SASL authentication mechanisms, in the server's order of preference.
+        ///
+        /// A zero byte is required as terminator after the last authentication mechanism name.
+        ///
+        /// For each mechanism, there is the following:
+        name: Bytes,
+    },
+    /// Specifies that this message contains a SASL challenge.
+    SASLContinue {
+        /// SASL data, specific to the SASL mechanism being used.
+        data: Bytes,
+    },
+    /// Specifies that SASL authentication has completed.
+    SASLFinal {
+        /// SASL outcome "additional data", specific to the SASL mechanism being used.
+        data: Bytes,
+    },
 }
 
 impl Authentication {
@@ -144,10 +153,13 @@ impl BackendProtocol for Authentication {
             0 => Authentication::Ok,
             2 => Authentication::KerberosV5,
             3 => Authentication::CleartextPassword,
-            5 => Authentication::MD5Password { salt: body.get_u32(), },
+            5 => Authentication::MD5Password { salt: body.get_u32().to_be_bytes(), },
             7 => Authentication::GSS,
+            8 => Authentication::GSSContinue { data: body },
             9 => Authentication::SSPI,
-            10 => Authentication::SASL,
+            10 => Authentication::SASL { name: body },
+            11 => Authentication::SASLContinue { data: body },
+            12 => Authentication::SASLFinal { data: body },
             auth => return Err(ProtocolError::unknown_auth(auth)),
         };
         Ok(auth)

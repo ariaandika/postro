@@ -29,12 +29,12 @@ impl UsizeExt for usize {
 
 pub trait StrExt {
     /// postgres String must be nul terminated
-    fn nul_string_len(&self) -> i32;
+    fn nul_string_len(&self) -> u32;
 }
 
 impl StrExt for str {
-    fn nul_string_len(&self) -> i32 {
-        self.len().to_i32() + 1/* nul */
+    fn nul_string_len(&self) -> u32 {
+        self.len().to_u32() + 1/* nul */
     }
 }
 
@@ -66,3 +66,17 @@ impl BytesExt for Bytes {
         String::from_utf8(string).expect("Postgres did not return UTF-8")
     }
 }
+
+pub trait BindParams: bytes::Buf {
+    /// The length of the parameter value, in bytes (this count does not include itself).
+    ///
+    /// Can be zero. As a special case, -1 indicates a NULL parameter value.
+    /// No value bytes follow in the NULL case.
+    fn size(&self) -> i32;
+
+    // /// The value of the parameter, in the format indicated by the associated format code.
+    // ///
+    // /// Length must be equal to returned value of [`BindParams::size`].
+    // fn body(&self) -> &[u8];
+}
+

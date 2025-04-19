@@ -65,8 +65,8 @@ where
                     self.io.send(frontend::Parse {
                         prepare_name: stmt.as_str(),
                         sql: self.sql,
-                        data_types_len: self.params.len() as _,
-                        data_types: self.params.iter().map(crate::encode::Encoded::oid),
+                        oids_len: self.params.len() as _,
+                        oids: self.params.iter().map(crate::encode::Encoded::oid),
                     });
                     self.io.send(frontend::Flush);
                     self.io.flush().await?;
@@ -78,19 +78,19 @@ where
 
         let portal = PortalName::unnamed();
 
-        self.io.send(frontend::Bind::new(
-            portal.as_str(),
-            stmt.as_str(),
-            1,
-            [PgFormat::Binary],
-            self.params.len().to_u16(),
-            self.params.iter().fold(0, |acc,n|{
-                acc + 4 + n.value().len().to_i32()
+        self.io.send(frontend::Bind {
+            portal_name: portal.as_str(),
+            stmt_name: stmt.as_str(),
+            param_formats_len: 1,
+            param_formats: [PgFormat::Binary],
+            params_len: self.params.len().to_u16(),
+            params_size_hint: self.params.iter().fold(0, |acc,n|{
+                acc + 4 + n.value().len().to_u32()
             }),
-            self.params.into_iter().map(|e|e.into_value()),
-            1,
-            [PgFormat::Binary],
-        ));
+            params: self.params.into_iter(),
+            result_formats_len: 1,
+            result_formats: [PgFormat::Binary],
+        });
         self.io.send(frontend::Describe {
             kind: b'P',
             name: portal.as_str(),

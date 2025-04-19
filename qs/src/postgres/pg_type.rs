@@ -21,7 +21,7 @@ macro_rules! oid {
     };
 }
 
-oid!((), 0);
+// oid!((), 0); // 0 means type unspecified
 oid!(bool, 16);
 oid!(char, 18);
 oid!(i64, 20, "`int8` ~18 digit integer, 8-byte storage");

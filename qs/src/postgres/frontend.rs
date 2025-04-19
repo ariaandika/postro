@@ -1,10 +1,13 @@
 //! Postgres Frontend Messages
 //!
 //! All struct fields here mirror the actual message sent to postgres.
-use bytes::{Buf, BufMut, BytesMut};
+use bytes::{BufMut, BytesMut};
 
 use super::{Oid, PgFormat};
-use crate::ext::{BufMutExt, StrExt, UsizeExt};
+use crate::ext::{BindParams, BufMutExt, StrExt, UsizeExt};
+
+// Data Type Sizes	✅ Yes	e.g., typlen = -1 for variable-length types.
+// Type Modifiers	✅ Yes	e.g., -1 for "no modifier".
 
 // Other Frontend Message:
 // CancelRequest
@@ -32,7 +35,7 @@ pub fn write<F: FrontendProtocol>(msg: F, buf: &mut BytesMut) {
 
     let offset = buf.len();
     buf.put_u8(F::MSGTYPE);
-    buf.put_i32(4 + size);
+    buf.put_u32(4 + size);
 
     msg.encode(&mut *buf);
 
@@ -56,7 +59,7 @@ pub trait FrontendProtocol {
     /// size of the main body
     ///
     /// note that this is *only* the size of main body as oppose of actual postgres message
-    fn size_hint(&self) -> i32;
+    fn size_hint(&self) -> u32;
 
     /// write the main body of the message
     ///
@@ -91,13 +94,13 @@ impl Startup<'_> {
 
         // Length of message contents in bytes, including self.
         // reserve 4 bytes for length
-        buf.put_i32(0);
+        buf.put_u32(0);
 
         // Int32(196608)
         // The protocol version number.
         // The most significant 16 bits are the major version number (3 for the protocol described here).
         // The least significant 16 bits are the minor version number (0 for the protocol described here).
-        buf.put_i32(196608);
+        buf.put_u32(196608);
 
         // The protocol version number is followed by one or more pairs of parameter name and value strings.
 
@@ -141,7 +144,7 @@ impl Startup<'_> {
 
         // write the length
         let mut written_buf = &mut buf[offset..];
-        written_buf.put_i32(written_buf.len().to_i32());
+        written_buf.put_u32(written_buf.len().to_u32());
     }
 }
 
@@ -155,7 +158,7 @@ pub struct PasswordMessage<'a> {
 impl FrontendProtocol for PasswordMessage<'_> {
     const MSGTYPE: u8 = b'p';
 
-    fn size_hint(&self) -> i32 {
+    fn size_hint(&self) -> u32 {
         self.password.nul_string_len()
     }
 
@@ -173,7 +176,7 @@ pub struct Query<'a> {
 impl FrontendProtocol for Query<'_> {
     const MSGTYPE: u8 = b'Q';
 
-    fn size_hint(&self) -> i32 {
+    fn size_hint(&self) -> u32 {
         self.sql.nul_string_len()
     }
 
@@ -194,11 +197,11 @@ pub struct Parse<'a,I> {
     /// only the number that the frontend wants to prespecify types for.
     ///
     /// For each parameter, there is the following `data_types`
-    pub data_types_len: i16,
+    pub oids_len: u16,
     /// Specifies the object ID of the parameter data type.
     ///
     /// Placing a zero here is equivalent to leaving the type unspecified.
-    pub data_types: I,//&'a [i32],
+    pub oids: I,
 }
 
 impl<I> FrontendProtocol for Parse<'_,I>
@@ -207,18 +210,18 @@ where
 {
     const MSGTYPE: u8 = b'P';
 
-    fn size_hint(&self) -> i32 {
+    fn size_hint(&self) -> u32 {
         self.prepare_name.nul_string_len() +
         self.sql.nul_string_len() +
         2 +
-        (self.data_types_len as i32 * 4)
+        (self.oids_len as u32 * 4)
     }
 
     fn encode(self, mut buf: impl BufMut) {
         buf.put_nul_string(self.prepare_name);
         buf.put_nul_string(self.sql);
-        buf.put_i16(self.data_types_len);
-        for dt in self.data_types {
+        buf.put_u16(self.oids_len);
+        for dt in self.oids {
             buf.put_u32(dt);
         }
     }
@@ -230,7 +233,7 @@ pub struct Sync;
 impl FrontendProtocol for Sync {
     const MSGTYPE: u8 = b'S';
 
-    fn size_hint(&self) -> i32 { 0 }
+    fn size_hint(&self) -> u32 { 0 }
 
     fn encode(self, _: impl BufMut) { }
 }
@@ -241,7 +244,7 @@ pub struct Flush;
 impl FrontendProtocol for Flush {
     const MSGTYPE: u8 = b'H';
 
-    fn size_hint(&self) -> i32 { 0 }
+    fn size_hint(&self) -> u32 { 0 }
 
     fn encode(self, _: impl BufMut) { }
 }
@@ -269,7 +272,7 @@ pub struct Bind<'a, ParamFmts, Params, ResultFmts> {
     pub params_len: u16,
 
     /// This is not postgres field, but a workaround helper to get `size_hint` easily.
-    pub params_size_hint: i32,
+    pub params_size_hint: u32,
 
     /// Int32 The length of the parameter value, in bytes (this count does not include itself). Can be zero.
     /// As a special case, -1 indicates a NULL parameter value. No value bytes follow in the NULL case
@@ -298,7 +301,7 @@ impl<'a, ParamFmts, Params, ResultFmts> Bind<'a, ParamFmts, Params, ResultFmts> 
         param_formats_len: u16,
         param_formats: ParamFmts,
         params_len: u16,
-        params_size_hint: i32,
+        params_size_hint: u32,
         params: Params,
         result_formats_len: u16,
         result_formats: ResultFmts,
@@ -325,19 +328,19 @@ impl<'a, ParamFmts, Params, ResultFmts> FrontendProtocol for Bind<'a, ParamFmts,
 where
     ParamFmts: IntoIterator<Item = PgFormat>,
     Params: Iterator,
-    <Params as Iterator>::Item: Buf,
+    <Params as Iterator>::Item: BindParams,
     Params: ExactSizeIterator,
     ResultFmts: IntoIterator<Item = PgFormat>,
 {
     const MSGTYPE: u8 = b'B';
 
-    fn size_hint(&self) -> i32 {
+    fn size_hint(&self) -> u32 {
         self.portal_name.nul_string_len() +
         self.stmt_name.nul_string_len() +
         // self.params_format_len (i16)
         2 +
         // self.params_format_code (i16[])
-        (self.param_formats_len as i32 * 2) +
+        (self.param_formats_len as u32 * 2) +
         // self.params_len (i16)
         2 +
         self.params_size_hint +
@@ -357,7 +360,7 @@ where
         // // self.results_format_len (i16)
         2 +
         // self.results_format_code (i16[])
-        (self.result_formats_len as i32 * 2)
+        (self.result_formats_len as u32 * 2)
     }
 
     fn encode(self, mut buf: impl BufMut) {
@@ -371,28 +374,9 @@ where
 
         buf.put_u16(self.params_len);
         for param in self.params {
-            buf.put_u32(Buf::remaining(&param).to_u32());
+            // can be -1 for NULL
+            buf.put_i32(param.size());
             buf.put(param);
-            // use crate::{encode::Encoded, value::ValueRef::*};
-            // match Encoded::value(param) {
-            //     Null => todo!("how to write NULL ?"),
-            //     Number(num) => {
-            //         buf.put_i32(4);
-            //         buf.put_i32(*num);
-            //     }
-            //     Bool(b) => {
-            //         buf.put_i32(1);
-            //         buf.put_u8(*b as _);
-            //     }
-            //     Text(t) => {
-            //         buf.put_i32(t.len().to_i32());
-            //         buf.put_slice(t.as_bytes());
-            //     }
-            //     Slice(items) => {
-            //         buf.put_i32(items.len().to_i32());
-            //         buf.put_slice(items);
-            //     }
-            // }
         }
 
         buf.put_u16(self.result_formats_len);
@@ -408,13 +392,13 @@ pub struct Execute<'a> {
     pub portal_name: &'a str,
     /// Maximum number of rows to return, if portal contains a query that returns rows
     /// (ignored otherwise). Zero denotes “no limit”.
-    pub max_row: i32,
+    pub max_row: u32,
 }
 
 impl FrontendProtocol for Execute<'_> {
     const MSGTYPE: u8 = b'E';
 
-    fn size_hint(&self) -> i32 {
+    fn size_hint(&self) -> u32 {
         self.portal_name.nul_string_len() +
         // self.max_row
         4
@@ -422,7 +406,7 @@ impl FrontendProtocol for Execute<'_> {
 
     fn encode(self, mut buf: impl BufMut) {
         buf.put_nul_string(self.portal_name);
-        buf.put_i32(self.max_row);
+        buf.put_u32(self.max_row);
     }
 }
 
@@ -438,7 +422,7 @@ pub struct Close<'a> {
 impl FrontendProtocol for Close<'_> {
     const MSGTYPE: u8 = b'C';
 
-    fn size_hint(&self) -> i32 {
+    fn size_hint(&self) -> u32 {
         // self.variant (u8)
         1 +
         self.name.nul_string_len()
@@ -462,7 +446,7 @@ pub struct Describe<'a> {
 impl FrontendProtocol for Describe<'_> {
     const MSGTYPE: u8 = b'D';
 
-    fn size_hint(&self) -> i32 {
+    fn size_hint(&self) -> u32 {
         1 + self.name.nul_string_len()
     }
 

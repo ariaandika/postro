@@ -4,8 +4,6 @@ use bytes::{Buf, Bytes};
 use super::error::{DatabaseError, ProtocolError};
 use crate::ext::BytesExt;
 
-// NOTE: Apparantly, number signess in protocol is good luck figuring out by postgres
-
 /// A type that can be decoded into postgres backend message
 pub trait BackendProtocol: Sized {
     fn decode(msgtype: u8, body: Bytes) -> Result<Self,ProtocolError>;
@@ -147,9 +145,9 @@ impl BackendProtocol for Authentication {
 #[derive(Debug)]
 pub struct BackendKeyData {
     /// The process ID of this backend.
-    pub process_id: i32,
+    pub process_id: u32,
     /// The secret key of this backend.
-    pub secret_key: i32,
+    pub secret_key: u32,
 }
 
 impl BackendKeyData {
@@ -160,8 +158,8 @@ impl BackendProtocol for BackendKeyData {
     fn decode(msgtype: u8, mut body: Bytes) -> Result<Self,ProtocolError> {
         assert_msgtype!(BackendKeyData,msgtype);
         Ok(Self {
-            process_id: body.get_i32(),
-            secret_key: body.get_i32(),
+            process_id: body.get_u32(),
+            secret_key: body.get_u32(),
         })
     }
 }
@@ -330,9 +328,9 @@ impl BackendProtocol for CommandComplete {
 #[derive(Debug)]
 pub struct NegotiateProtocolVersion {
     /// Newest minor protocol version supported by the server for the major protocol version requested by the client.
-    pub minor: i32,
+    pub minor: u32,
     /// Number of protocol options not recognized by the server.
-    pub len: i32,
+    pub len: u32,
     /// Then, for protocol option not recognized by the server, there is the following:
     pub opt_names: Bytes,
 }
@@ -345,8 +343,8 @@ impl BackendProtocol for NegotiateProtocolVersion {
     fn decode(msgtype: u8, mut body: Bytes) -> Result<Self,ProtocolError> {
         assert_msgtype!(NegotiateProtocolVersion,msgtype);
         Ok(Self {
-            minor: body.get_i32(),
-            len: body.get_i32(),
+            minor: body.get_u32(),
+            len: body.get_u32(),
             opt_names: body,
         })
     }
@@ -356,7 +354,7 @@ impl BackendProtocol for NegotiateProtocolVersion {
 #[derive(Debug)]
 pub struct ParameterDescription {
     /// The number of parameters used by the statement (can be zero).
-    pub param_len: i16,
+    pub param_len: u16,
     /// Then, for each parameter, there is the following:
     ///
     /// Specifies the object ID of the parameter data type.
@@ -371,7 +369,7 @@ impl BackendProtocol for ParameterDescription {
     fn decode(msgtype: u8, mut body: Bytes) -> Result<Self,ProtocolError> {
         assert_msgtype!(ParameterDescription,msgtype);
         Ok(Self {
-            param_len: body.get_i16(),
+            param_len: body.get_u16(),
             oids: body,
         })
     }

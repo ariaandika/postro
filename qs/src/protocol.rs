@@ -134,8 +134,8 @@ pub async fn extended_query<IO: PgTransport>(
     io.send(frontend::Parse {
         prepare_name: PREPARE_NAME,
         sql,
-        data_types_len: args.len() as _,
-        data_types: args.iter().map(crate::encode::Encoded::oid),
+        oids_len: args.len() as _,
+        oids: args.iter().map(crate::encode::Encoded::oid),
     });
 
     // Once a prepared statement exists, it can be readied for execution using a Bind message.

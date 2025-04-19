@@ -3,7 +3,7 @@ use crate::{
     Result,
     common::general,
     transport::PgTransport,
-    postgres::{BackendMessage, backend, PgFormat, error::ProtocolError, frontend},
+    postgres::{BackendMessage, backend, error::ProtocolError, frontend},
     options::startup::StartupOptions,
     row::RowBuffer,
 };

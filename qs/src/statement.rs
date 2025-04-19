@@ -59,12 +59,11 @@ macro_rules! delegate {
         pub struct $name(Id);
 
         impl $name {
-            #[allow(unused)]
             pub(crate) fn unnamed() -> Self {
                 Self(Id::unnamed())
             }
 
-            #[allow(unused)]
+            #[allow(unused)] // Portal `next` used later
             pub(crate) fn next() -> Self {
                 static ID: AtomicId = AtomicId::new(0);
                 Self(Id::next(&ID))

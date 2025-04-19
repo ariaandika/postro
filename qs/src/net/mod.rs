@@ -1,4 +1,4 @@
 mod socket;
 
-pub use socket::{ReadBuf, Socket, WriteAllBuf};
+pub use socket::{Socket, WriteAllBuf};
 

@@ -25,11 +25,6 @@ impl<T, const S: usize> Stack<T, S> {
         None
     }
 
-    #[must_use]
-    pub const fn is_empty(&self) -> bool {
-        self.len == 0
-    }
-
     pub const fn len(&self) -> usize {
         self.len
     }

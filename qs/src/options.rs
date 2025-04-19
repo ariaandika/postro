@@ -8,10 +8,10 @@ use crate::{
 
 /// postgres connection options
 #[derive(Debug)]
-#[allow(unused)]
 pub struct PgOptions {
     pub(crate) user: ByteStr,
     pub(crate) pass: ByteStr,
+    #[allow(unused)] // socket used later
     pub(crate) socket: Option<ByteStr>,
     pub(crate) host: ByteStr,
     pub(crate) port: u16,

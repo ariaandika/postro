@@ -14,7 +14,7 @@ pub struct Encoded<'q> {
 }
 
 impl<'q> Encoded<'q> {
-    pub fn new(value: ValueRef<'q>, oid: Oid) -> Self {
+    pub(crate) fn new(value: ValueRef<'q>, oid: Oid) -> Self {
         Self { value, oid }
     }
 

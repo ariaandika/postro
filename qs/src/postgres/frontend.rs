@@ -4,10 +4,7 @@
 use bytes::{Buf, BufMut, BytesMut};
 
 use super::{Oid, PgFormat};
-use crate::{
-    encode::Encoded,
-    ext::{BufMutExt, StrExt, UsizeExt},
-};
+use crate::ext::{BufMutExt, StrExt, UsizeExt};
 
 // Other Frontend Message:
 // CancelRequest

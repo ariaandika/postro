@@ -9,19 +9,6 @@ use crate::ext::{BindParams, BufMutExt, StrExt, UsizeExt};
 // Data Type Sizes	✅ Yes	e.g., typlen = -1 for variable-length types.
 // Type Modifiers	✅ Yes	e.g., -1 for "no modifier".
 
-// Other Frontend Message:
-// CancelRequest
-// CopyData('d')
-// CopyDone('c')
-// CopyFail('f')
-// FunctionCall('F')
-// GSSENCRequest
-// GSSENCResponse('p')
-// SASLInitialResponse('p')
-// SASLResponse('p')
-// SSLRequest
-// Terminate('X')
-
 /// write a frontend message to `buf`
 ///
 /// to write multiple message at the same time, use [`write_batch`]
@@ -148,6 +135,15 @@ impl Startup<'_> {
     }
 }
 
+macro_rules! size_of {
+    ($s1:tt.$f1:ident in ..$s2:tt.$f2:ident) => {
+        ($s2.$f2 as u32 * u32::try_from(size_of_val(&$s1.$f1)).expect("data type size too large for postgres"))
+    };
+    ($self:tt.$field:ident) => {
+        u32::try_from(size_of_val(&$self.$field)).expect("data type size too large for postgres")
+    };
+}
+
 /// Identifies the message as a Parse-complete indicator.
 #[derive(Debug)]
 pub struct PasswordMessage<'a> {
@@ -211,18 +207,18 @@ where
     const MSGTYPE: u8 = b'P';
 
     fn size_hint(&self) -> u32 {
-        self.prepare_name.nul_string_len() +
-        self.sql.nul_string_len() +
-        2 +
-        (self.oids_len as u32 * 4)
+        self.prepare_name.nul_string_len()
+            + self.sql.nul_string_len()
+            + size_of!(self.oids_len)
+            + size_of!(self.oids in ..self.oids_len)
     }
 
     fn encode(self, mut buf: impl BufMut) {
         buf.put_nul_string(self.prepare_name);
         buf.put_nul_string(self.sql);
         buf.put_u16(self.oids_len);
-        for dt in self.oids {
-            buf.put_u32(dt);
+        for oid in self.oids {
+            buf.put_u32(oid);
         }
     }
 }
@@ -294,36 +290,6 @@ pub struct Bind<'a, ParamFmts, Params, ResultFmts> {
     pub result_formats: ResultFmts,
 }
 
-impl<'a, ParamFmts, Params, ResultFmts> Bind<'a, ParamFmts, Params, ResultFmts> {
-    pub fn new(
-        portal_name: &'a str,
-        stmt_name: &'a str,
-        param_formats_len: u16,
-        param_formats: ParamFmts,
-        params_len: u16,
-        params_size_hint: u32,
-        params: Params,
-        result_formats_len: u16,
-        result_formats: ResultFmts,
-    ) -> Self {
-        Self {
-            portal_name,
-            stmt_name,
-            param_formats_len,
-            param_formats,
-            params_len,
-            params_size_hint,
-            params,
-            result_formats_len,
-            result_formats,
-        }
-    }
-}
-
-// NOTE: idk how to properly abstract the Params,
-// number `to_be_bytes()` cannot be returned
-// from function
-
 impl<'a, ParamFmts, Params, ResultFmts> FrontendProtocol for Bind<'a, ParamFmts, Params, ResultFmts>
 where
     ParamFmts: IntoIterator<Item = PgFormat>,
@@ -335,32 +301,14 @@ where
     const MSGTYPE: u8 = b'B';
 
     fn size_hint(&self) -> u32 {
-        self.portal_name.nul_string_len() +
-        self.stmt_name.nul_string_len() +
-        // self.params_format_len (i16)
-        2 +
-        // self.params_format_code (i16[])
-        (self.param_formats_len as u32 * 2) +
-        // self.params_len (i16)
-        2 +
-        self.params_size_hint +
-        // IntoIterator::into_iter(&self.params)
-        //     .fold(0i32, |acc,n|{
-        //         acc + Buf::remaining(&n).to_i32()
-        //         // use crate::value::ValueRef::*;
-        //         // let len_and_data = match Encoded::value(n) {
-        //         //     Null => todo!("what the length of NULL ?"),
-        //         //     Bool(_) => 4 + 1,
-        //         //     Number(_) => 4 + 4,
-        //         //     Text(t) => 4 + t.len().to_i32(),
-        //         //     Slice(s) => 4 + s.len().to_i32(),
-        //         // };
-        //         // acc + len_and_data
-        //     }) +
-        // // self.results_format_len (i16)
-        2 +
-        // self.results_format_code (i16[])
-        (self.result_formats_len as u32 * 2)
+        self.portal_name.nul_string_len()
+            + self.stmt_name.nul_string_len()
+            + size_of!(self.param_formats_len)
+            + size_of!(self.param_formats in ..self.param_formats_len)
+            + size_of!(self.params_len)
+            + self.params_size_hint
+            + size_of!(self.result_formats_len)
+            + size_of!(self.result_formats in ..self.result_formats_len)
     }
 
     fn encode(self, mut buf: impl BufMut) {
@@ -399,9 +347,7 @@ impl FrontendProtocol for Execute<'_> {
     const MSGTYPE: u8 = b'E';
 
     fn size_hint(&self) -> u32 {
-        self.portal_name.nul_string_len() +
-        // self.max_row
-        4
+        self.portal_name.nul_string_len() + size_of!(self.max_row)
     }
 
     fn encode(self, mut buf: impl BufMut) {
@@ -423,9 +369,7 @@ impl FrontendProtocol for Close<'_> {
     const MSGTYPE: u8 = b'C';
 
     fn size_hint(&self) -> u32 {
-        // self.variant (u8)
-        1 +
-        self.name.nul_string_len()
+        size_of!(self.variant) + self.name.nul_string_len()
     }
 
     fn encode(self, mut buf: impl BufMut) {
@@ -447,7 +391,7 @@ impl FrontendProtocol for Describe<'_> {
     const MSGTYPE: u8 = b'D';
 
     fn size_hint(&self) -> u32 {
-        1 + self.name.nul_string_len()
+        size_of!(self.kind) + self.name.nul_string_len()
     }
 
     fn encode(self, mut buf: impl BufMut) {

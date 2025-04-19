@@ -67,7 +67,7 @@ mod recv {
     };
 
     use super::PgStream;
-    use crate::{postgres::{backend::ErrorResponse, BackendProtocol}, Error, Result};
+    use crate::Result;
 
     pin_project_lite::pin_project! {
         #[derive(Debug)]
@@ -101,6 +101,7 @@ mod recv {
         fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
             use std::task::ready;
             use bytes::Buf;
+            use crate::{postgres::{backend::ErrorResponse, BackendProtocol}, Error};
 
             let RecvProject { stream, state, .. } = self.as_mut().project();
 
@@ -148,6 +149,7 @@ mod recv {
         type Output = Result<B>;
 
         fn poll(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Self::Output> {
+            let _ = crate::io::poll_read::<crate::net::Socket, bytes::BytesMut>;
             let _ = &self.stream.read_buf;
             let _ = State::ReadSocket;
             panic!("runtime disabled")

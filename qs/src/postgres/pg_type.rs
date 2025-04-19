@@ -5,30 +5,30 @@ pub trait PgType {
     const OID: Oid;
 }
 
-impl<T> PgType for &T where T: PgType {
-    const OID: Oid = T::OID;
+// json, 114, "JSON stored as text"
+// jsonb, 3802, "Binary JSON"
+// date, 1082, "date"
+// time, 1083, "time of day"
+// timestamp, 1114, "date and time"
+// timestamptz, 1184, "date and time with timezone"
+
+macro_rules! oid {
+    ($ty:ty, $oid:literal $(, $doc:literal)? ) => {
+        impl PgType for $ty {
+            $(#[doc = $doc])?
+            const OID: Oid = $oid;
+        }
+    };
 }
 
-// Self::Int4 => 23,
-// Self::Date => 1082,
-
-impl PgType for () {
-    const OID: Oid = 0;
-}
-
-impl PgType for bool {
-    const OID: Oid = 16;
-}
-
-impl PgType for i32 {
-    const OID: Oid = 20;
-}
-
-impl PgType for str {
-    const OID: Oid = 25;
-}
-
-impl PgType for String {
-    const OID: Oid = 25;
-}
+oid!((), 0);
+oid!(bool, 16);
+oid!(char, 18);
+oid!(i64, 20, "`int8` ~18 digit integer, 8-byte storage");
+oid!(i16, 21, "`int2` -32 thousand to 32 thousand, 2-byte storage");
+oid!(i32, 23, "`int4` -2 billion to 2 billion integer, 4-byte storage");
+oid!(str, 25, "`text` variable-length string, no limit specified");
+oid!(String, 25, "`text` variable-length string, no limit specified");
+oid!(f32, 700, "`float4` single-precision floating point number, 4-byte storage");
+oid!(f64, 701, "`float8` double-precision floating point number, 8-byte storage");
 

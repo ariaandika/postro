@@ -22,6 +22,9 @@ pub enum Error {
     #[error("Database error: {0}")]
     Database(#[from] DatabaseError),
 
+    #[error("Auth not supported")]
+    UnsupportedAuth,
+
     #[error(transparent)]
     Other(BoxError)
 }

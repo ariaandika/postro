@@ -1,67 +1,52 @@
 //! Protocol error
-use crate::common::{general, BoxError};
-
 mod database;
 
 pub use database::DatabaseError;
 
-macro_rules! protocol_err {
-    (%$str:literal) => {
-        crate::message::error::ProtocolError::new($str)
-    };
-    ($($tt:tt)*) => {
-        crate::message::error::ProtocolError::new(format!($($tt)*))
-    };
-}
-
-pub(crate) use protocol_err;
+use super::BackendMessage;
 
 /// An error when translating buffer from postgres
 #[derive(Debug, thiserror::Error)]
-#[error("backend protocol error: {source}")]
-pub struct ProtocolError {
-    source: BoxError,
+pub enum ProtocolError {
+    #[error("TODO")]
+    Unexpected {
+        expect: Option<u8>,
+        found: u8,
+        phase: Option<&'static str>,
+    },
+    #[error("TODO")]
+    UnknownAuth {
+        auth: u32,
+    },
 }
 
 impl ProtocolError {
-    /// create new [`ProtocolError`]
-    pub fn new(source: impl Into<BoxError>) -> Self {
-        Self { source: source.into() }
-    }
-
-    pub fn no_nul_string() -> ProtocolError {
-        Self { source: general!(%"no nul found in string").into(), }
-    }
-
-    pub fn non_utf8(err: impl std::fmt::Display) -> ProtocolError {
-        Self { source: general!("non UTF-8 string: {err}").into(), }
-    }
-
-    pub fn unexpected_phase(found: u8, phase: &str) -> ProtocolError {
-        Self {
-            source: general!("unexpected ({}) in {phase}", found as char).into(),
+    pub(crate) fn unknown(found: u8) -> ProtocolError {
+        Self::Unexpected {
+            expect: None,
+            found,
+            phase: None,
         }
     }
 
-    pub fn unexpected(expect: &str, expecttype: u8, found: u8) -> ProtocolError {
-        Self {
-            source: general!(
-                "expected {expect}({}) found ({:?})",
-                expecttype as char, found as char,
-            ).into(),
+    pub(crate) fn unexpected(expect: u8, found: u8) -> ProtocolError {
+        Self::Unexpected {
+            expect: Some(expect),
+            found,
+            phase: None,
         }
     }
 
-    pub fn unknown(msgtype: u8) -> ProtocolError {
-        Self {
-            source: general!("unknown message type: {:?}", msgtype as char).into(),
+    pub(crate) fn unexpected_phase(found: u8, phase: &'static str) -> ProtocolError {
+        Self::Unexpected {
+            expect: None,
+            found,
+            phase: Some(phase),
         }
     }
 
-    pub fn unknown_auth(auth_method: i32) -> ProtocolError {
-        Self {
-            source: general!("unknown authentication method: ({auth_method})").into(),
-        }
+    pub(crate) fn unknown_auth(auth: u32) -> ProtocolError {
+        Self::UnknownAuth { auth }
     }
 }
 

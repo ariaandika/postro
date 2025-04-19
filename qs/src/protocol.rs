@@ -1,20 +1,19 @@
 //! Postgres Protocol Operations
 use crate::{
-    Result,
-    common::general,
-    transport::PgTransport,
-    postgres::{BackendMessage, backend, error::ProtocolError, frontend},
+    Error, Result,
     options::startup::StartupOptions,
+    postgres::{BackendMessage, backend, error::ProtocolError, frontend},
     row::RowBuffer,
+    transport::PgTransport,
 };
 
-/// startup phase successful response
+/// Startup phase successful response.
 pub struct StartupResponse {
     pub backend_key_data: backend::BackendKeyData,
     pub param_status: Vec<backend::ParameterStatus>,
 }
 
-/// perform a startup message
+/// Perform a startup message.
 ///
 /// <https://www.postgresql.org/docs/17/protocol-flow.html#PROTOCOL-FLOW-START-UP>
 pub async fn startup<'a, IO: PgTransport>(
@@ -43,19 +42,16 @@ pub async fn startup<'a, IO: PgTransport>(
 
     loop {
         use backend::Authentication::*;
-        let auth = io.recv::<backend::Authentication>().await?;
-        match auth {
+        match io.recv().await? {
             // we gucci
             Ok => break,
-            // The frontend must now send a PasswordMessage containing the password in clear-text form
+            // The frontend must now send a PasswordMessage containing the password in clear-text form.
             CleartextPassword => {
                 io.send(frontend::PasswordMessage { password: opt.get_password().unwrap_or_default() });
                 io.flush().await?;
             },
             // TODO: support more authentication method
-            _ => Err(ProtocolError::new(general!(
-                "authentication {auth:?} is not yet supported",
-            )))?
+            _ => Err(Error::UnsupportedAuth)?
         }
     }
 

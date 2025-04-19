@@ -2,7 +2,7 @@
 use crate::{
     Error, Result,
     options::startup::StartupOptions,
-    postgres::{BackendMessage, backend, error::ProtocolError, frontend},
+    postgres::{BackendMessage, backend, ProtocolError, frontend},
     row::RowBuffer,
     transport::PgTransport,
 };

@@ -1,6 +1,9 @@
 use bytes::Bytes;
 
-use crate::{common::{BytesRef, LossyStr}, postgres::backend::NoticeResponse};
+use crate::{
+    common::{BytesRef, LossyStr},
+    postgres::backend::{ErrorResponse, NoticeResponse},
+};
 
 /// Lazily Decode error from [`ErrorResponse`] body
 ///
@@ -14,8 +17,8 @@ pub struct DatabaseError {
 }
 
 impl DatabaseError {
-    pub fn from_error_response(body: Bytes) -> DatabaseError {
-        Self { body }
+    pub fn new(error: ErrorResponse) -> Self {
+        Self { body: error.body }
     }
 }
 
@@ -222,5 +225,3 @@ impl MessageFields {
         }
     }
 }
-
-

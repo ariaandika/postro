@@ -67,7 +67,7 @@ mod recv {
     };
 
     use super::PgStream;
-    use crate::Result;
+    use crate::{dberror::DatabaseError, Result};
 
     pin_project_lite::pin_project! {
         #[derive(Debug)]
@@ -128,7 +128,7 @@ mod recv {
 
                         if msgtype == ErrorResponse::MSGTYPE {
                             let err = ErrorResponse::decode(msgtype, body).unwrap();
-                            return Poll::Ready(Err(Error::Database(err.to_db_error())));
+                            return Poll::Ready(Err(Error::Database(DatabaseError::new(err))));
                         }
 
                         let msg = B::decode(msgtype, body)?;

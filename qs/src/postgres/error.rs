@@ -1,7 +1,4 @@
 //! Protocol error
-mod database;
-
-pub use database::DatabaseError;
 
 /// An error when translating buffer from postgres
 #[derive(Debug, thiserror::Error)]

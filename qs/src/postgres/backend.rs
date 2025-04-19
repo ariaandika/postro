@@ -1,7 +1,7 @@
 //! Postgres Backend Messages
 use bytes::{Buf, Bytes};
 
-use super::error::{DatabaseError, ProtocolError};
+use super::ProtocolError;
 use crate::ext::BytesExt;
 
 /// A type that can be decoded into postgres backend message
@@ -82,14 +82,14 @@ match_backend! {
     RowDescription,
 }
 
-impl BackendMessage {
-    pub fn try_dberror(self) -> Result<Self, DatabaseError> {
-        match self {
-            Self::ErrorResponse(err) => Err(err.to_db_error()),
-            ok => Ok(ok),
-        }
-    }
-}
+// impl BackendMessage {
+//     pub fn try_dberror(self) -> Result<Self, DatabaseError> {
+//         match self {
+//             Self::ErrorResponse(err) => Err(err.to_db_error()),
+//             ok => Ok(ok),
+//         }
+//     }
+// }
 
 macro_rules! assert_msgtype {
     ($typ:ident) => {
@@ -252,9 +252,9 @@ pub struct ErrorResponse {
 impl ErrorResponse {
     pub const MSGTYPE: u8 = b'E';
 
-    pub fn to_db_error(self) -> DatabaseError {
-        DatabaseError::from_error_response(self.body)
-    }
+    // pub fn to_db_error(self) -> DatabaseError {
+    //     DatabaseError::from_error_response(self.body)
+    // }
 }
 
 impl BackendProtocol for ErrorResponse {

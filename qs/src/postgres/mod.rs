@@ -38,11 +38,13 @@ mod pg_format;
 
 pub mod frontend;
 pub mod backend;
-pub mod error;
+
+mod error;
 
 pub use pg_type::{Oid, PgType};
 pub use pg_format::PgFormat;
 
 pub use frontend::FrontendProtocol;
 pub use backend::{BackendProtocol, BackendMessage};
+pub use error::ProtocolError;
 

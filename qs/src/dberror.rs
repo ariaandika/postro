@@ -1,36 +1,17 @@
-use bytes::Bytes;
-
 use crate::{
     common::{BytesRef, LossyStr},
     postgres::backend::{ErrorResponse, NoticeResponse},
 };
 
-/// Lazily Decode error from [`ErrorResponse`] body
-///
-/// for detail of the body form, see [`MessageFields`]
-///
-/// <https://www.postgresql.org/docs/current/protocol-error-fields.html>
-///
-/// [`ErrorResponse`]: crate::message::backend::ErrorResponse
-pub struct DatabaseError {
-    body: Bytes,
-}
+impl std::error::Error for ErrorResponse { }
 
-impl DatabaseError {
-    pub fn new(error: ErrorResponse) -> Self {
-        Self { body: error.body }
-    }
-}
-
-impl std::error::Error for DatabaseError { }
-
-impl std::fmt::Debug for DatabaseError {
+impl std::fmt::Debug for ErrorResponse {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         std::fmt::Debug::fmt(&BytesRef(&self.body), f)
     }
 }
 
-impl std::fmt::Display for DatabaseError {
+impl std::fmt::Display for ErrorResponse {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         MessageFields::display(&self.body, f)
     }

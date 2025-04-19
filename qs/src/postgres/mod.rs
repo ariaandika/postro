@@ -45,6 +45,6 @@ pub use pg_type::{Oid, PgType};
 pub use pg_format::PgFormat;
 
 pub use frontend::FrontendProtocol;
-pub use backend::{BackendProtocol, BackendMessage};
+pub use backend::{BackendMessage, BackendProtocol, ErrorResponse, NoticeResponse};
 pub use error::ProtocolError;
 

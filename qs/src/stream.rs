@@ -67,7 +67,7 @@ mod recv {
     };
 
     use super::PgStream;
-    use crate::{dberror::DatabaseError, Result};
+    use crate::{postgres::backend::NoticeResponse, Result};
 
     pin_project_lite::pin_project! {
         #[derive(Debug)]
@@ -126,14 +126,18 @@ mod recv {
                         stream.read_buf.advance(5);
                         let body = stream.read_buf.split_to(len - 4).freeze();
 
-                        if msgtype == ErrorResponse::MSGTYPE {
-                            let err = ErrorResponse::decode(msgtype, body).unwrap();
-                            return Poll::Ready(Err(Error::Database(DatabaseError::new(err))));
-                        }
+                        let res = match msgtype {
+                            ErrorResponse::MSGTYPE => {
+                                let err = ErrorResponse::decode(msgtype, body).unwrap();
+                                Err(Error::Database(err))?
+                            }
+                            NoticeResponse::MSGTYPE => {
+                                todo!()
+                            }
+                            _ => B::decode(msgtype, body)?,
+                        };
 
-                        let msg = B::decode(msgtype, body)?;
-
-                        return Poll::Ready(Ok(msg));
+                        return Poll::Ready(Ok(res));
                     },
                     State::ReadSocket => {
                         ready!(crate::io::poll_read(&mut stream.socket, &mut stream.read_buf, cx)?);

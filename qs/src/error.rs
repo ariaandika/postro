@@ -2,8 +2,7 @@ use std::io;
 
 use crate::{
     common::BoxError,
-    postgres::ProtocolError,
-    dberror::DatabaseError,
+    postgres::{ProtocolError, ErrorResponse},
 };
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
@@ -21,7 +20,7 @@ pub enum Error {
     Io(#[from]#[source] io::Error),
 
     #[error("Database error: {0}")]
-    Database(#[from] DatabaseError),
+    Database(#[from] ErrorResponse),
 
     #[error("Auth not supported")]
     UnsupportedAuth,

@@ -243,18 +243,12 @@ impl BackendProtocol for NoticeResponse {
 /// frontends should silently ignore fields of unrecognized type.
 ///
 /// `String` The field value.
-#[derive(Debug, thiserror::Error)]
-#[error("{body:?}")]
 pub struct ErrorResponse {
     pub body: Bytes,
 }
 
 impl ErrorResponse {
     pub const MSGTYPE: u8 = b'E';
-
-    // pub fn to_db_error(self) -> DatabaseError {
-    //     DatabaseError::from_error_response(self.body)
-    // }
 }
 
 impl BackendProtocol for ErrorResponse {

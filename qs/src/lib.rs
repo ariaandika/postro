@@ -45,7 +45,7 @@ pub mod encode;
 pub mod value;
 
 // Component
-pub mod dberror;
+mod dberror;
 pub mod statement;
 pub mod row;
 

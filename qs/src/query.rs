@@ -4,10 +4,11 @@ use crate::{
     Result,
     common::Stack,
     encode::{Encode, Encoded},
-    transport::PgTransport,
-    postgres::{backend, PgFormat, frontend},
+    ext::UsizeExt,
+    postgres::{PgFormat, backend, frontend},
     row::{RowBuffer, RowDecoder},
     statement::{PortalName, StatementName},
+    transport::PgTransport,
 };
 
 pub trait FromRow: Sized {
@@ -77,16 +78,19 @@ where
 
         let portal = PortalName::unnamed();
 
-        self.io.send(frontend::Bind {
-            portal_name: portal.as_str(),
-            stmt_name: stmt.as_str(),
-            param_formats_len: 1,
-            param_formats: [PgFormat::Binary],
-            params_len: self.params.len().try_into().unwrap(),
-            params: self.params.as_slice(),
-            result_formats_len: 1,
-            result_formats: [PgFormat::Binary],
-        });
+        self.io.send(frontend::Bind::new(
+            portal.as_str(),
+            stmt.as_str(),
+            1,
+            [PgFormat::Binary],
+            self.params.len().to_u16(),
+            self.params.iter().fold(0, |acc,n|{
+                acc + 4 + n.value().len().to_i32()
+            }),
+            self.params.into_iter().map(|e|e.into_value()),
+            1,
+            [PgFormat::Binary],
+        ));
         self.io.send(frontend::Describe {
             kind: b'P',
             name: portal.as_str(),

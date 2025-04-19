@@ -140,16 +140,19 @@ pub async fn extended_query<IO: PgTransport>(
 
     // Once a prepared statement exists, it can be readied for execution using a Bind message.
 
-    io.send(frontend::Bind {
-        portal_name: PORTAL_NAME,
-        stmt_name: PREPARE_NAME,
-        param_formats_len: 1,
-        param_formats: [PgFormat::Binary],
-        params_len: args.len().try_into().unwrap(),
-        params: args,
-        result_formats_len: 1,
-        result_formats: [PgFormat::Binary],
-    });
+    if 1 == 1 {
+        // io.send(frontend::Bind {
+        //     portal_name: PORTAL_NAME,
+        //     stmt_name: PREPARE_NAME,
+        //     param_formats_len: 1,
+        //     param_formats: [PgFormat::Binary],
+        //     params_len: args.len().try_into().unwrap(),
+        //     params: args,
+        //     result_formats_len: 1,
+        //     result_formats: [PgFormat::Binary],
+        // });
+        todo!()
+    }
 
     // Once a portal exists, it can be executed using an Execute message
 

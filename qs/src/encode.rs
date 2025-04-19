@@ -1,20 +1,16 @@
 use crate::postgres::{PgType, Oid};
 use crate::value::ValueRef;
 
-/// postgres encoded value
+/// Value that can be encoded to be bound to sql parameter.
+pub trait Encode<'q> {
+    fn encode(self) -> Encoded<'q>;
+}
+
+/// Postgres encoded value.
 #[derive(Debug)]
 pub struct Encoded<'q> {
     value: ValueRef<'q>,
     oid: Oid,
-}
-
-impl Default for Encoded<'_> {
-    fn default() -> Self {
-        Self {
-            value: ValueRef::Null,
-            oid: <()>::OID,
-        }
-    }
 }
 
 impl<'q> Encoded<'q> {
@@ -22,7 +18,11 @@ impl<'q> Encoded<'q> {
         Self { value, oid }
     }
 
-    pub fn value(&self) -> &ValueRef<'q> {
+    pub(crate) fn into_value(self) -> ValueRef<'q> {
+        self.value
+    }
+
+    pub(crate) fn value(&self) -> &ValueRef<'q> {
         &self.value
     }
 
@@ -31,53 +31,34 @@ impl<'q> Encoded<'q> {
     }
 }
 
-/// value that can be encoded to be bound to sql parameter
-pub trait Encode<'q> {
-    fn encode(self) -> Encoded<'q>;
-}
-
-impl Encode<'static> for bool {
-    fn encode(self) -> Encoded<'static> {
-        Encoded {
-            value: ValueRef::Bool(self),
-            oid: bool::OID,
+impl Default for Encoded<'_> {
+    fn default() -> Self {
+        Self {
+            value: ().into(),
+            oid: <()>::OID,
         }
     }
 }
 
-impl Encode<'static> for i32 {
-    fn encode(self) -> Encoded<'static> {
-        Encoded {
-            value: self.into(),
-            oid: i32::OID,
+macro_rules! encode {
+    (<$lf:tt>$ty:ty) => {
+        impl<$lf> Encode<$lf> for &$lf $ty {
+            fn encode(self) -> Encoded<$lf> {
+                Encoded { value: self.into(), oid: <$ty>::OID, }
+            }
         }
-    }
+    };
+    ($ty:ty) => {
+        impl Encode<'static> for $ty {
+            fn encode(self) -> Encoded<'static> {
+                Encoded { value: self.into(), oid: Self::OID, }
+            }
+        }
+    };
 }
 
-impl<'q> Encode<'q> for &'q str {
-    fn encode(self) -> Encoded<'q> {
-        Encoded {
-            value: self.into(),
-            oid: str::OID,
-        }
-    }
-}
-
-impl Encode<'static> for String {
-    fn encode(self) -> Encoded<'static> {
-        Encoded {
-            value: self.into(),
-            oid: String::OID,
-        }
-    }
-}
-
-impl<'q> Encode<'q> for &'q String {
-    fn encode(self) -> Encoded<'q> {
-        Encoded {
-            value: self.into(),
-            oid: String::OID,
-        }
-    }
-}
+encode!(bool);
+encode!(i32);
+encode!(<'a> str);
+encode!(<'a> String);
 

@@ -5,6 +5,10 @@ pub trait PgType {
     const OID: Oid;
 }
 
+impl<T> PgType for &T where T: PgType {
+    const OID: Oid = T::OID;
+}
+
 // Self::Int4 => 23,
 // Self::Date => 1082,
 

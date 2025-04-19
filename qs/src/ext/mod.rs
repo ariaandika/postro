@@ -7,6 +7,9 @@ pub trait UsizeExt {
     /// length is usize in rust, while postgres want i32,
     /// this will panic when overflow instead of wrapping
     fn to_i32(self) -> i32;
+    /// length is usize in rust, while sometime postgres want u32,
+    /// this will panic when overflow instead of wrapping
+    fn to_u32(self) -> u32;
     /// length is usize in rust, while sometime postgres want i16,
     /// this will panic when overflow instead of wrapping
     fn to_i16(self) -> i16;
@@ -17,24 +20,19 @@ pub trait UsizeExt {
 
 impl UsizeExt for usize {
     fn to_i32(self) -> i32 {
-        match i32::try_from(self) {
-            Ok(ok) => ok,
-            Err(err) => panic!("message size too large for protocol: {err}"),
-        }
+        self.try_into().expect("message size too large for protocol: {err}")
+    }
+
+    fn to_u32(self) -> u32 {
+        self.try_into().expect("message size too large for protocol: {err}")
     }
 
     fn to_i16(self) -> i16 {
-        match i16::try_from(self) {
-            Ok(ok) => ok,
-            Err(err) => panic!("message size too large for protocol: {err}"),
-        }
+        self.try_into().expect("message size too large for protocol: {err}")
     }
 
     fn to_u16(self) -> u16 {
-        match u16::try_from(self) {
-            Ok(ok) => ok,
-            Err(err) => panic!("message size too large for protocol: {err}"),
-        }
+        self.try_into().expect("message size too large for protocol: {err}")
     }
 }
 

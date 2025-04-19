@@ -1,73 +1,79 @@
-use bytes::Bytes;
+use bytes::{Buf, Bytes};
+
+const OWNED_LEN: usize = 31;
 
 #[derive(Debug)]
-pub enum ValueRef<'a> {
-    Null,
-    Bool(bool),
-    Number(i32),
-    Text(&'a str),
-    String(String),
+pub(crate) enum ValueRef<'a> {
     Slice(&'a [u8]),
-    Bytes(Bytes),
+    Inline {
+        offset: usize,
+        value: [u8;OWNED_LEN],
+    },
+    Bytes(Bytes)
 }
 
-impl From<()> for ValueRef<'static> {
-    fn from(_: ()) -> Self {
-        Self::Null
+macro_rules! from {
+    (($fr:ty: $pt:pat) => $body:expr) => {
+        impl From<$fr> for ValueRef<'static> {
+            fn from($pt: $fr) -> Self { $body }
+        }
+    };
+    (<$lf:tt>($fr:ty: $pt:pat) => $body:expr) => {
+        impl<$lf> From<&$lf $fr> for ValueRef<$lf> {
+            fn from($pt: &$lf $fr) -> Self { $body }
+        }
+    };
+}
+
+from!(((): _) => Self::Slice(&[]));
+from!((i32: v) => Self::copy_from_slice(&v.to_be_bytes()));
+from!((bool: v) => Self::copy_from_slice(&(v as u8).to_be_bytes()));
+from!(<'a>(str: v) => Self::Slice(v.as_bytes()));
+from!(<'a>([u8]: v) => Self::Slice(v));
+from!(<'a>(String: v) => Self::Slice(v.as_bytes()));
+from!(<'a>(Vec<u8>: v) => Self::Slice(v));
+
+impl<'a> ValueRef<'a> {
+    pub(crate) fn copy_from_slice(slice: &[u8]) -> ValueRef<'static> {
+        let len = slice.len();
+        assert!(len > OWNED_LEN, "inline slice is too large");
+        let mut value = [0u8;OWNED_LEN];
+        value[OWNED_LEN - len..].copy_from_slice(slice);
+        ValueRef::Inline { offset: OWNED_LEN - len, value }
+    }
+
+    pub(crate) fn len(&self) -> usize {
+        match self {
+            ValueRef::Slice(items) => items.len(),
+            ValueRef::Inline { offset, .. } => OWNED_LEN - offset,
+            ValueRef::Bytes(bytes) => bytes.len(),
+        }
     }
 }
 
-impl From<i32> for ValueRef<'static> {
-    fn from(value: i32) -> Self {
-        Self::Number(value)
+impl Buf for ValueRef<'_> {
+    fn remaining(&self) -> usize {
+        match self {
+            ValueRef::Slice(items) => Buf::remaining(items),
+            ValueRef::Inline { offset, .. } => OWNED_LEN - offset,
+            ValueRef::Bytes(bytes) => Buf::remaining(bytes),
+        }
     }
-}
 
-impl From<bool> for ValueRef<'static> {
-    fn from(value: bool) -> Self {
-        Self::Bool(value)
+    fn chunk(&self) -> &[u8] {
+        match self {
+            ValueRef::Slice(items) => Buf::chunk(items),
+            ValueRef::Inline { offset, value } => &value[*offset..],
+            ValueRef::Bytes(bytes) => Buf::chunk(bytes),
+        }
     }
-}
 
-impl<'a> From<&'a str> for ValueRef<'a> {
-    fn from(value: &'a str) -> Self {
-        Self::Text(value)
-    }
-}
-
-impl From<String> for ValueRef<'static> {
-    fn from(value: String) -> Self {
-        Self::String(value)
-    }
-}
-
-impl<'a> From<&'a String> for ValueRef<'a> {
-    fn from(value: &'a String) -> Self {
-        Self::Text(value.as_str())
-    }
-}
-
-impl<'a> From<&'a [u8]> for ValueRef<'a> {
-    fn from(value: &'a [u8]) -> Self {
-        Self::Slice(value)
-    }
-}
-
-impl From<Vec<u8>> for ValueRef<'static> {
-    fn from(value: Vec<u8>) -> Self {
-        Self::Bytes(value.into())
-    }
-}
-
-impl<'a> From<&'a Vec<u8>> for ValueRef<'a> {
-    fn from(value: &'a Vec<u8>) -> Self {
-        Self::Slice(value.as_slice())
-    }
-}
-
-impl From<Bytes> for ValueRef<'static> {
-    fn from(value: Bytes) -> Self {
-        Self::Bytes(value)
+    fn advance(&mut self, cnt: usize) {
+        match self {
+            ValueRef::Slice(items) => Buf::advance(items, cnt),
+            ValueRef::Inline { offset, .. } => *offset += cnt,
+            ValueRef::Bytes(bytes) => Buf::advance(bytes, cnt),
+        }
     }
 }
 

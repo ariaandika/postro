@@ -1,7 +1,7 @@
 //! Postgres Frontend Messages
 //!
 //! All struct fields here mirror the actual message sent to postgres.
-use bytes::{BufMut, BytesMut};
+use bytes::{Buf, BufMut, BytesMut};
 
 use super::{Oid, PgFormat};
 use crate::{
@@ -271,6 +271,9 @@ pub struct Bind<'a, ParamFmts, Params, ResultFmts> {
     /// This must match the number of parameters needed by the query.
     pub params_len: u16,
 
+    /// This is not postgres field, but a workaround helper to get `size_hint` easily.
+    pub params_size_hint: i32,
+
     /// Int32 The length of the parameter value, in bytes (this count does not include itself). Can be zero.
     /// As a special case, -1 indicates a NULL parameter value. No value bytes follow in the NULL case
     ///
@@ -291,6 +294,32 @@ pub struct Bind<'a, ParamFmts, Params, ResultFmts> {
     pub result_formats: ResultFmts,
 }
 
+impl<'a, ParamFmts, Params, ResultFmts> Bind<'a, ParamFmts, Params, ResultFmts> {
+    pub fn new(
+        portal_name: &'a str,
+        stmt_name: &'a str,
+        param_formats_len: u16,
+        param_formats: ParamFmts,
+        params_len: u16,
+        params_size_hint: i32,
+        params: Params,
+        result_formats_len: u16,
+        result_formats: ResultFmts,
+    ) -> Self {
+        Self {
+            portal_name,
+            stmt_name,
+            param_formats_len,
+            param_formats,
+            params_len,
+            params_size_hint,
+            params,
+            result_formats_len,
+            result_formats,
+        }
+    }
+}
+
 // NOTE: idk how to properly abstract the Params,
 // number `to_be_bytes()` cannot be returned
 // from function
@@ -298,7 +327,9 @@ pub struct Bind<'a, ParamFmts, Params, ResultFmts> {
 impl<'a, ParamFmts, Params, ResultFmts> FrontendProtocol for Bind<'a, ParamFmts, Params, ResultFmts>
 where
     ParamFmts: IntoIterator<Item = PgFormat>,
-    Params: IntoIterator<Item = &'a Encoded<'a>> + Copy, /* expected a reference */
+    Params: Iterator,
+    <Params as Iterator>::Item: Buf,
+    Params: ExactSizeIterator,
     ResultFmts: IntoIterator<Item = PgFormat>,
 {
     const MSGTYPE: u8 = b'B';
@@ -312,21 +343,21 @@ where
         (self.param_formats_len as i32 * 2) +
         // self.params_len (i16)
         2 +
-        IntoIterator::into_iter(self.params)
-            .fold(0i32, |acc,n|{
-                use crate::value::ValueRef::*;
-                let len_and_data = match Encoded::value(n) {
-                    Null => todo!("what the length of NULL ?"),
-                    Bool(_) => 4 + 1,
-                    Number(_) => 4 + 4,
-                    Text(t) => 4 + t.len().to_i32(),
-                    String(s) => 4 + s.len().to_i32(),
-                    Slice(s) => 4 + s.len().to_i32(),
-                    Bytes(b) => 4 + b.len().to_i32(),
-                };
-                acc + len_and_data
-            }) +
-        // self.results_format_len (i16)
+        self.params_size_hint +
+        // IntoIterator::into_iter(&self.params)
+        //     .fold(0i32, |acc,n|{
+        //         acc + Buf::remaining(&n).to_i32()
+        //         // use crate::value::ValueRef::*;
+        //         // let len_and_data = match Encoded::value(n) {
+        //         //     Null => todo!("what the length of NULL ?"),
+        //         //     Bool(_) => 4 + 1,
+        //         //     Number(_) => 4 + 4,
+        //         //     Text(t) => 4 + t.len().to_i32(),
+        //         //     Slice(s) => 4 + s.len().to_i32(),
+        //         // };
+        //         // acc + len_and_data
+        //     }) +
+        // // self.results_format_len (i16)
         2 +
         // self.results_format_code (i16[])
         (self.result_formats_len as i32 * 2)
@@ -343,34 +374,28 @@ where
 
         buf.put_u16(self.params_len);
         for param in self.params {
-            use crate::{encode::Encoded, value::ValueRef::*};
-            match Encoded::value(param) {
-                Null => todo!("how to write NULL ?"),
-                Number(num) => {
-                    buf.put_i32(4);
-                    buf.put_i32(*num);
-                }
-                Bool(b) => {
-                    buf.put_i32(1);
-                    buf.put_u8(*b as _);
-                }
-                Text(t) => {
-                    buf.put_i32(t.len().to_i32());
-                    buf.put_slice(t.as_bytes());
-                }
-                String(s) => {
-                    buf.put_i32(s.len().to_i32());
-                    buf.put_slice(s.as_bytes());
-                }
-                Slice(items) => {
-                    buf.put_i32(items.len().to_i32());
-                    buf.put_slice(items);
-                }
-                Bytes(items) => {
-                    buf.put_i32(items.len().to_i32());
-                    buf.put_slice(items);
-                }
-            }
+            buf.put_u32(Buf::remaining(&param).to_u32());
+            buf.put(param);
+            // use crate::{encode::Encoded, value::ValueRef::*};
+            // match Encoded::value(param) {
+            //     Null => todo!("how to write NULL ?"),
+            //     Number(num) => {
+            //         buf.put_i32(4);
+            //         buf.put_i32(*num);
+            //     }
+            //     Bool(b) => {
+            //         buf.put_i32(1);
+            //         buf.put_u8(*b as _);
+            //     }
+            //     Text(t) => {
+            //         buf.put_i32(t.len().to_i32());
+            //         buf.put_slice(t.as_bytes());
+            //     }
+            //     Slice(items) => {
+            //         buf.put_i32(items.len().to_i32());
+            //         buf.put_slice(items);
+            //     }
+            // }
         }
 
         buf.put_u16(self.result_formats_len);

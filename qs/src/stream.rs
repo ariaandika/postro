@@ -2,9 +2,9 @@ use bytes::BytesMut;
 
 use crate::{
     PgOptions, Result,
-    transport::PgTransport,
-    postgres::{BackendProtocol, FrontendProtocol, frontend},
     net::{Socket, WriteAllBuf},
+    postgres::{BackendProtocol, FrontendProtocol, frontend},
+    transport::PgTransport,
 };
 
 const DEFAULT_BUF_CAPACITY: usize = 1024;
@@ -100,8 +100,7 @@ mod recv {
 
         fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
             use std::task::ready;
-            use bytes::{Buf, BufMut};
-            use tokio::io::{AsyncRead, ReadBuf};
+            use bytes::Buf;
 
             let RecvProject { stream, state, .. } = self.as_mut().project();
 
@@ -136,24 +135,7 @@ mod recv {
                         return Poll::Ready(Ok(msg));
                     },
                     State::ReadSocket => {
-                        let n = {
-                            let dst = stream.read_buf.chunk_mut();
-                            let dst = unsafe { dst.as_uninit_slice_mut() };
-                            let mut buf = ReadBuf::uninit(dst);
-                            let ptr = buf.filled().as_ptr();
-                            ready!(Pin::new(&mut stream.socket).poll_read(cx, &mut buf)?);
-
-                            // Ensure the pointer does not change from under us
-                            assert_eq!(ptr, buf.filled().as_ptr());
-                            buf.filled().len()
-                        };
-
-                        // Safety: This is guaranteed to be the number of initialized (and read)
-                        // bytes due to the invariants provided by `ReadBuf::filled`.
-                        unsafe {
-                            stream.read_buf.advance_mut(n);
-                        }
-
+                        ready!(crate::io::poll_read(&mut stream.socket, &mut stream.read_buf, cx)?);
                         *state = State::Read;
                     },
                 }

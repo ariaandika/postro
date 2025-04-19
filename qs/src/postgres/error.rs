@@ -3,8 +3,6 @@ mod database;
 
 pub use database::DatabaseError;
 
-use super::BackendMessage;
-
 /// An error when translating buffer from postgres
 #[derive(Debug, thiserror::Error)]
 pub enum ProtocolError {

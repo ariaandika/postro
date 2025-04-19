@@ -2,9 +2,6 @@ use bytes::{BufMut, Bytes};
 
 /// Integer signess in postgres docs is awful.
 pub trait UsizeExt {
-    /// length is usize in rust, while postgres want i32,
-    /// this will panic when overflow instead of wrapping
-    fn to_i32(self) -> i32;
     /// length is usize in rust, while sometime postgres want u32,
     /// this will panic when overflow instead of wrapping
     fn to_u32(self) -> u32;
@@ -14,10 +11,6 @@ pub trait UsizeExt {
 }
 
 impl UsizeExt for usize {
-    fn to_i32(self) -> i32 {
-        self.try_into().expect("message size too large for protocol: {err}")
-    }
-
     fn to_u32(self) -> u32 {
         self.try_into().expect("message size too large for protocol: {err}")
     }
@@ -73,10 +66,5 @@ pub trait BindParams: bytes::Buf {
     /// Can be zero. As a special case, -1 indicates a NULL parameter value.
     /// No value bytes follow in the NULL case.
     fn size(&self) -> i32;
-
-    // /// The value of the parameter, in the format indicated by the associated format code.
-    // ///
-    // /// Length must be equal to returned value of [`BindParams::size`].
-    // fn body(&self) -> &[u8];
 }
 

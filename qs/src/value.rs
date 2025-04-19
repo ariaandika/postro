@@ -9,6 +9,7 @@ pub(crate) enum ValueRef<'a> {
         offset: usize,
         value: [u8;OWNED_LEN],
     },
+    #[allow(unused)] // to be public api
     Bytes(Bytes)
 }
 

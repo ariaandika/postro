@@ -20,12 +20,9 @@ pub struct Encoded<'q> {
 }
 
 impl<'q> Encoded<'q> {
+    #[allow(unused)] // to be public api
     pub(crate) fn new(value: ValueRef<'q>, oid: Oid) -> Self {
         Self { value, oid, is_null: false, }
-    }
-
-    pub(crate) fn into_value(self) -> ValueRef<'q> {
-        self.value
     }
 
     pub(crate) fn value(&self) -> &ValueRef<'q> {

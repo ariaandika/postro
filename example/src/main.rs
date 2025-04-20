@@ -1,6 +1,4 @@
 
-
-
 #[tokio::main]
 async fn main() -> qs::Result<()> {
 
@@ -8,7 +6,7 @@ async fn main() -> qs::Result<()> {
 
     let _result = qs::query("select 420,'Foo',$1", &mut conn)
         .bind("Deez")
-        .fetch_all::<()>()
+        .fetch_all::<(i32,String,String)>()
         .await?;
 
     dbg!(_result);

@@ -41,8 +41,10 @@ mod ext;
 pub mod postgres;
 
 // Codec
-pub mod encode;
 pub mod value;
+pub mod encode;
+pub mod column;
+pub mod decode;
 
 // Component
 mod dberror;

@@ -6,14 +6,10 @@ use crate::{
     encode::{Encode, Encoded},
     ext::UsizeExt,
     postgres::{PgFormat, ProtocolError, backend, frontend},
-    row::{RowBuffer, RowDecoder},
+    row::{self, FromRow, Row},
     statement::{PortalName, StatementName},
     transport::PgTransport,
 };
-
-pub trait FromRow: Sized {
-    fn from_row(row: String) -> Result<Self>;
-}
 
 pub fn query<'val, IO: PgTransport>(sql: &str, io: IO) -> Query<'_, 'val, IO> {
     Query { sql, io, params: Stack::with_size(), persistent: true }
@@ -48,7 +44,7 @@ impl<IO> Query<'_, '_, IO>
 where
     IO: PgTransport,
 {
-    pub async fn fetch_all<R>(mut self) -> Result<Vec<RowBuffer>> {
+    pub async fn fetch_all<R: FromRow>(mut self) -> Result<Vec<R>> {
         let sqlid = {
             let mut buf = DefaultHasher::new();
             self.sql.hash(&mut buf);
@@ -104,22 +100,15 @@ where
 
         self.io.recv::<backend::BindComplete>().await?;
 
+        let desc = self.io.recv::<backend::RowDescription>().await?;
+        let mut cols = row::decode_row_desc(desc);
         let mut rows = vec![];
 
         loop {
             use backend::BackendMessage::*;
             match self.io.recv().await? {
-                DataRow(datarow) => {
-                    // TODO: ROW BUFFER & FROM_ROW HAVE NO API YET
-                    rows.push(RowBuffer::new(datarow))
-                },
                 CommandComplete(_) => break,
-                RowDescription(rowdesc) => {
-                    RowDecoder::new(rowdesc).for_each(|row|{dbg!(row);});
-                },
-                ErrorResponse(e) => {
-                    dbg!(e);
-                }
+                DataRow(dr) => rows.push(R::from_row(Row::new(&mut cols, dr))?),
                 f => Err(ProtocolError::unexpected_phase(f.msgtype(), "extended query"))?,
             }
         }
@@ -180,7 +169,7 @@ mod test {
                     .await
                     .unwrap();
 
-                dbg!(rows.get_mut(0).unwrap().collect::<Vec<_>>());
+                // dbg!(rows.get_mut(0).unwrap().collect::<Vec<_>>());
             })
     }
 }

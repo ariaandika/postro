@@ -1,122 +1,76 @@
 use bytes::{Buf, Bytes};
 
 use crate::{
-    ext::BytesExt,
+    Error, Result,
+    column::{Column, ColumnInfo, Index},
+    decode::Decode,
     postgres::backend::{DataRow, RowDescription},
 };
 
-pub struct RowDecoder {
-    field_len: u16,
-    read: u16,
-    body: Bytes,
+pub trait FromRow: Sized {
+    fn from_row(row: Row) -> Result<Self>;
 }
 
-impl RowDecoder {
-    pub fn new(rowdesc: RowDescription) -> Self {
-        Self {
-            field_len: rowdesc.field_len,
-            read: 0,
-            body: rowdesc.body,
-        }
+impl FromRow for () {
+    fn from_row(_: Row) -> Result<Self> {
+        Ok(())
     }
 }
 
-impl Iterator for RowDecoder {
-    type Item = RowInfo;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.read == self.field_len {
-            return None;
+macro_rules! from_row_tuple {
+    ($($t:ident $i:literal),*) => {
+        impl<$($t),*> FromRow for ($($t),*,)
+        where
+            $($t: Decode),*
+        {
+            fn from_row(row: Row) -> Result<Self> {
+                Ok((
+                    $(row.try_decode($i)?),*,
+                ))
+            }
         }
-        self.read += 1;
-        Some(RowInfo::new(&mut self.body))
+    };
+}
+
+from_row_tuple!(T0 0);
+from_row_tuple!(T0 0, T1 1);
+from_row_tuple!(T0 0, T1 1, T2 2);
+from_row_tuple!(T0 0, T1 1, T2 2, T3 3);
+
+pub(crate) fn decode_row_desc(mut rd: RowDescription) -> Vec<ColumnInfo> {
+    let mut cols = Vec::with_capacity(rd.field_len as _);
+    for _ in 0..rd.field_len {
+        cols.push(ColumnInfo::new(&mut rd.body));
     }
+    cols
+}
+
+pub(crate) fn decode_row_data(mut dr: DataRow) -> Vec<Bytes> {
+    let mut rows = Vec::with_capacity(dr.column_len as _);
+    for _ in 0..dr.column_len {
+        let len = dr.body.get_u32();
+        rows.push(dr.body.split_to(len as _));
+    }
+    rows
 }
 
 #[derive(Debug)]
-pub struct RowInfo {
-    /// The field name.
-    pub field_name: String,
-    // If the field can be identified as a column of a specific table,
-    // the object ID of the table; otherwise zero
-    pub table_oid: u32,
-    // If the field can be identified as a column of a specific table,
-    // the attribute number of the column; otherwise zero.
-    pub attribute_len: u16,
-    // The object ID of the field's data type.
-    pub data_type: u32,
-    // The data type size (see pg_type.typlen).
-    // Note that negative values denote variable-width types.
-    pub data_type_size: i16,
-    // The type modifier (see pg_attribute.atttypmod).
-    // The meaning of the modifier is type-specific.
-    pub type_modifier: i32,
-    // The format code being used for the field.
-    // Currently will be zero (text) or one (binary).
-    // In a RowDescription returned from the statement variant of Describe,
-    // the format code is not yet known and will always be zero.
-    pub format_code: u16,
+pub struct Row<'a> {
+    cols: &'a mut Vec<ColumnInfo>,
+    values: Vec<Bytes>,
 }
 
-impl RowInfo {
-    pub(crate) fn new(body: &mut Bytes) -> Self {
-        Self {
-            field_name: body.get_nul_string(),
-            table_oid: body.get_u32(),
-            attribute_len: body.get_u16(),
-            data_type: body.get_u32(),
-            data_type_size: body.get_i16(),
-            type_modifier: body.get_i32(),
-            format_code: body.get_u16(),
-        }
+impl<'a> Row<'a> {
+    pub(crate) fn new(cols: &'a mut Vec<ColumnInfo>, dr: DataRow) -> Self {
+        Self { cols, values: decode_row_data(dr) }
     }
-}
 
-// NOTE: ---
-
-/// an unencoded row
-#[derive(Debug)]
-pub struct RowBuffer {
-    /// expected column length
-    column_len: u16,
-    /// already read column
-    read: u16,
-    /// raw buffer
-    bytes: Bytes,
-}
-
-impl RowBuffer {
-    pub(crate) fn new(datarow: DataRow) -> Self {
-        Self {
-            column_len: datarow.column_len,
-            bytes: datarow.body,
-            read: 0,
-        }
-    }
-}
-
-impl Iterator for RowBuffer {
-    type Item = Bytes;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.read == self.column_len {
-            return None
-        }
-
-        // The length of the column value, in bytes (this count does not include itself).
-        // Can be zero. As a special case, -1 indicates a NULL column value.
-        // No value bytes follow in the NULL case.
-        let len = self.bytes.get_i32();
-
-        // The value of the column, in the format indicated by the associated format code.
-        // n is the above length.
-        let data = match len {
-            -1 => Bytes::from_static(b"NULL") ,
-            len => self.bytes.split_to(len as _) ,
+    pub fn try_decode<D: Decode, I: Index>(&self, idx: I) -> Result<D> {
+        let Some(idx) = idx.position(self.cols.as_slice()) else {
+            return Err(Error::ColumnIndexOutOfBounds);
         };
-
-        self.read += 1;
-
-        Some(data)
+        D::decode(Column::new(&self.cols[idx], self.values[idx].clone()))
     }
 }
+
+

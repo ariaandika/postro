@@ -1,10 +1,6 @@
 //! Postgres Protocol Operations
 use crate::{
-    Error, Result,
-    options::startup::StartupOptions,
-    postgres::{BackendMessage, backend, ProtocolError, frontend},
-    row::RowBuffer,
-    transport::PgTransport,
+    options::startup::StartupOptions, postgres::{backend, frontend, BackendMessage, ProtocolError}, row::FromRow, transport::PgTransport, Error, Result
 };
 
 /// Startup phase successful response.
@@ -88,7 +84,7 @@ pub async fn startup<'a, IO: PgTransport>(
 /// perform a simple query
 ///
 /// <https://www.postgresql.org/docs/current/protocol-flow.html#PROTOCOL-FLOW-SIMPLE-QUERY>
-pub async fn simple_query<IO: PgTransport>(sql: &str, mut io: IO) -> Result<Vec<RowBuffer>> {
+pub async fn simple_query<R: FromRow, IO: PgTransport>(sql: &str, mut io: IO) -> Result<Vec<R>> {
     io.send(frontend::Query { sql });
     io.flush().await?;
 
@@ -103,7 +99,7 @@ pub async fn simple_query<IO: PgTransport>(sql: &str, mut io: IO) -> Result<Vec<
             // This will be followed by a DataRow message for each row being returned to the frontend.
             RowDescription(_row) => { },
             // One of the set of rows returned by a SELECT, FETCH, etc. query.
-            DataRow(datarow) => rows.push(RowBuffer::new(datarow)),
+            DataRow(datarow) => todo!()/* rows.push(RowBuffer::new(datarow)) */,
             // An SQL command completed normally
             CommandComplete(_tag) => { }
             f => Err(ProtocolError::unexpected_phase(f.msgtype(), "simple query"))?,

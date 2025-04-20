@@ -136,8 +136,8 @@ impl Startup<'_> {
 }
 
 macro_rules! size_of {
-    ($s1:tt.$f1:ident in ..$s2:tt.$f2:ident) => {
-        ($s2.$f2 as u32 * u32::try_from(size_of_val(&$s1.$f1)).expect("data type size too large for postgres"))
+    ($s1:tt.$f1:ident as $t1:ty, in ..$s2:tt.$f2:ident) => {
+        ($s2.$f2 as u32 * u32::try_from(size_of::<$t1>()).expect("data type size too large for postgres"))
     };
     ($self:tt.$field:ident) => {
         u32::try_from(size_of_val(&$self.$field)).expect("data type size too large for postgres")
@@ -210,7 +210,7 @@ where
         self.prepare_name.nul_string_len()
             + self.sql.nul_string_len()
             + size_of!(self.oids_len)
-            + size_of!(self.oids in ..self.oids_len)
+            + size_of!(self.oids as Oid, in ..self.oids_len)
     }
 
     fn encode(self, mut buf: impl BufMut) {
@@ -304,11 +304,11 @@ where
         self.portal_name.nul_string_len()
             + self.stmt_name.nul_string_len()
             + size_of!(self.param_formats_len)
-            + size_of!(self.param_formats in ..self.param_formats_len)
+            + size_of!(self.param_formats as u16, in ..self.param_formats_len)
             + size_of!(self.params_len)
             + self.params_size_hint
             + size_of!(self.result_formats_len)
-            + size_of!(self.result_formats in ..self.result_formats_len)
+            + size_of!(self.result_formats as u16, in ..self.result_formats_len)
     }
 
     fn encode(self, mut buf: impl BufMut) {

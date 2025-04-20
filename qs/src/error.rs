@@ -25,6 +25,12 @@ pub enum Error {
     #[error("Auth not supported")]
     UnsupportedAuth,
 
+    #[error("Missmatch datatype")]
+    MissmatchDataType,
+
+    #[error("Column index out of bounds")]
+    ColumnIndexOutOfBounds,
+
     #[error(transparent)]
     Other(BoxError)
 }

@@ -1,5 +1,7 @@
+use futures_core::Stream;
 use std::{
     hash::{DefaultHasher, Hash, Hasher},
+    marker::PhantomData,
     mem,
     pin::Pin,
     task::{Context, Poll, ready},
@@ -19,13 +21,13 @@ use crate::{
 pin_project_lite::pin_project! {
     #[derive(Debug)]
     #[project = FetchAllProject]
-    pub struct FetchAll<'sql, 'val, R, IO> {
+    pub struct Fetch<'sql, 'val, R, IO> {
         sql: &'sql str,
         io: IO,
         phase: Phase,
         params: Vec<Encoded<'val>>,
         persistent: bool,
-        output: Vec<R>,
+        _p: PhantomData<R>,
     }
 }
 
@@ -41,6 +43,7 @@ enum Phase {
     },
     #[default]
     Invalid,
+    Complete,
 }
 
 #[derive(Debug)]
@@ -48,27 +51,27 @@ struct PrepareData {
     stmt: StatementName,
 }
 
-impl<'sql, 'val, R, IO> FetchAll<'sql, 'val, R, IO> {
+impl<'sql, 'val, R, IO> Fetch<'sql, 'val, R, IO> {
     pub fn new(sql: &'sql str, io: IO, params: Vec<Encoded<'val>>, persistent: bool) -> Self {
-        Self { sql, io, phase: Phase::Prepare, params, persistent, output: vec![] }
+        Self { sql, io, phase: Phase::Prepare, params, persistent, _p: PhantomData }
     }
 }
 
-impl<R, IO> Future for FetchAll<'_, '_, R, IO>
+impl<R, IO> Stream for Fetch<'_, '_, R, IO>
 where
     R: FromRow,
     IO: PgTransport,
 {
-    type Output = Result<Vec<R>>;
+    type Item = Result<R>;
 
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let FetchAllProject {
             sql,
             io,
             phase,
             params,
             persistent,
-            output,
+            _p,
         } = self.as_mut().project();
 
         loop {
@@ -162,17 +165,19 @@ where
                             ReadyForQuery(_) => break,
                             DataRow(dr) => {
                                 let cols = cols.as_mut().expect("postgres didnt send RowDescription");
-                                output.push(R::from_row(Row::new(cols, dr))?);
+                                return Poll::Ready(Some(R::from_row(Row::new(cols, dr))));
                             }
                             f => {
                                 let err = ProtocolError::unexpected_phase(f.msgtype(), "extended query");
-                                return Poll::Ready(Err(err.into()));
+                                *phase = Phase::Complete;
+                                return Poll::Ready(Some(Err(err.into())));
                             }
                         }
                     }
-                    return Poll::Ready(Ok(mem::take(output)));
+                    *phase = Phase::Complete;
                 }
                 Phase::Invalid => unreachable!(),
+                Phase::Complete => return Poll::Ready(None),
             }
         }
     }

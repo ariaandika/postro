@@ -1,3 +1,4 @@
+use futures::TryStreamExt;
 
 #[tokio::main]
 async fn main() -> qs::Result<()> {
@@ -18,6 +19,13 @@ async fn main() -> qs::Result<()> {
 
     dbg!(_result);
 
+    let mut stream = qs::query("select 420,'Foo',$1", &mut conn)
+        .bind("Deez")
+        .fetch::<(i32,String,String)>();
+
+    while let Some(_item) = stream.try_next().await? {
+        dbg!(_item);
+    }
 
     Ok(())
 }

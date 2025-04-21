@@ -1,6 +1,15 @@
 //! Postgres Protocol Operations
 use crate::{
-    options::startup::StartupOptions, postgres::{backend, frontend, BackendMessage, ProtocolError}, row::FromRow, transport::PgTransport, Error, Result
+    Error, Result,
+    column::ColumnInfo,
+    options::startup::StartupOptions,
+    postgres::{
+        BackendMessage, ProtocolError,
+        backend::{self, RowDescription},
+        frontend,
+    },
+    row::{FromRow, Row},
+    transport::PgTransport,
 };
 
 /// Startup phase successful response.
@@ -88,18 +97,20 @@ pub async fn simple_query<R: FromRow, IO: PgTransport>(sql: &str, mut io: IO) ->
     io.send(frontend::Query { sql });
     io.flush().await?;
 
+    // Indicates that rows are about to be returned in response to a SELECT, FETCH, etc. query.
+    // The contents of this message describe the column layout of the rows.
+    // This will be followed by a DataRow message for each row being returned to the frontend.
+    let rd = io.recv::<RowDescription>().await?;
+    let mut cols = ColumnInfo::decode_multi(rd);
+
     let mut rows = vec![];
 
     loop {
         use BackendMessage::*;
         match io.recv().await? {
             ReadyForQuery(_) => break,
-            // Indicates that rows are about to be returned in response to a SELECT, FETCH, etc. query.
-            // The contents of this message describe the column layout of the rows.
-            // This will be followed by a DataRow message for each row being returned to the frontend.
-            RowDescription(_row) => { },
             // One of the set of rows returned by a SELECT, FETCH, etc. query.
-            DataRow(datarow) => todo!()/* rows.push(RowBuffer::new(datarow)) */,
+            DataRow(dr) => rows.push(R::from_row(Row::new(&mut cols, dr))?),
             // An SQL command completed normally
             CommandComplete(_tag) => { }
             f => Err(ProtocolError::unexpected_phase(f.msgtype(), "simple query"))?,

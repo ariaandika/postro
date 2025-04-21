@@ -1,4 +1,4 @@
-use std::io;
+use std::{io, task::{Context, Poll}};
 
 use crate::{
     Result,
@@ -13,6 +13,10 @@ pub trait PgTransport {
 
     /// Future returned from [`recv`][PostgresIo::recv].
     type Recv<'a, B>: Future<Output = Result<B>> where B: BackendProtocol, Self: 'a;
+
+    fn poll_flush(&mut self, cx: &mut Context) -> Poll<io::Result<()>>;
+
+    fn poll_recv<B: BackendProtocol>(&mut self, cx: &mut Context) -> Poll<Result<B>>;
 
     /// send message to the backend
     ///
@@ -55,12 +59,22 @@ pub trait PgTransport {
     fn add_stmt(&mut self, _sql: u64, _id: StatementName) -> bool {
         false
     }
+
+    fn as_pg_stream(&mut self) -> &mut crate::stream::PgStream;
 }
 
 impl<P> PgTransport for &mut P where P: PgTransport {
     type Flush<'a> = P::Flush<'a> where Self: 'a;
 
     type Recv<'a, B> = P::Recv<'a, B> where B: BackendProtocol, Self: 'a;
+
+    fn poll_flush(&mut self, cx: &mut Context) -> Poll<io::Result<()>> {
+        P::poll_flush(self, cx)
+    }
+
+    fn poll_recv<B: BackendProtocol>(&mut self, cx: &mut Context) -> Poll<Result<B>> {
+        P::poll_recv(self, cx)
+    }
 
     fn send<F: FrontendProtocol>(&mut self, message: F) {
         P::send(self, message);
@@ -76,6 +90,10 @@ impl<P> PgTransport for &mut P where P: PgTransport {
 
     fn recv<B: BackendProtocol>(&mut self) -> Self::Recv<'_, B> {
         P::recv(self)
+    }
+
+    fn as_pg_stream(&mut self) -> &mut crate::stream::PgStream {
+        P::as_pg_stream(self)
     }
 }
 

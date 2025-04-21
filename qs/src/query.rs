@@ -3,7 +3,6 @@ use std::hash::{DefaultHasher, Hash, Hasher};
 use crate::{
     Result,
     column::ColumnInfo,
-    common::InlineVec,
     encode::{Encode, Encoded},
     ext::UsizeExt,
     postgres::{PgFormat, ProtocolError, backend, frontend},
@@ -12,14 +11,18 @@ use crate::{
     transport::PgTransport,
 };
 
+mod fetch_all;
+
+pub use fetch_all::FetchAll;
+
 pub fn query<'val, IO: PgTransport>(sql: &str, io: IO) -> Query<'_, 'val, IO> {
-    Query { sql, io, params: InlineVec::new(), persistent: true }
+    Query { sql, io, params: Vec::new(), persistent: true }
 }
 
 pub struct Query<'sql, 'val, IO> {
     sql: &'sql str,
     io: IO,
-    params: InlineVec<Encoded<'val>, 8>,
+    params: Vec<Encoded<'val>>,
     persistent: bool,
 }
 
@@ -39,6 +42,16 @@ impl<'val, IO> Query<'_, 'val, IO> {
         self.params.push(value.encode());
         self
     }
+}
+
+impl<'sql, 'val, IO> Query<'sql, 'val, IO>
+where
+    IO: PgTransport,
+{
+    pub fn fetch_all_v2<R: FromRow>(self) -> FetchAll<'sql, 'val, R, IO> {
+        FetchAll::new(self.sql, self.io, self.params, self.persistent)
+    }
+
 }
 
 impl<IO> Query<'_, '_, IO>

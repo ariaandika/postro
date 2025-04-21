@@ -11,6 +11,13 @@ async fn main() -> qs::Result<()> {
 
     dbg!(_result);
 
+    let _result = qs::query("select 420,'Foo',$1", &mut conn)
+        .bind("Deez")
+        .fetch_all_v2::<(i32,String,String)>()
+        .await?;
+
+    dbg!(_result);
+
 
     Ok(())
 }

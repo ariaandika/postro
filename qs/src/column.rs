@@ -58,6 +58,14 @@ impl ColumnInfo {
         }
         cols
     }
+
+    pub(crate) fn decode_multi_vec(mut rd: RowDescription) -> Vec<Self> {
+        let mut cols = Vec::with_capacity(rd.field_len as _);
+        for _ in 0..rd.field_len {
+            cols.push(Self::new(&mut rd.body));
+        }
+        cols
+    }
 }
 
 #[derive(Debug)]

@@ -46,6 +46,14 @@ impl PgTransport for PgConnection {
 
     type Recv<'a, B> = <&'a mut PgStream as PgTransport>::Recv<'a, B> where B: BackendProtocol, Self: 'a;
 
+    fn poll_flush(&mut self, cx: &mut std::task::Context) -> std::task::Poll<std::io::Result<()>> {
+        PgTransport::poll_flush(&mut self.stream, cx)
+    }
+
+    fn poll_recv<B: BackendProtocol>(&mut self, cx: &mut std::task::Context) -> std::task::Poll<Result<B>> {
+        PgTransport::poll_recv(&mut self.stream, cx)
+    }
+
     fn send<F: FrontendProtocol>(&mut self, message: F) {
         PgTransport::send(&mut self.stream, message);
     }
@@ -69,6 +77,10 @@ impl PgTransport for PgConnection {
     fn add_stmt(&mut self, sql: u64, id: StatementName) -> bool {
         self.stmts.push(sql, id);
         true
+    }
+
+    fn as_pg_stream(&mut self) -> &mut crate::stream::PgStream {
+        &mut self.stream
     }
 }
 

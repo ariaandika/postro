@@ -2,11 +2,12 @@ use std::hash::{DefaultHasher, Hash, Hasher};
 
 use crate::{
     Result,
+    column::ColumnInfo,
     common::InlineVec,
     encode::{Encode, Encoded},
     ext::UsizeExt,
     postgres::{PgFormat, ProtocolError, backend, frontend},
-    row::{self, FromRow, Row},
+    row::{FromRow, Row},
     statement::{PortalName, StatementName},
     transport::PgTransport,
 };
@@ -101,7 +102,7 @@ where
         self.io.recv::<backend::BindComplete>().await?;
 
         let desc = self.io.recv::<backend::RowDescription>().await?;
-        let mut cols = row::decode_row_desc(desc);
+        let mut cols = ColumnInfo::decode_multi(desc);
         let mut rows = vec![];
 
         loop {

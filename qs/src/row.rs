@@ -3,9 +3,8 @@ use bytes::{Buf, Bytes};
 use crate::{
     Error, Result,
     column::{Column, ColumnInfo, Index},
-    common::InlineVec,
     decode::Decode,
-    postgres::backend::{DataRow, RowDescription},
+    postgres::backend::DataRow,
 };
 
 pub trait FromRow: Sized {
@@ -37,14 +36,6 @@ from_row_tuple!(T0 0);
 from_row_tuple!(T0 0, T1 1);
 from_row_tuple!(T0 0, T1 1, T2 2);
 from_row_tuple!(T0 0, T1 1, T2 2, T3 3);
-
-pub(crate) fn decode_row_desc(mut rd: RowDescription) -> InlineVec<ColumnInfo, 8> {
-    let mut cols = InlineVec::with_capacity(rd.field_len as _);
-    for _ in 0..rd.field_len {
-        cols.push(ColumnInfo::new(&mut rd.body));
-    }
-    cols
-}
 
 pub(crate) fn decode_row_data(mut dr: DataRow) -> Vec<Bytes> {
     let mut rows = Vec::with_capacity(dr.column_len as _);

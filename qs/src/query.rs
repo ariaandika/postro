@@ -2,7 +2,7 @@ use std::hash::{DefaultHasher, Hash, Hasher};
 
 use crate::{
     Result,
-    common::Stack,
+    common::InlineVec,
     encode::{Encode, Encoded},
     ext::UsizeExt,
     postgres::{PgFormat, ProtocolError, backend, frontend},
@@ -12,13 +12,13 @@ use crate::{
 };
 
 pub fn query<'val, IO: PgTransport>(sql: &str, io: IO) -> Query<'_, 'val, IO> {
-    Query { sql, io, params: Stack::with_size(), persistent: true }
+    Query { sql, io, params: InlineVec::new(), persistent: true }
 }
 
 pub struct Query<'sql, 'val, IO> {
     sql: &'sql str,
     io: IO,
-    params: Stack<Encoded<'val>>,
+    params: InlineVec<Encoded<'val>, 8>,
     persistent: bool,
 }
 
@@ -62,7 +62,7 @@ where
                         prepare_name: stmt.as_str(),
                         sql: self.sql,
                         oids_len: self.params.len() as _,
-                        oids: self.params.iter().map(crate::encode::Encoded::oid),
+                        oids: self.params.iter().map(Encoded::oid),
                     });
                     self.io.send(frontend::Flush);
                     self.io.flush().await?;
@@ -163,13 +163,13 @@ mod test {
 
                 crate::protocol::startup(&opt, &mut conn).await.unwrap();
 
-                let mut rows = super::query("select null,4,$1", &mut conn)
+                let rows = super::query("select null,4,$1", &mut conn)
                     .bind("Deez")
-                    .fetch_all::<()>()
+                    .fetch_all::<((),i32,String)>()
                     .await
                     .unwrap();
 
-                // dbg!(rows.get_mut(0).unwrap().collect::<Vec<_>>());
+                dbg!(rows);
             })
     }
 }

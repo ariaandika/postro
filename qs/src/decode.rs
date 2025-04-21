@@ -1,8 +1,14 @@
-use crate::{column::Column, postgres::PgType, Error, Result};
+use crate::{Error, Result, column::Column, postgres::PgType};
 
 
 pub trait Decode: Sized {
     fn decode(col: Column) -> Result<Self>;
+}
+
+impl Decode for () {
+    fn decode(_: Column) -> Result<Self> {
+        Ok(())
+    }
 }
 
 impl Decode for i32 {

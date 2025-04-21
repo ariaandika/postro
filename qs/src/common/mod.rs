@@ -1,10 +1,10 @@
-pub mod stack;
+pub mod inlinevec;
 
 mod bytestr;
 mod general;
 mod url;
 
-pub use stack::Stack;
+pub use inlinevec::InlineVec;
 pub use bytestr::ByteStr;
 pub use general::GeneralError;
 pub use url::Url;

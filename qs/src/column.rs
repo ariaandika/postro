@@ -29,14 +29,21 @@ pub struct ColumnInfo {
 
 impl ColumnInfo {
     pub(crate) fn new(body: &mut Bytes) -> Self {
+        let field_name = body.get_nul_string();
+        let table_oid = body.get_u32();
+        let attribute_len = body.get_u16();
+        let data_type = body.get_u32();
+        let data_type_size = body.get_i16();
+        let type_modifier = body.get_i32();
+        let format_code = body.get_u16();
         Self {
-            field_name: body.get_nul_string(),
-            table_oid: body.get_u32(),
-            attribute_len: body.get_u16(),
-            data_type: body.get_u32(),
-            data_type_size: body.get_i16(),
-            type_modifier: body.get_i32(),
-            format_code: body.get_u16(),
+            field_name,
+            table_oid,
+            attribute_len,
+            data_type,
+            data_type_size,
+            type_modifier,
+            format_code,
         }
     }
 }

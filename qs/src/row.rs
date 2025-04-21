@@ -3,6 +3,7 @@ use bytes::{Buf, Bytes};
 use crate::{
     Error, Result,
     column::{Column, ColumnInfo, Index},
+    common::InlineVec,
     decode::Decode,
     postgres::backend::{DataRow, RowDescription},
 };
@@ -37,8 +38,8 @@ from_row_tuple!(T0 0, T1 1);
 from_row_tuple!(T0 0, T1 1, T2 2);
 from_row_tuple!(T0 0, T1 1, T2 2, T3 3);
 
-pub(crate) fn decode_row_desc(mut rd: RowDescription) -> Vec<ColumnInfo> {
-    let mut cols = Vec::with_capacity(rd.field_len as _);
+pub(crate) fn decode_row_desc(mut rd: RowDescription) -> InlineVec<ColumnInfo, 8> {
+    let mut cols = InlineVec::with_capacity(rd.field_len as _);
     for _ in 0..rd.field_len {
         cols.push(ColumnInfo::new(&mut rd.body));
     }
@@ -56,17 +57,17 @@ pub(crate) fn decode_row_data(mut dr: DataRow) -> Vec<Bytes> {
 
 #[derive(Debug)]
 pub struct Row<'a> {
-    cols: &'a mut Vec<ColumnInfo>,
+    cols: &'a mut [ColumnInfo],
     values: Vec<Bytes>,
 }
 
 impl<'a> Row<'a> {
-    pub(crate) fn new(cols: &'a mut Vec<ColumnInfo>, dr: DataRow) -> Self {
+    pub(crate) fn new(cols: &'a mut [ColumnInfo], dr: DataRow) -> Self {
         Self { cols, values: decode_row_data(dr) }
     }
 
     pub fn try_decode<D: Decode, I: Index>(&self, idx: I) -> Result<D> {
-        let Some(idx) = idx.position(self.cols.as_slice()) else {
+        let Some(idx) = idx.position(self.cols) else {
             return Err(Error::ColumnIndexOutOfBounds);
         };
         D::decode(Column::new(&self.cols[idx], self.values[idx].clone()))

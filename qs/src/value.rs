@@ -1,6 +1,6 @@
-use bytes::{Buf, Bytes};
+use bytes::Buf;
 
-const OWNED_LEN: usize = 31;
+const OWNED_LEN: usize = 15;
 
 #[derive(Debug)]
 pub(crate) enum ValueRef<'a> {
@@ -9,8 +9,8 @@ pub(crate) enum ValueRef<'a> {
         offset: usize,
         value: [u8;OWNED_LEN],
     },
-    #[allow(unused)] // to be public api
-    Bytes(Bytes)
+    // #[allow(unused)] // to be public api
+    // Bytes(Bytes)
 }
 
 macro_rules! from {
@@ -47,7 +47,7 @@ impl<'a> ValueRef<'a> {
         match self {
             ValueRef::Slice(items) => items.len(),
             ValueRef::Inline { offset, .. } => OWNED_LEN - offset,
-            ValueRef::Bytes(bytes) => bytes.len(),
+            // ValueRef::Bytes(bytes) => bytes.len(),
         }
     }
 }
@@ -57,7 +57,7 @@ impl Buf for ValueRef<'_> {
         match self {
             ValueRef::Slice(items) => Buf::remaining(items),
             ValueRef::Inline { offset, .. } => OWNED_LEN - offset,
-            ValueRef::Bytes(bytes) => Buf::remaining(bytes),
+            // ValueRef::Bytes(bytes) => Buf::remaining(bytes),
         }
     }
 
@@ -65,7 +65,7 @@ impl Buf for ValueRef<'_> {
         match self {
             ValueRef::Slice(items) => Buf::chunk(items),
             ValueRef::Inline { offset, value } => &value[*offset..],
-            ValueRef::Bytes(bytes) => Buf::chunk(bytes),
+            // ValueRefRUST_BACKTRACE=1::Bytes(bytes) => Buf::chunk(bytes),
         }
     }
 
@@ -73,7 +73,7 @@ impl Buf for ValueRef<'_> {
         match self {
             ValueRef::Slice(items) => Buf::advance(items, cnt),
             ValueRef::Inline { offset, .. } => *offset += cnt,
-            ValueRef::Bytes(bytes) => Buf::advance(bytes, cnt),
+            // ValueRef::Bytes(bytes) => Buf::advance(bytes, cnt),
         }
     }
 }

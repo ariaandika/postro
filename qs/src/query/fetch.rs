@@ -48,6 +48,7 @@ enum Phase {
 
 #[derive(Debug)]
 struct PrepareData {
+    sqlid: u64,
     stmt: StatementName,
 }
 
@@ -83,42 +84,42 @@ where
                         buf.finish()
                     };
 
-                    match !*persistent {
-                        true => {
-                            todo!()
-                        }
-                        false => match io.get_stmt(sqlid) {
-                            Some(stmt) => {
-                                *phase = Phase::Portal(PrepareData { stmt });
-                            },
-                            None => {
-                                let stmt = StatementName::next();
-                                io.send(frontend::Parse {
-                                    prepare_name: stmt.as_str(),
-                                    sql,
-                                    oids_len: params.len() as _,
-                                    oids: params.iter().map(Encoded::oid),
-                                });
-                                io.send(frontend::Flush);
-                                *phase = Phase::PrepareFlush(PrepareData { stmt });
-                            },
+                    if *persistent {
+                        if let Some(stmt) = io.get_stmt(sqlid) {
+                            *phase = Phase::Portal(PrepareData { sqlid, stmt });
                         }
                     }
-                },
+
+                    let stmt = match persistent {
+                        true => StatementName::next(),
+                        false => StatementName::unnamed(),
+                    };
+
+                    io.send(frontend::Parse {
+                        prepare_name: stmt.as_str(),
+                        sql,
+                        oids_len: params.len() as _,
+                        oids: params.iter().map(Encoded::oid),
+                    });
+                    io.send(frontend::Flush);
+
+                    *phase = Phase::PrepareFlush(PrepareData { sqlid, stmt });
+                }
                 Phase::PrepareFlush(_) => {
                     ready!(io.poll_flush(cx)?);
                     let Phase::PrepareFlush(data) = mem::take(phase) else {
                         unreachable!()
                     };
                     *phase = Phase::PrepareComplete(data);
-                },
+                }
                 Phase::PrepareComplete(_) => {
                     ready!(io.poll_recv::<backend::ParseComplete>(cx)?);
                     let Phase::PrepareComplete(data) = mem::take(phase) else {
                         unreachable!()
                     };
+                    io.add_stmt(data.sqlid, data.stmt.clone());
                     *phase = Phase::Portal(data);
-                },
+                }
                 Phase::Portal(data) => {
                     let portal = PortalName::unnamed();
 
@@ -128,9 +129,9 @@ where
                         param_formats_len: 1,
                         param_formats: [PgFormat::Binary],
                         params_len: params.len().to_u16(),
-                        params_size_hint: params.iter().fold(0, |acc,n|{
-                            acc + 4 + n.value().len().to_u32()
-                        }),
+                        params_size_hint: params
+                            .iter()
+                            .fold(0, |acc, n| acc + 4 + n.value().len().to_u32()),
                         params: mem::take(params).into_iter(),
                         result_formats_len: 1,
                         result_formats: [PgFormat::Binary],
@@ -144,25 +145,23 @@ where
                         max_row: 0,
                     });
                     io.send(frontend::Sync);
-                    let Phase::Portal(_) = mem::take(phase) else {
-                        unreachable!()
-                    };
+
                     *phase = Phase::PortalFlush;
-                },
+                }
                 Phase::PortalFlush => {
                     ready!(io.poll_flush(cx)?);
                     *phase = Phase::PortalRecv { cols: None };
-                },
+                }
                 Phase::PortalRecv { cols } => {
                     use backend::BackendMessage::*;
                     loop {
                         match ready!(io.poll_recv(cx)?) {
-                            BindComplete(_) => {},
-                            NoData(_) => {},
                             RowDescription(rd) => {
                                 cols.replace(ColumnInfo::decode_multi_vec(rd));
-                            },
-                            CommandComplete(_) => {},
+                            }
+                            BindComplete(_) => {}
+                            NoData(_) => {}
+                            CommandComplete(_) => {}
                             ReadyForQuery(_) => break,
                             DataRow(dr) => {
                                 let cols = cols.as_mut().expect("postgres didnt send RowDescription");

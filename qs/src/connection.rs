@@ -1,21 +1,27 @@
+use bytes::{Buf, BytesMut};
 use lru::LruCache;
-use std::num::NonZeroUsize;
+use std::{num::NonZeroUsize, task::ready};
 
 use crate::{
-    Result,
-    transport::PgTransport,
-    postgres::{BackendProtocol, FrontendProtocol, frontend},
+    Error, Result,
+    net::Socket,
     options::PgOptions,
+    postgres::{BackendProtocol, ErrorResponse, FrontendProtocol, NoticeResponse, frontend},
     protocol,
     statement::StatementName,
-    stream::PgStream,
+    transport::PgTransport,
 };
 
+const DEFAULT_BUF_CAPACITY: usize = 1024;
 const DEFAULT_PREPARED_STMT_CACHE: NonZeroUsize = NonZeroUsize::new(24).unwrap();
 
 #[derive(Debug)]
 pub struct PgConnection {
-    stream: PgStream,
+    socket: Socket,
+    read_buf: BytesMut,
+    write_buf: BytesMut,
+
+    // stream: PgStream,
     stmts: LruCache<u64, StatementName>,
 }
 
@@ -27,10 +33,15 @@ impl PgConnection {
 
     /// perform a startup message with options
     pub async fn connect_with(opt: PgOptions) -> Result<Self> {
-        let stream = PgStream::connect(&opt).await?;
+        let socket = match &*opt.host {
+            "localhost" => Socket::connect_socket(&(format!("/run/postgresql/.s.PGSQL.{}",opt.port))).await?,
+            _ => Socket::connect_tcp(&opt.host, opt.port).await?,
+        };
 
         let mut me = Self {
-            stream,
+            socket,
+            read_buf: BytesMut::with_capacity(DEFAULT_BUF_CAPACITY),
+            write_buf: BytesMut::with_capacity(DEFAULT_BUF_CAPACITY),
             stmts: LruCache::new(DEFAULT_PREPARED_STMT_CACHE),
         };
 
@@ -45,19 +56,52 @@ impl PgConnection {
 
 impl PgTransport for PgConnection {
     fn poll_flush(&mut self, cx: &mut std::task::Context) -> std::task::Poll<std::io::Result<()>> {
-        PgStream::poll_flush(&mut self.stream, cx)
+        crate::io::poll_write_all(&mut self.socket, &mut self.write_buf, cx)
     }
 
     fn poll_recv<B: BackendProtocol>(&mut self, cx: &mut std::task::Context) -> std::task::Poll<Result<B>> {
-        PgStream::poll_recv(&mut self.stream, cx)
+        use std::task::Poll;
+
+        loop {
+            let Some(mut header) = self.read_buf.get(..5) else {
+                self.read_buf.reserve(1024);
+                ready!(crate::io::poll_read(&mut self.socket, &mut self.read_buf, cx)?);
+                continue;
+            };
+
+            let msgtype = header.get_u8();
+            let len = header.get_i32() as _;
+
+            if self.read_buf.len() - 1/*msgtype*/ < len {
+                self.read_buf.reserve(1 + len);
+                ready!(crate::io::poll_read(&mut self.socket, &mut self.read_buf, cx)?);
+                continue;
+            }
+
+            self.read_buf.advance(5);
+            let body = self.read_buf.split_to(len - 4).freeze();
+
+            let res = match msgtype {
+                ErrorResponse::MSGTYPE => {
+                    let err = ErrorResponse::decode(msgtype, body).unwrap();
+                    Err(Error::Database(err))?
+                }
+                NoticeResponse::MSGTYPE => {
+                    todo!()
+                }
+                _ => B::decode(msgtype, body)?,
+            };
+
+            return Poll::Ready(Ok(res));
+        }
     }
 
     fn send<F: FrontendProtocol>(&mut self, message: F) {
-        PgStream::send(&mut self.stream, message);
+        frontend::write(message, &mut self.write_buf);
     }
 
     fn send_startup(&mut self, startup: frontend::Startup) {
-        PgStream::send_startup(&mut self.stream, startup);
+        startup.write(&mut self.write_buf);
     }
 
     fn get_stmt(&mut self, sqlid: u64) -> Option<StatementName> {

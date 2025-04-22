@@ -54,7 +54,6 @@ pub mod row;
 // Connection
 pub mod options;
 mod transport;
-mod stream;
 mod connection;
 
 // Operation

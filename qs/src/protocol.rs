@@ -9,7 +9,7 @@ use crate::{
         frontend,
     },
     row::{FromRow, Row},
-    transport::PgTransport,
+    transport::{PgTransport, PgTransportExt},
 };
 
 /// Startup phase successful response.

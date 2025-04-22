@@ -1,9 +1,4 @@
-use std::{
-    io,
-    marker::PhantomPinned,
-    pin::Pin,
-    task::{Context, Poll},
-};
+use std::io;
 
 /// an either `TcpStream` or `Socket`, which implement
 /// `AsyncRead` and `AsyncWrite` transparently
@@ -48,13 +43,6 @@ impl Socket {
             let _ = path;
             panic!("runtime disabled")
         }
-    }
-
-    pub fn write_all_buf<'a, B>(&'a mut self, buf: &'a mut B) -> WriteAllBuf<'a, B>
-    where
-        B: bytes::Buf + ?Sized,
-    {
-        WriteAllBuf { socket: self, buf, _pin: PhantomPinned }
     }
 }
 
@@ -111,30 +99,6 @@ impl tokio::io::AsyncWrite for Socket {
             #[cfg(unix)]
             Kind::TokioUnixSocket(u) => Pin::new(u).poll_shutdown(cx),
         }
-    }
-}
-
-pin_project_lite::pin_project! {
-    /// A future to write some of the buffer to an `AsyncWrite`.
-    #[derive(Debug)]
-    #[must_use = "futures do nothing unless you `.await` or poll them"]
-    pub struct WriteAllBuf<'a, B: ?Sized> {
-        socket: &'a mut Socket,
-        buf: &'a mut B,
-        #[pin]
-        _pin: PhantomPinned,
-    }
-}
-
-impl<B> Future for WriteAllBuf<'_, B>
-where
-    B: bytes::Buf + ?Sized,
-{
-    type Output = io::Result<()>;
-
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
-        let me = self.project();
-        crate::io::poll_write_all(me.socket, me.buf, cx)
     }
 }
 

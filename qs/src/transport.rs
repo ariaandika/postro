@@ -8,12 +8,6 @@ use crate::{
 
 /// A buffered stream which can send and receive postgres message
 pub trait PgTransport {
-    /// Future returned from [`flush`][PostgresIo::flush].
-    type Flush<'a>: Future<Output = io::Result<()>> where Self: 'a;
-
-    /// Future returned from [`recv`][PostgresIo::recv].
-    type Recv<'a, B>: Future<Output = Result<B>> where B: BackendProtocol, Self: 'a;
-
     fn poll_flush(&mut self, cx: &mut Context) -> Poll<io::Result<()>>;
 
     fn poll_recv<B: BackendProtocol>(&mut self, cx: &mut Context) -> Poll<Result<B>>;
@@ -36,38 +30,19 @@ pub trait PgTransport {
     /// [1]: frontend::Startup
     fn send_startup(&mut self, startup: frontend::Startup);
 
-    /// actually write buffered messages to underlying io
-    fn flush(&mut self) -> Self::Flush<'_>;
-
-    /// receive a backend message
-    ///
-    /// note that the implementor *should* detect database error,
-    /// and return it as [`Result::Err`][std::result::Result::Err]
-    fn recv<B: BackendProtocol>(&mut self) -> Self::Recv<'_, B>;
-
     /// Check for already prepared statement
     ///
     /// Only if the io support statement caching.
-    fn get_stmt(&mut self, _sql: u64) -> Option<StatementName> {
-        None
-    }
+    fn get_stmt(&mut self, _sql: u64) -> Option<StatementName>;
 
     /// Add new prepared statement.
     ///
     /// Return `false` if caching is not supported,
     /// if so statement will be cleared immediately.
-    fn add_stmt(&mut self, _sql: u64, _id: StatementName) -> bool {
-        false
-    }
-
-    fn as_pg_stream(&mut self) -> &mut crate::stream::PgStream;
+    fn add_stmt(&mut self, _sql: u64, _id: StatementName);
 }
 
 impl<P> PgTransport for &mut P where P: PgTransport {
-    type Flush<'a> = P::Flush<'a> where Self: 'a;
-
-    type Recv<'a, B> = P::Recv<'a, B> where B: BackendProtocol, Self: 'a;
-
     fn poll_flush(&mut self, cx: &mut Context) -> Poll<io::Result<()>> {
         P::poll_flush(self, cx)
     }
@@ -84,16 +59,24 @@ impl<P> PgTransport for &mut P where P: PgTransport {
         P::send_startup(self, startup);
     }
 
-    fn flush(&mut self) -> Self::Flush<'_> {
-        P::flush(self)
+    fn get_stmt(&mut self, sql: u64) -> Option<StatementName> {
+        P::get_stmt(self, sql)
     }
 
-    fn recv<B: BackendProtocol>(&mut self) -> Self::Recv<'_, B> {
-        P::recv(self)
-    }
-
-    fn as_pg_stream(&mut self) -> &mut crate::stream::PgStream {
-        P::as_pg_stream(self)
+    fn add_stmt(&mut self, sql: u64, id: StatementName) {
+        P::add_stmt(self, sql, id);
     }
 }
+
+pub trait PgTransportExt: PgTransport {
+    fn flush(&mut self) -> impl Future<Output = io::Result<()>> {
+        std::future::poll_fn(|cx|self.poll_flush(cx))
+    }
+
+    fn recv<B: BackendProtocol>(&mut self) -> impl Future<Output = Result<B>> {
+        std::future::poll_fn(|cx|self.poll_recv(cx))
+    }
+}
+
+impl<T> PgTransportExt for T where T: PgTransport { }
 

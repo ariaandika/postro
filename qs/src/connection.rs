@@ -27,60 +27,45 @@ impl PgConnection {
 
     /// perform a startup message with options
     pub async fn connect_with(opt: PgOptions) -> Result<Self> {
-        let mut stream = PgStream::connect(&opt).await?;
+        let stream = PgStream::connect(&opt).await?;
+
+        let mut me = Self {
+            stream,
+            stmts: LruCache::new(DEFAULT_PREPARED_STMT_CACHE),
+        };
 
         let protocol::StartupResponse {
             backend_key_data: _,
             param_status: _,
-        } = protocol::startup(&opt, &mut stream).await?;
+        } = protocol::startup(&opt, &mut me).await?;
 
-        Ok(Self {
-            stream,
-            stmts: LruCache::new(DEFAULT_PREPARED_STMT_CACHE),
-        })
+        Ok(me)
     }
 }
 
 impl PgTransport for PgConnection {
-    type Flush<'a> = <&'a mut PgStream as PgTransport>::Flush<'a> where Self: 'a;
-
-    type Recv<'a, B> = <&'a mut PgStream as PgTransport>::Recv<'a, B> where B: BackendProtocol, Self: 'a;
-
     fn poll_flush(&mut self, cx: &mut std::task::Context) -> std::task::Poll<std::io::Result<()>> {
-        PgTransport::poll_flush(&mut self.stream, cx)
+        PgStream::poll_flush(&mut self.stream, cx)
     }
 
     fn poll_recv<B: BackendProtocol>(&mut self, cx: &mut std::task::Context) -> std::task::Poll<Result<B>> {
-        PgTransport::poll_recv(&mut self.stream, cx)
+        PgStream::poll_recv(&mut self.stream, cx)
     }
 
     fn send<F: FrontendProtocol>(&mut self, message: F) {
-        PgTransport::send(&mut self.stream, message);
+        PgStream::send(&mut self.stream, message);
     }
 
     fn send_startup(&mut self, startup: frontend::Startup) {
-        PgTransport::send_startup(&mut self.stream, startup);
-    }
-
-    fn flush(&mut self) -> Self::Flush<'_> {
-        PgTransport::flush(&mut self.stream)
-    }
-
-    fn recv<B: BackendProtocol>(&mut self) -> Self::Recv<'_, B> {
-        PgTransport::recv(&mut self.stream)
+        PgStream::send_startup(&mut self.stream, startup);
     }
 
     fn get_stmt(&mut self, sqlid: u64) -> Option<StatementName> {
         self.stmts.get(&sqlid).cloned()
     }
 
-    fn add_stmt(&mut self, sql: u64, id: StatementName) -> bool {
+    fn add_stmt(&mut self, sql: u64, id: StatementName) {
         self.stmts.push(sql, id);
-        true
-    }
-
-    fn as_pg_stream(&mut self) -> &mut crate::stream::PgStream {
-        &mut self.stream
     }
 }
 

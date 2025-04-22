@@ -3,10 +3,9 @@ use std::{
     task::{Context, Poll, ready},
 };
 
-use super::portal::Portal;
+use super::{portal::Portal, ops};
 use crate::{
     Result,
-    column::ColumnInfo,
     encode::Encoded,
     postgres::{ProtocolError, backend},
     transport::PgTransport,
@@ -22,22 +21,17 @@ pin_project_lite::pin_project! {
 }
 
 pin_project_lite::pin_project! {
-    #[derive(Debug, Default)]
+    #[derive(Debug)]
     #[project = PhaseProject]
     enum Phase<'sql, 'val, IO> {
         Portal {
             #[pin]
             portal: Portal<'sql, 'val, IO>,
         },
-        Execute {
-            io: Option<IO>,
-            cols: Option<Vec<ColumnInfo>>,
-        },
-        ReadyForQuery {
-            io: IO,
-        },
-        #[default]
-        Invalid,
+        BindComplete { io: Option<IO> },
+        NoData { io: Option<IO> },
+        Execute { io: Option<IO> },
+        ReadyForQuery { io: IO, },
         Complete,
     }
 }
@@ -64,49 +58,25 @@ where
             match phase.as_mut().project() {
                 PhaseProject::Portal { portal } => {
                     let io = ready!(portal.poll(cx)?);
-                    *phase = Phase::Execute { io: Some(io), cols: None };
+                    *phase = Phase::Execute { io: Some(io) };
+                },
+                PhaseProject::BindComplete { io } => {
+                    ready!(io.as_mut().unwrap().poll_recv::<backend::BindComplete>(cx)?);
+                    *phase = Phase::NoData { io: io.take() };
+                },
+                PhaseProject::NoData { io } => {
+                    ready!(io.as_mut().unwrap().poll_recv::<backend::NoData>(cx)?);
+                    *phase = Phase::Execute { io: io.take() };
                 }
-                PhaseProject::Execute { io, cols } => {
-                    use backend::BackendMessage::*;
-                    loop {
-                        match ready!(io.as_mut().unwrap().poll_recv(cx)?) {
-                            RowDescription(rd) => {
-                                cols.replace(ColumnInfo::decode_multi_vec(rd));
-                            }
-                            BindComplete(_) => {}
-                            NoData(_) => {}
-                            CommandComplete(_) => {}
-                            DataRow(_) => {
-                                // let cols = cols.as_mut().expect("postgres didnt send RowDescription");
-                                // let row = R::from_row(Row::new(cols, dr))?;
-                                let io = io.take().unwrap();
-                                *phase = Phase::ReadyForQuery { io, /* row: Some(row) */ };
-                                break
-                            }
-                            f => {
-                                let err = ProtocolError::unexpected_phase(f.msgtype(), "extended query");
-                                *phase = Phase::Complete;
-                                return Poll::Ready(Err(err.into()));
-                            }
-                        }
-                    }
+                PhaseProject::Execute { io } => {
+                    let cmd = ready!(io.as_mut().unwrap().poll_recv::<backend::CommandComplete>(cx)?);
+                    let row_info = ops::command_complete(cmd);
+                    *phase = Phase::ReadyForQuery { io: io.take().unwrap() };
                 },
                 PhaseProject::ReadyForQuery { io, /* row */ } => {
-                    use backend::BackendMessage::*;
-                    loop {
-                        match ready!(io.poll_recv(cx)?) {
-                            ReadyForQuery(_) => break,
-                            f => {
-                                let err = ProtocolError::unexpected_phase(f.msgtype(), "extended query");
-                                *phase = Phase::Complete;
-                                return Poll::Ready(Err(err.into()));
-                            }
-                        }
-                    }
-                    // return Poll::Ready(Ok(row.take().expect("`poll` after complete")));
+                    ready!(io.poll_recv::<backend::ReadyForQuery>(cx)?);
                     return Poll::Ready(Ok(420));
                 },
-                PhaseProject::Invalid => unreachable!(),
                 PhaseProject::Complete => panic!("`poll` after complete"),
             }
         }

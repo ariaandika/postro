@@ -1,40 +1,12 @@
 use crate::{
-    common::{BytesRef, LossyStr},
+    common::LossyStr,
     postgres::backend::{ErrorResponse, NoticeResponse},
 };
-
-impl std::error::Error for ErrorResponse { }
-
-impl std::fmt::Debug for ErrorResponse {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        std::fmt::Debug::fmt(&BytesRef(&self.body), f)
-    }
-}
-
-impl std::fmt::Display for ErrorResponse {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        MessageFields::display(&self.body, f)
-    }
-}
-
-impl std::error::Error for NoticeResponse { }
-
-impl std::fmt::Debug for NoticeResponse {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        std::fmt::Debug::fmt(&BytesRef(&self.body), f)
-    }
-}
-
-impl std::fmt::Display for NoticeResponse {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        MessageFields::display(&self.body, f)
-    }
-}
 
 // TODO: Appendix A, error code / sqlstate message
 // https://www.postgresql.org/docs/current/errcodes-appendix.html
 
-/// a field of [`DatabaseError`] or [`NoticeResponse`]
+/// a field of [`ErrorResponse`] or [`NoticeResponse`]
 ///
 /// Each field type has a single-byte identification token.
 ///
@@ -51,9 +23,9 @@ impl std::fmt::Display for NoticeResponse {
 /// frontends should silently ignore fields of unrecognized type.
 ///
 /// `String` The field value.
-///
-/// previously, this have their own explicit fields, but clippy detect it
-/// to big in size, 432 bytes to be exact
+//
+// previously, this have their own explicit fields, but clippy detect it
+// to big in size, 432 bytes to be exact
 pub enum MessageFields {
     /// one of [`Severity`], or a localized translation of one of these, always present
     SeverityLocalized,
@@ -124,19 +96,33 @@ pub enum MessageFields {
 }
 
 impl MessageFields {
+    pub fn debug(body: &[u8], f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        let mut map = f.debug_map();
+        // LATEST: commit fmt and dberror
+        for (i,b) in body.iter().copied().enumerate() {
+            let Some(key) = MessageFields::from_byte(b) else {
+                continue;
+            };
+            map.key(&key.as_str());
+            let end = body[i + 1..].iter().position(|e|matches!(e,b'\0'));
+            match end {
+                Some(end) => map.value(&LossyStr(&body[i + 1..end])),
+                None => map.value(&"<??>"),
+            };
+        }
+        map.finish()
+    }
     pub fn display(body: &[u8], f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        let mut severity = None;
+        let mut sevr = None;
         let mut code = None;
         let mut message = None;
         let mut detail = None;
         let mut hint = None;
 
-        for (i,b) in body.iter().copied().enumerate() {
+        for (i, b) in body.iter().copied().enumerate() {
             match MessageFields::from_byte(b) {
-                Some(MessageFields::SeverityLocalized) => severity = Some(i),
-                Some(MessageFields::Severity) => {
-                    severity.get_or_insert(i);
-                },
+                Some(MessageFields::SeverityLocalized) => sevr = Some(i),
+                Some(MessageFields::Severity) if sevr.is_none() => sevr = Some(i),
                 Some(MessageFields::Code) => code = Some(i),
                 Some(MessageFields::Message) => message = Some(i),
                 Some(MessageFields::Detail) => detail = Some(i),
@@ -156,7 +142,7 @@ impl MessageFields {
                         write!(f, $s, "??")?;
                         break 'foo
                     };
-                    write!(f, $s, LossyStr(&body[i + 1..end]))?;
+                    write!(f, $s, LossyStr(&body[i + 1..i + 1 + end]))?;
                 }
             };
             ($f:ident,$s:literal,?) => {
@@ -167,42 +153,81 @@ impl MessageFields {
             };
         }
 
-        foo!(severity, "[{}]");
+        foo!(sevr, "[{}]");
         foo!(message, " {}");
         foo!(code, " ({})");
         foo!(detail, ",\n\n{}", ?);
         foo!(hint, ",\n\nHINT: {}", ?);
         Ok(())
     }
+}
 
-    pub fn from_byte(byte: u8) -> Option<MessageFields> {
-        macro_rules! mat {
-            ($($b:literal => $s:ident,)*) => {
-                Some(match byte {
-                    $($b => Self::$s,)*
-                    _ => return None,
-                })
-            };
+macro_rules! foo {
+    ($($b:literal => $s:ident,)*) => {
+        pub fn from_byte(byte: u8) -> Option<MessageFields> {
+            Some(match byte {
+                $($b => Self::$s,)*
+                _ => return None,
+            })
         }
-        mat! {
-            b'S' => SeverityLocalized,
-            b'V' => Severity,
-            b'C' => Code,
-            b'M' => Message,
-            b'D' => Detail,
-            b'H' => Hint,
-            b'P' => Position,
-            b'p' => InternalPosition,
-            b'q' => InternalQuery,
-            b'W' => Where,
-            b's' => SchemaName,
-            b't' => TableName,
-            b'c' => ColumnName,
-            b'd' => DataTypeName,
-            b'n' => ConstraintName,
-            b'F' => FileName,
-            b'L' => Line,
-            b'R' => Routine,
+        pub fn as_str(&self) -> &'static str {
+            match self {
+                $(Self::$s => stringify!($s),)*
+            }
         }
+    };
+}
+
+impl MessageFields {
+    foo! {
+        b'S' => SeverityLocalized,
+        b'V' => Severity,
+        b'C' => Code,
+        b'M' => Message,
+        b'D' => Detail,
+        b'H' => Hint,
+        b'P' => Position,
+        b'p' => InternalPosition,
+        b'q' => InternalQuery,
+        b'W' => Where,
+        b's' => SchemaName,
+        b't' => TableName,
+        b'c' => ColumnName,
+        b'd' => DataTypeName,
+        b'n' => ConstraintName,
+        b'F' => FileName,
+        b'L' => Line,
+        b'R' => Routine,
     }
 }
+
+impl std::error::Error for ErrorResponse { }
+
+impl std::fmt::Debug for ErrorResponse {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Error ")?;
+        MessageFields::debug(&self.body, f)
+    }
+}
+
+impl std::fmt::Display for ErrorResponse {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        MessageFields::display(&self.body, f)
+    }
+}
+
+impl std::error::Error for NoticeResponse { }
+
+impl std::fmt::Debug for NoticeResponse {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Notice ")?;
+        MessageFields::debug(&self.body, f)
+    }
+}
+
+impl std::fmt::Display for NoticeResponse {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        MessageFields::display(&self.body, f)
+    }
+}
+

@@ -4,6 +4,8 @@ use crate::{
     transport::PgTransport,
 };
 
+mod ops;
+
 mod portal;
 mod fetch;
 mod fetch_all;

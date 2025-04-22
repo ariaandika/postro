@@ -1,20 +1,16 @@
 use std::{
-    hash::{DefaultHasher, Hash, Hasher},
     mem,
     pin::Pin,
     task::{Context, Poll, ready},
 };
 
-use crate::{
-    Result,
-    encode::Encoded,
-    ext::UsizeExt,
-    postgres::{PgFormat, backend, frontend},
-    statement::{PortalName, StatementName},
-    transport::PgTransport,
-};
+use super::ops::{self, PrepareData};
+use crate::{Result, encode::Encoded, postgres::backend, transport::PgTransport};
 
 pin_project_lite::pin_project! {
+    /// Prepare a statement and bind a portal.
+    ///
+    /// Caller must ready to receive subsequent messages explained in [`portal`](super::ops::portal)
     #[derive(Debug)]
     #[project = PortalProject]
     pub struct Portal<'sql, 'val, IO> {
@@ -27,6 +23,7 @@ pin_project_lite::pin_project! {
 }
 
 impl<'sql, 'val, IO> Portal<'sql, 'val, IO> {
+    /// Create new [`Portal`] future.
     pub fn new(sql: &'sql str, io: IO, params: Vec<Encoded<'val>>, persistent: bool) -> Self {
         Self {
             sql,
@@ -50,12 +47,6 @@ enum Phase {
     Complete,
 }
 
-#[derive(Debug)]
-struct PrepareData {
-    sqlid: u64,
-    stmt: StatementName,
-}
-
 impl<IO> Future for Portal<'_, '_, IO>
 where
     IO: PgTransport,
@@ -76,33 +67,11 @@ where
         loop {
             match &mut *phase {
                 Phase::Prepare => {
-                    let sqlid = {
-                        let mut buf = DefaultHasher::new();
-                        sql.hash(&mut buf);
-                        buf.finish()
+                    let data = ops::prepare(sql, params, *persistent, &mut *io);
+                    *phase = match data.cache_hit {
+                        true => Phase::Portal(data),
+                        false => Phase::PrepareFlush(data),
                     };
-
-                    if *persistent {
-                        if let Some(stmt) = io.get_stmt(sqlid) {
-                            *phase = Phase::Portal(PrepareData { sqlid, stmt });
-                            continue;
-                        }
-                    }
-
-                    let stmt = match persistent {
-                        true => StatementName::next(),
-                        false => StatementName::unnamed(),
-                    };
-
-                    io.send(frontend::Parse {
-                        prepare_name: stmt.as_str(),
-                        sql,
-                        oids_len: params.len() as _,
-                        oids: params.iter().map(Encoded::oid),
-                    });
-                    io.send(frontend::Flush);
-
-                    *phase = Phase::PrepareFlush(PrepareData { sqlid, stmt });
                 }
                 Phase::PrepareFlush(_) => {
                     ready!(io.poll_flush(cx)?);
@@ -120,31 +89,7 @@ where
                     *phase = Phase::Portal(data);
                 }
                 Phase::Portal(data) => {
-                    let portal = PortalName::unnamed();
-
-                    io.send(frontend::Bind {
-                        portal_name: portal.as_str(),
-                        stmt_name: data.stmt.as_str(),
-                        param_formats_len: 1,
-                        param_formats: [PgFormat::Binary],
-                        params_len: params.len().to_u16(),
-                        params_size_hint: params
-                            .iter()
-                            .fold(0, |acc, n| acc + 4 + n.value().len().to_u32()),
-                        params: mem::take(params).into_iter(),
-                        result_formats_len: 1,
-                        result_formats: [PgFormat::Binary],
-                    });
-                    io.send(frontend::Describe {
-                        kind: b'P',
-                        name: portal.as_str(),
-                    });
-                    io.send(frontend::Execute {
-                        portal_name: portal.as_str(),
-                        max_row: 0,
-                    });
-                    io.send(frontend::Sync);
-
+                    ops::portal(data, params, &mut *io);
                     *phase = Phase::PortalFlush;
                 }
                 Phase::PortalFlush => {

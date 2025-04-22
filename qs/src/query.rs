@@ -4,11 +4,12 @@ use crate::{
     transport::PgTransport,
 };
 
-mod fetch_all;
+mod portal;
 mod fetch;
+mod fetch_all;
 
-pub use fetch_all::FetchAll;
 pub use fetch::Fetch;
+pub use fetch_all::FetchAll;
 
 pub fn query<'val, IO: PgTransport>(sql: &str, io: IO) -> Query<'_, 'val, IO> {
     Query { sql, io, params: Vec::new(), persistent: true }
@@ -43,7 +44,7 @@ impl<'sql, 'val, IO> Query<'sql, 'val, IO>
 where
     IO: PgTransport,
 {
-    pub fn fetch_all_v2<R: FromRow>(self) -> FetchAll<'sql, 'val, R, IO> {
+    pub fn fetch_all<R: FromRow>(self) -> FetchAll<'sql, 'val, R, IO> {
         FetchAll::new(self.sql, self.io, self.params, self.persistent)
     }
 

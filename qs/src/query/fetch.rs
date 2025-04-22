@@ -1,20 +1,17 @@
 use futures_core::Stream;
 use std::{
-    hash::{DefaultHasher, Hash, Hasher},
     marker::PhantomData,
-    mem,
     pin::Pin,
     task::{Context, Poll, ready},
 };
 
+use super::portal::Portal;
 use crate::{
     Result,
     column::ColumnInfo,
     encode::Encoded,
-    ext::UsizeExt,
-    postgres::{PgFormat, ProtocolError, backend, frontend},
+    postgres::{ProtocolError, backend},
     row::{FromRow, Row},
-    statement::{PortalName, StatementName},
     transport::PgTransport,
 };
 
@@ -22,39 +19,38 @@ pin_project_lite::pin_project! {
     #[derive(Debug)]
     #[project = FetchAllProject]
     pub struct Fetch<'sql, 'val, R, IO> {
-        sql: &'sql str,
-        io: IO,
-        phase: Phase,
-        params: Vec<Encoded<'val>>,
-        persistent: bool,
+        #[pin]
+        phase: Phase<'sql, 'val, R, IO>,
         _p: PhantomData<R>,
     }
 }
 
-#[derive(Debug, Default)]
-enum Phase {
-    Prepare,
-    PrepareFlush(PrepareData),
-    PrepareComplete(PrepareData),
-    Portal(PrepareData),
-    PortalFlush,
-    PortalRecv {
-        cols: Option<Vec<ColumnInfo>>,
-    },
-    #[default]
-    Invalid,
-    Complete,
-}
-
-#[derive(Debug)]
-struct PrepareData {
-    sqlid: u64,
-    stmt: StatementName,
+pin_project_lite::pin_project! {
+    #[derive(Debug, Default)]
+    #[project = PhaseProject]
+    enum Phase<'sql, 'val, R, IO> {
+        Portal {
+            #[pin]
+            portal: Portal<'sql, 'val, R, IO>,
+        },
+        PortalRecv {
+            io: IO,
+            cols: Option<Vec<ColumnInfo>>,
+        },
+        #[default]
+        Invalid,
+        Complete,
+    }
 }
 
 impl<'sql, 'val, R, IO> Fetch<'sql, 'val, R, IO> {
     pub fn new(sql: &'sql str, io: IO, params: Vec<Encoded<'val>>, persistent: bool) -> Self {
-        Self { sql, io, phase: Phase::Prepare, params, persistent, _p: PhantomData }
+        Self {
+            phase: Phase::Portal {
+                portal: Portal::new(sql, io, params, persistent),
+            },
+            _p: PhantomData,
+        }
     }
 }
 
@@ -66,93 +62,15 @@ where
     type Item = Result<R>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        let FetchAllProject {
-            sql,
-            io,
-            phase,
-            params,
-            persistent,
-            _p,
-        } = self.as_mut().project();
+        let FetchAllProject { mut phase, _p } = self.as_mut().project();
 
         loop {
-            match &mut *phase {
-                Phase::Prepare => {
-                    let sqlid = {
-                        let mut buf = DefaultHasher::new();
-                        sql.hash(&mut buf);
-                        buf.finish()
-                    };
-
-                    if *persistent {
-                        if let Some(stmt) = io.get_stmt(sqlid) {
-                            *phase = Phase::Portal(PrepareData { sqlid, stmt });
-                        }
-                    }
-
-                    let stmt = match persistent {
-                        true => StatementName::next(),
-                        false => StatementName::unnamed(),
-                    };
-
-                    io.send(frontend::Parse {
-                        prepare_name: stmt.as_str(),
-                        sql,
-                        oids_len: params.len() as _,
-                        oids: params.iter().map(Encoded::oid),
-                    });
-                    io.send(frontend::Flush);
-
-                    *phase = Phase::PrepareFlush(PrepareData { sqlid, stmt });
+            match phase.as_mut().project() {
+                PhaseProject::Portal { portal } => {
+                    let io = ready!(portal.poll(cx)?);
+                    *phase = Phase::PortalRecv { io, cols: None };
                 }
-                Phase::PrepareFlush(_) => {
-                    ready!(io.poll_flush(cx)?);
-                    let Phase::PrepareFlush(data) = mem::take(phase) else {
-                        unreachable!()
-                    };
-                    *phase = Phase::PrepareComplete(data);
-                }
-                Phase::PrepareComplete(_) => {
-                    ready!(io.poll_recv::<backend::ParseComplete>(cx)?);
-                    let Phase::PrepareComplete(data) = mem::take(phase) else {
-                        unreachable!()
-                    };
-                    io.add_stmt(data.sqlid, data.stmt.clone());
-                    *phase = Phase::Portal(data);
-                }
-                Phase::Portal(data) => {
-                    let portal = PortalName::unnamed();
-
-                    io.send(frontend::Bind {
-                        portal_name: portal.as_str(),
-                        stmt_name: data.stmt.as_str(),
-                        param_formats_len: 1,
-                        param_formats: [PgFormat::Binary],
-                        params_len: params.len().to_u16(),
-                        params_size_hint: params
-                            .iter()
-                            .fold(0, |acc, n| acc + 4 + n.value().len().to_u32()),
-                        params: mem::take(params).into_iter(),
-                        result_formats_len: 1,
-                        result_formats: [PgFormat::Binary],
-                    });
-                    io.send(frontend::Describe {
-                        kind: b'P',
-                        name: portal.as_str(),
-                    });
-                    io.send(frontend::Execute {
-                        portal_name: portal.as_str(),
-                        max_row: 0,
-                    });
-                    io.send(frontend::Sync);
-
-                    *phase = Phase::PortalFlush;
-                }
-                Phase::PortalFlush => {
-                    ready!(io.poll_flush(cx)?);
-                    *phase = Phase::PortalRecv { cols: None };
-                }
-                Phase::PortalRecv { cols } => {
+                PhaseProject::PortalRecv { io, cols } => {
                     use backend::BackendMessage::*;
                     loop {
                         match ready!(io.poll_recv(cx)?) {
@@ -168,7 +86,8 @@ where
                                 return Poll::Ready(Some(R::from_row(Row::new(cols, dr))));
                             }
                             f => {
-                                let err = ProtocolError::unexpected_phase(f.msgtype(), "extended query");
+                                let err =
+                                    ProtocolError::unexpected_phase(f.msgtype(), "extended query");
                                 *phase = Phase::Complete;
                                 return Poll::Ready(Some(Err(err.into())));
                             }
@@ -176,8 +95,8 @@ where
                     }
                     *phase = Phase::Complete;
                 }
-                Phase::Invalid => unreachable!(),
-                Phase::Complete => return Poll::Ready(None),
+                PhaseProject::Invalid => unreachable!(),
+                PhaseProject::Complete => return Poll::Ready(None),
             }
         }
     }

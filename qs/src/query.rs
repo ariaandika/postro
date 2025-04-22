@@ -7,9 +7,11 @@ use crate::{
 mod portal;
 mod fetch;
 mod fetch_all;
+mod execute;
 
 pub use fetch::Fetch;
 pub use fetch_all::FetchAll;
+pub use execute::Execute;
 
 pub fn query<'val, IO: PgTransport>(sql: &str, io: IO) -> Query<'_, 'val, IO> {
     Query { sql, io, params: Vec::new(), persistent: true }
@@ -50,6 +52,10 @@ where
 
     pub fn fetch<R: FromRow>(self) -> Fetch<'sql, 'val, R, IO> {
         Fetch::new(self.sql, self.io, self.params, self.persistent)
+    }
+
+    pub fn execute(self) -> Execute<'sql, 'val, IO> {
+        Execute::new(self.sql, self.io, self.params, self.persistent)
     }
 }
 

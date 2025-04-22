@@ -1,6 +1,5 @@
 use std::{
     hash::{DefaultHasher, Hash, Hasher},
-    marker::PhantomData,
     mem,
     pin::Pin,
     task::{Context, Poll, ready},
@@ -11,7 +10,6 @@ use crate::{
     encode::Encoded,
     ext::UsizeExt,
     postgres::{PgFormat, backend, frontend},
-    row::FromRow,
     statement::{PortalName, StatementName},
     transport::PgTransport,
 };
@@ -19,17 +17,16 @@ use crate::{
 pin_project_lite::pin_project! {
     #[derive(Debug)]
     #[project = PortalProject]
-    pub struct Portal<'sql, 'val, R, IO> {
+    pub struct Portal<'sql, 'val, IO> {
         sql: &'sql str,
         io: Option<IO>,
         phase: Phase,
         params: Vec<Encoded<'val>>,
         persistent: bool,
-        _p: PhantomData<R>,
     }
 }
 
-impl<'sql, 'val, R, IO> Portal<'sql, 'val, R, IO> {
+impl<'sql, 'val, IO> Portal<'sql, 'val, IO> {
     pub fn new(sql: &'sql str, io: IO, params: Vec<Encoded<'val>>, persistent: bool) -> Self {
         Self {
             sql,
@@ -37,7 +34,6 @@ impl<'sql, 'val, R, IO> Portal<'sql, 'val, R, IO> {
             phase: Phase::Prepare,
             params,
             persistent,
-            _p: PhantomData,
         }
     }
 }
@@ -60,9 +56,8 @@ struct PrepareData {
     stmt: StatementName,
 }
 
-impl<R, IO> Future for Portal<'_, '_, R, IO>
+impl<IO> Future for Portal<'_, '_, IO>
 where
-    R: FromRow,
     IO: PgTransport,
 {
     type Output = Result<IO>;
@@ -74,7 +69,6 @@ where
             phase,
             params,
             persistent,
-            _p,
         } = self.as_mut().project();
 
         let io = self_io.as_mut().expect("foo poll after complete");

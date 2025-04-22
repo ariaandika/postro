@@ -20,7 +20,7 @@ pin_project_lite::pin_project! {
     #[project = FetchAllProject]
     pub struct Fetch<'sql, 'val, R, IO> {
         #[pin]
-        phase: Phase<'sql, 'val, R, IO>,
+        phase: Phase<'sql, 'val, IO>,
         _p: PhantomData<R>,
     }
 }
@@ -28,10 +28,10 @@ pin_project_lite::pin_project! {
 pin_project_lite::pin_project! {
     #[derive(Debug, Default)]
     #[project = PhaseProject]
-    enum Phase<'sql, 'val, R, IO> {
+    enum Phase<'sql, 'val, IO> {
         Portal {
             #[pin]
-            portal: Portal<'sql, 'val, R, IO>,
+            portal: Portal<'sql, 'val, IO>,
         },
         PortalRecv {
             io: IO,

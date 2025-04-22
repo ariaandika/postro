@@ -1,4 +1,4 @@
-use bytes::{BufMut, Bytes};
+use bytes::{BufMut, Bytes, BytesMut};
 
 /// Integer signess in postgres docs is awful.
 pub trait UsizeExt {
@@ -44,19 +44,40 @@ impl<B: BufMut> BufMutExt for B {
 }
 
 pub trait BytesExt {
+    fn get_nul_bytes(&mut self) -> Self;
+
     fn get_nul_string(&mut self) -> String;
 }
 
 impl BytesExt for Bytes {
-    fn get_nul_string(&mut self) -> String {
+    fn get_nul_bytes(&mut self) -> Self {
         let end = self
             .iter()
             .position(|e| matches!(e, b'\0'))
             .expect("Postgres string did not nul terminated");
-        let string = self.split_to(end).into();
-        // nul
-        bytes::Buf::advance(self, 1);
-        String::from_utf8(string).expect("Postgres did not return UTF-8")
+        let me = self.split_to(end);
+        bytes::Buf::advance(self, 1); // nul
+        me
+    }
+
+    fn get_nul_string(&mut self) -> String {
+        String::from_utf8(self.get_nul_bytes().into()).expect("Postgres did not return UTF-8")
+    }
+}
+
+impl BytesExt for BytesMut {
+    fn get_nul_bytes(&mut self) -> Self {
+        let end = self
+            .iter()
+            .position(|e| matches!(e, b'\0'))
+            .expect("Postgres string did not nul terminated");
+        let me = self.split_to(end);
+        bytes::Buf::advance(self, 1); // nul
+        me
+    }
+
+    fn get_nul_string(&mut self) -> String {
+        String::from_utf8(self.get_nul_bytes().into()).expect("Postgres did not return UTF-8")
     }
 }
 

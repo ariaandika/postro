@@ -3,13 +3,8 @@ use std::{
     task::{Context, Poll, ready},
 };
 
-use super::{portal::Portal, ops};
-use crate::{
-    Result,
-    encode::Encoded,
-    postgres::{ProtocolError, backend},
-    transport::PgTransport,
-};
+use super::{ops, portal::Portal};
+use crate::{Result, encode::Encoded, postgres::backend, transport::PgTransport};
 
 pin_project_lite::pin_project! {
     #[derive(Debug)]
@@ -31,7 +26,7 @@ pin_project_lite::pin_project! {
         BindComplete { io: Option<IO> },
         NoData { io: Option<IO> },
         Execute { io: Option<IO> },
-        ReadyForQuery { io: IO, },
+        ReadyForQuery { io: IO, row_info: u64 },
         Complete,
     }
 }
@@ -50,7 +45,7 @@ impl<IO> Future for Execute<'_, '_, IO>
 where
     IO: PgTransport,
 {
-    type Output = Result<i32>;
+    type Output = Result<u64>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let ExecuteProject { mut phase, } = self.as_mut().project();
@@ -71,11 +66,11 @@ where
                 PhaseProject::Execute { io } => {
                     let cmd = ready!(io.as_mut().unwrap().poll_recv::<backend::CommandComplete>(cx)?);
                     let row_info = ops::command_complete(cmd);
-                    *phase = Phase::ReadyForQuery { io: io.take().unwrap() };
+                    *phase = Phase::ReadyForQuery { io: io.take().unwrap(), row_info };
                 },
-                PhaseProject::ReadyForQuery { io, /* row */ } => {
+                PhaseProject::ReadyForQuery { io, row_info } => {
                     ready!(io.poll_recv::<backend::ReadyForQuery>(cx)?);
-                    return Poll::Ready(Ok(420));
+                    return Poll::Ready(Ok(*row_info));
                 },
                 PhaseProject::Complete => panic!("`poll` after complete"),
             }

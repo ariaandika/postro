@@ -104,23 +104,24 @@ pub fn portal(data: &PrepareData, params: &mut Vec<Encoded>, mut io: impl PgTran
 /// Decode information from [`CommandComplete`][1] message
 ///
 /// [1]: backend::CommandComplete
-pub fn command_complete(cmd: backend::CommandComplete) -> u32 {
-    // INSERT oid rows,
-    // where rows is the number of rows inserted.
-    // DELETE rows
-    // where rows is the number of rows deleted.
-    // UPDATE rows
-    // where rows is the number of rows updated.
-    // MERGE rows
-    // where rows is the number of rows inserted, updated, or deleted.
-    // SELECT rows
-    // where rows is the number of rows retrieved.
-    // MOVE rows
-    // where rows is the number of rows the cursor's position has been changed by.
-    // FETCH rows
-    // where rows is the number of rows that have been retrieved from the cursor.
-    // COPY rows
-    // where rows is the number of rows copied.
-    todo!()
+pub fn command_complete(cmd: backend::CommandComplete) -> u64 {
+    let tag = cmd.tag;
+
+    let int = match tag[0] {
+        b'I' => &tag["INSERT 0 ".len()..],
+        b'D' => &tag["DELETE ".len()..],
+        b'U' => &tag["UPDATE ".len()..],
+        b'M' => match tag[1] {
+            b'E' => &tag["MERGE ".len()..],
+            b'O' => &tag["MOVE ".len()..],
+            _ => panic!("postgres did not return expected CommandComplete tag"),
+        }
+        b'S' => &tag["SELECT ".len()..],
+        b'F' => &tag["FETCH ".len()..],
+        b'C' => &tag["COPY ".len()..],
+        _ => panic!("postgres did not return expected CommandComplete tag"),
+    };
+
+    std::str::from_utf8(int).unwrap().parse().unwrap()
 }
 

@@ -158,6 +158,7 @@ where
                     loop {
                         match ready!(io.poll_recv(cx)?) {
                             BindComplete(_) => {},
+                            NoData(_) => {},
                             RowDescription(rd) => {
                                 cols.replace(ColumnInfo::decode_multi_vec(rd));
                             },

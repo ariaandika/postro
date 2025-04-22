@@ -95,7 +95,7 @@ where
                                 let stmt = StatementName::next();
                                 io.send(frontend::Parse {
                                     prepare_name: stmt.as_str(),
-                                    sql: *sql,
+                                    sql,
                                     oids_len: params.len() as _,
                                     oids: params.iter().map(Encoded::oid),
                                 });

@@ -98,7 +98,6 @@ pub enum MessageFields {
 impl MessageFields {
     pub fn debug(body: &[u8], f: &mut std::fmt::Formatter) -> std::fmt::Result {
         let mut map = f.debug_map();
-        // LATEST: commit fmt and dberror
         for (i,b) in body.iter().copied().enumerate() {
             let Some(key) = MessageFields::from_byte(b) else {
                 continue;

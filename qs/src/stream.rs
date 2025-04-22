@@ -1,8 +1,14 @@
 use bytes::{Buf, BytesMut};
-use std::{io, task::{ready, Context, Poll}};
+use std::{
+    io,
+    task::{Context, Poll, ready},
+};
 
 use crate::{
-    net::{Socket, WriteAllBuf}, postgres::{frontend, BackendProtocol, ErrorResponse, FrontendProtocol, NoticeResponse}, transport::PgTransport, Error, PgOptions, Result
+    Error, PgOptions, Result,
+    net::{Socket, WriteAllBuf},
+    postgres::{BackendProtocol, ErrorResponse, FrontendProtocol, NoticeResponse, frontend},
+    transport::PgTransport,
 };
 
 const DEFAULT_BUF_CAPACITY: usize = 1024;

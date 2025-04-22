@@ -34,7 +34,7 @@ from!(<'a>([u8]: v) => Self::Slice(v));
 from!(<'a>(String: v) => Self::Slice(v.as_bytes()));
 from!(<'a>(Vec<u8>: v) => Self::Slice(v));
 
-impl<'a> ValueRef<'a> {
+impl ValueRef<'_> {
     pub(crate) fn copy_from_slice(slice: &[u8]) -> ValueRef<'static> {
         let len = slice.len();
         assert!(len > OWNED_LEN, "inline slice is too large");

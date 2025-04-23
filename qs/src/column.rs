@@ -6,6 +6,7 @@ use crate::{
     postgres::{Oid, backend::RowDescription},
 };
 
+/// Column information.
 #[derive(Debug)]
 pub struct ColumnInfo {
     /// The field name.
@@ -47,7 +48,7 @@ impl ColumnInfo {
     }
 }
 
-/// Column information.
+/// Column information with its value.
 #[derive(Debug)]
 pub struct Column {
     oid: Oid,

@@ -6,13 +6,13 @@ mod net;
 mod ext;
 
 // Protocol
-mod postgres;
+pub mod postgres;
 
 // Codec
 mod value;
 mod encode;
 mod column;
-mod decode;
+pub mod decode;
 
 // Component
 mod dberror;
@@ -20,7 +20,7 @@ mod statement;
 mod row;
 
 // Connection
-mod options;
+pub mod options;
 mod transport;
 mod connection;
 
@@ -34,6 +34,7 @@ mod error;
 pub use encode::{Encode, Encoded};
 pub use column::{Column, ColumnInfo, Index};
 pub use decode::Decode;
+pub use row::{FromRow, Row};
 
 pub use options::PgOptions;
 pub use connection::PgConnection;

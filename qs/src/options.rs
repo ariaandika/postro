@@ -1,10 +1,12 @@
-pub mod startup;
+mod startup;
 
 use crate::{
     common::{ByteStr, Url},
     error::err,
     Result,
 };
+
+pub use startup::StartupOptions;
 
 /// postgres connection options
 #[derive(Debug)]

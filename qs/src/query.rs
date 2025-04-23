@@ -12,11 +12,13 @@ mod fetch;
 mod fetch_one;
 mod fetch_all;
 mod execute;
+mod helpers;
 
 pub use fetch::Fetch;
 pub use fetch_all::FetchAll;
 pub use fetch_one::FetchOne;
 pub use execute::Execute;
+pub use helpers::{StartupResponse, simple_query, startup};
 
 pub fn query<'val, IO: PgTransport>(sql: &str, io: IO) -> Query<'_, 'val, IO> {
     Query { sql, io, params: Vec::new(), persistent: true }

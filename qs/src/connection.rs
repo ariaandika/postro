@@ -7,7 +7,7 @@ use crate::{
     net::Socket,
     options::PgOptions,
     postgres::{BackendProtocol, ErrorResponse, FrontendProtocol, NoticeResponse, frontend},
-    protocol,
+    query::{self, StartupResponse},
     statement::StatementName,
     transport::PgTransport,
 };
@@ -45,10 +45,10 @@ impl PgConnection {
             stmts: LruCache::new(DEFAULT_PREPARED_STMT_CACHE),
         };
 
-        let protocol::StartupResponse {
+        let StartupResponse {
             backend_key_data: _,
             param_status: _,
-        } = protocol::startup(&opt, &mut me).await?;
+        } = query::startup(&opt, &mut me).await?;
 
         Ok(me)
     }

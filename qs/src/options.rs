@@ -1,7 +1,9 @@
-use crate::common::{ByteStr, ParseError, Url};
+use crate::common::{ByteStr, Url};
 
+mod error;
 mod startup;
 
+pub use error::ConfigError;
 pub use startup::StartupOptions;
 
 /// postgres connection options
@@ -28,15 +30,15 @@ impl PgOptions {
     // TODO: postgres env var convention
     // pub fn new() { }
 
-    pub fn parse(url: &str) -> Result<PgOptions, ParseError> {
+    pub fn parse(url: &str) -> Result<PgOptions, ConfigError> {
         Self::parse_inner(ByteStr::copy_from_str(url))
     }
 
-    pub fn parse_static(url: &'static str) -> Result<PgOptions, ParseError> {
+    pub fn parse_static(url: &'static str) -> Result<PgOptions, ConfigError> {
         Self::parse_inner(ByteStr::from_static(url))
     }
 
-    fn parse_inner(url: ByteStr) -> Result<Self, ParseError> {
+    fn parse_inner(url: ByteStr) -> Result<Self, ConfigError> {
         // TODO: socket path input
 
         let url = Url::parse(url)?;
@@ -51,7 +53,7 @@ impl PgOptions {
 }
 
 impl std::str::FromStr for PgOptions {
-    type Err = ParseError;
+    type Err = ConfigError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Self::parse(s)

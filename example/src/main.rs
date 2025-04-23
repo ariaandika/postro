@@ -14,6 +14,11 @@ async fn main() {
         .await
         .unwrap();
 
+    let _err = qs::query("select deez", &mut conn)
+        .fetch_one::<()>()
+        .await
+        .unwrap_err();
+
     let (id,) = qs::query("insert into post(name) values($1) returning id", &mut conn)
         .bind("Foo")
         .fetch_one::<(i32,)>()

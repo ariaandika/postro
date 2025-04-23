@@ -10,7 +10,9 @@ use crate::{
     Error, Result,
     net::Socket,
     options::PgOptions,
-    postgres::{BackendProtocol, ErrorResponse, FrontendProtocol, NoticeResponse, frontend},
+    postgres::{
+        BackendProtocol, ErrorResponse, FrontendProtocol, NoticeResponse, backend, frontend,
+    },
     query::{self, StartupResponse},
     statement::StatementName,
     transport::PgTransport,
@@ -19,14 +21,32 @@ use crate::{
 const DEFAULT_BUF_CAPACITY: usize = 1024;
 const DEFAULT_PREPARED_STMT_CACHE: NonZeroUsize = NonZeroUsize::new(24).unwrap();
 
+/// Postgres Connection.
+///
+/// Connection cache a prepared statement transparently.
+///
+/// Connection handle `Sync` after receive an `ErrorResponse` message transparently.
+///
+/// Connection handle `NoticeResponse` message.
 #[derive(Debug)]
 pub struct PgConnection {
+    // io
     socket: Socket,
     read_buf: BytesMut,
     write_buf: BytesMut,
 
-    // stream: PgStream,
+    // feature
     stmts: LruCache<u64, StatementName>,
+
+    // diagnostic
+    sync_required: SyncStatus,
+}
+
+#[derive(Debug)]
+enum SyncStatus {
+    Ok,
+    NeedSend,
+    NeedRecv
 }
 
 impl PgConnection {
@@ -47,6 +67,7 @@ impl PgConnection {
             read_buf: BytesMut::with_capacity(DEFAULT_BUF_CAPACITY),
             write_buf: BytesMut::with_capacity(DEFAULT_BUF_CAPACITY),
             stmts: LruCache::new(DEFAULT_PREPARED_STMT_CACHE),
+            sync_required: SyncStatus::Ok,
         };
 
         let StartupResponse {
@@ -83,13 +104,23 @@ impl PgTransport for PgConnection {
             self.read_buf.advance(5);
             let body = self.read_buf.split_to(len - 4).freeze();
 
+            // Message fully acquired
+
             let res = match msgtype {
                 ErrorResponse::MSGTYPE => {
                     let err = ErrorResponse::decode(msgtype, body).unwrap();
+                    self.sync_required = SyncStatus::NeedSend;
                     Err(Error::Database(err))?
                 }
                 NoticeResponse::MSGTYPE => {
-                    todo!()
+                    let err = NoticeResponse::decode(msgtype, body).unwrap();
+                    eprintln!("{err}");
+                    continue;
+                }
+                _ if matches!(self.sync_required,SyncStatus::NeedRecv) => {
+                    backend::ReadyForQuery::decode(msgtype, body)?;
+                    self.sync_required = SyncStatus::Ok;
+                    continue;
                 }
                 _ => B::decode(msgtype, body)?,
             };
@@ -99,6 +130,10 @@ impl PgTransport for PgConnection {
     }
 
     fn send<F: FrontendProtocol>(&mut self, message: F) {
+        if matches!(self.sync_required,SyncStatus::NeedSend) {
+            frontend::write(frontend::Sync, &mut self.write_buf);
+            self.sync_required = SyncStatus::NeedRecv;
+        }
         frontend::write(message, &mut self.write_buf);
     }
 

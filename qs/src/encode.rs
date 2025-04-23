@@ -1,4 +1,4 @@
-use bytes::Buf;
+use bytes::{Buf, Bytes};
 
 use crate::{
     ext::BindParams,
@@ -20,17 +20,43 @@ pub struct Encoded<'q> {
 }
 
 impl<'q> Encoded<'q> {
-    #[allow(unused)] // to be public api
-    pub(crate) fn new(value: ValueRef<'q>, oid: Oid) -> Self {
-        Self { value, oid, is_null: false, }
+    /// Create [`Encoded`] from borrowed slice.
+    pub fn from_slice(slice: &'q [u8], oid: Oid) -> Encoded<'q> {
+        Encoded {
+            value: ValueRef::Slice(slice),
+            is_null: false,
+            oid,
+        }
+    }
+
+    /// Create heap allocated [`Encoded`] by copying given slice.
+    pub fn copy_from_slice(slice: &[u8], oid: Oid) -> Encoded<'static> {
+        Encoded {
+            value: ValueRef::Bytes(Bytes::copy_from_slice(slice)),
+            is_null: false,
+            oid,
+        }
+    }
+
+    /// Create [`Encoded`] `NULL`.
+    pub fn null() -> Encoded<'static> {
+        Encoded {
+            value: ValueRef::Slice(&[]),
+            is_null: true,
+            oid: 0,
+        }
+    }
+
+    /// Returns this type `oid`, or `0` for `NULL`.
+    pub fn oid(&self) -> Oid {
+        match self.is_null {
+            true => 0,
+            false => self.oid,
+        }
     }
 
     pub(crate) fn value(&self) -> &ValueRef<'q> {
         &self.value
-    }
-
-    pub fn oid(&self) -> Oid {
-        self.oid
     }
 }
 
@@ -58,24 +84,31 @@ impl BindParams for Encoded<'_> {
 }
 
 macro_rules! encode {
-    (<$lf:tt>$ty:ty) => {
+    (<$lf:tt,$ty:ty>$pat:tt => $body:expr) => {
         impl<$lf> Encode<$lf> for &$lf $ty {
-            fn encode(self) -> Encoded<$lf> {
-                Encoded { value: self.into(), oid: <$ty>::OID, is_null: false, }
+            fn encode($pat) -> Encoded<$lf> {
+                Encoded {
+                    value: $body,
+                    oid: <$ty>::OID,
+                    is_null: false,
+                }
             }
         }
     };
-    ($ty:ty) => {
+    (<$ty:ty>$pat:tt => $body:expr) => {
         impl Encode<'static> for $ty {
-            fn encode(self) -> Encoded<'static> {
-                Encoded { value: self.into(), oid: Self::OID, is_null: false, }
+            fn encode($pat) -> Encoded<'static> {
+                Encoded {
+                    value: $body,
+                    oid: <$ty>::OID,
+                    is_null: false,
+                }
             }
         }
     };
 }
 
-encode!(bool);
-encode!(i32);
-encode!(<'a> str);
-encode!(<'a> String);
-
+encode!(<bool>self => ValueRef::inline(&(self as u8).to_be_bytes()));
+encode!(<i32>self => ValueRef::inline(&self.to_be_bytes()));
+encode!(<'a,str>self => ValueRef::Slice(self.as_bytes()));
+encode!(<'a,String>self => ValueRef::Slice(self.as_bytes()));

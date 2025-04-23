@@ -3,7 +3,7 @@ use crate::{
     column::ColumnInfo,
     options::StartupOptions,
     postgres::{
-        BackendMessage, ProtocolError,
+        BackendMessage,
         backend::{self, RowDescription},
         frontend,
     },
@@ -80,7 +80,7 @@ pub async fn startup<'a, IO: PgTransport>(
             BackendKeyData(new_key_data) => key_data = Some(new_key_data),
             ParameterStatus(param) => param_status.push(param),
             NoticeResponse(warn) => eprintln!("{warn}"),
-            f => Err(ProtocolError::unexpected_phase(f.msgtype(), "startup phase"))?,
+            f => Err(f.unexpected("startup phase"))?,
         }
     }
 
@@ -113,7 +113,7 @@ pub async fn simple_query<R: FromRow, IO: PgTransport>(sql: &str, mut io: IO) ->
             DataRow(dr) => rows.push(R::from_row(Row::new(&mut cols, dr))?),
             // An SQL command completed normally
             CommandComplete(_tag) => { }
-            f => Err(ProtocolError::unexpected_phase(f.msgtype(), "simple query"))?,
+            f => Err(f.unexpected("simple query"))?,
         }
     }
 

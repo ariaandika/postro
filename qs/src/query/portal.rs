@@ -25,7 +25,7 @@ pin_project_lite::pin_project! {
 
 impl<'sql, 'val, IO> Portal<'sql, 'val, IO> {
     /// Create new [`Portal`] future.
-    pub fn new(
+    pub(crate) fn new(
         sql: &'sql str,
         io: IO,
         params: Vec<Encoded<'val>>,

@@ -1,6 +1,10 @@
 use bytes::{Buf, BytesMut};
 use lru::LruCache;
-use std::{num::NonZeroUsize, task::ready};
+use std::{
+    io,
+    num::NonZeroUsize,
+    task::{Context, Poll, ready},
+};
 
 use crate::{
     Error, Result,
@@ -55,13 +59,11 @@ impl PgConnection {
 }
 
 impl PgTransport for PgConnection {
-    fn poll_flush(&mut self, cx: &mut std::task::Context) -> std::task::Poll<std::io::Result<()>> {
+    fn poll_flush(&mut self, cx: &mut Context) -> Poll<io::Result<()>> {
         crate::io::poll_write_all(&mut self.socket, &mut self.write_buf, cx)
     }
 
-    fn poll_recv<B: BackendProtocol>(&mut self, cx: &mut std::task::Context) -> std::task::Poll<Result<B>> {
-        use std::task::Poll;
-
+    fn poll_recv<B: BackendProtocol>(&mut self, cx: &mut Context) -> Poll<Result<B>> {
         loop {
             let Some(mut header) = self.read_buf.get(..5) else {
                 self.read_buf.reserve(1024);

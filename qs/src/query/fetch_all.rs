@@ -19,7 +19,7 @@ pin_project_lite::pin_project! {
 }
 
 impl<'sql, 'val, R, IO> FetchAll<'sql, 'val, R, IO> {
-    pub fn new(sql: &'sql str, io: IO, params: Vec<Encoded<'val>>, persistent: bool) -> Self {
+    pub(crate) fn new(sql: &'sql str, io: IO, params: Vec<Encoded<'val>>, persistent: bool) -> Self {
         Self {
             fetch: Fetch::new(sql, io, params, 0, persistent),
             output: vec![],

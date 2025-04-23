@@ -10,7 +10,7 @@ use crate::{
     Result,
     column::ColumnInfo,
     encode::Encoded,
-    postgres::{ProtocolError, backend},
+    postgres::backend,
     row::{FromRow, Row},
     transport::PgTransport,
 };
@@ -42,7 +42,7 @@ pin_project_lite::pin_project! {
 }
 
 impl<'sql, 'val, R, IO> Fetch<'sql, 'val, R, IO> {
-    pub fn new(
+    pub(crate) fn new(
         sql: &'sql str,
         io: IO,
         params: Vec<Encoded<'val>>,
@@ -94,7 +94,7 @@ where
                         // `Execute` phase is terminations:
                         CommandComplete(_) | PortalSuspended(_) | EmptyQueryResponse(_) => {},
                         f => {
-                            let err = ProtocolError::unexpected_phase(f.msgtype(), "row execution");
+                            let err = f.unexpected("row execution");
                             *phase = Phase::Complete;
                             return Poll::Ready(Some(Err(err.into())));
                         }

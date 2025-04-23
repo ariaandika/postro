@@ -15,8 +15,8 @@ mod execute;
 mod helpers;
 
 pub use fetch::Fetch;
-pub use fetch_all::FetchAll;
 pub use fetch_one::FetchOne;
+pub use fetch_all::FetchAll;
 pub use execute::Execute;
 pub use helpers::{StartupResponse, simple_query, startup};
 

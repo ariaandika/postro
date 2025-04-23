@@ -1,4 +1,7 @@
-use std::{io, task::{Context, Poll}};
+use std::{
+    io,
+    task::{Context, Poll},
+};
 
 use crate::{
     Result,

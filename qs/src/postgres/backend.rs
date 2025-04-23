@@ -328,7 +328,7 @@ impl BackendProtocol for DataRow {
 #[derive(Debug)]
 pub struct CommandComplete {
     /// The command tag. This is usually a single word that identifies which SQL command was completed.
-    pub tag: Bytes,
+    pub tag: String,
 }
 
 impl CommandComplete {
@@ -339,7 +339,7 @@ impl BackendProtocol for CommandComplete {
     fn decode(msgtype: u8, mut body: Bytes) -> Result<Self, ProtocolError> {
         assert_msgtype!(msgtype);
         Ok(Self {
-            tag: body.get_nul_bytes(),
+            tag: body.get_nul_string(),
         })
     }
 }

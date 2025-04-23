@@ -1,51 +1,44 @@
-use std::io;
+use std::{fmt, io, str::Utf8Error};
 
 use crate::{
     common::BoxError,
-    postgres::{ProtocolError, ErrorResponse},
+    postgres::{ErrorResponse, ProtocolError},
 };
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
-/// all possible error from qscv
-#[derive(thiserror::Error)]
+/// All possible error from qs library.
 pub enum Error {
-    #[error("Configuration error: {0}")]
-    Configuration(#[source] BoxError),
-
-    #[error("{0}")]
-    Protocol(#[from]#[source] ProtocolError),
-
-    #[error("Io error: {0}")]
-    Io(#[from]#[source] io::Error),
-
-    #[error("Database error: {0}")]
-    Database(#[from] ErrorResponse),
-
-    #[error("Auth not supported")]
+    Configuration(BoxError),
+    Protocol(ProtocolError),
+    Io(io::Error),
+    Database(ErrorResponse),
     UnsupportedAuth,
-
-    #[error("Missmatch datatype")]
     MissmatchDataType,
-
-    #[error("Column index out of bounds")]
     ColumnIndexOutOfBounds,
-
-    #[error(transparent)]
-    Utf8(#[from] std::str::Utf8Error),
-
-    #[error(transparent)]
+    Utf8(std::str::Utf8Error),
     Other(BoxError)
 }
 
-impl std::fmt::Debug for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        std::fmt::Display::fmt(&self, f)?;
-        // TODO: how to differentiate
-        // if let Some(err) = std::error::Error::source(&self) {
-        //     write!(f, "\n\nCaused By:\n    {err}")?;
-        // }
-        Ok(())
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Error::Configuration(e) => write!(f, "Configuration error: {e}"),
+            Error::Protocol(e) => write!(f, "{e}"),
+            Error::Io(e) => write!(f, "{e}"),
+            Error::Database(e) => write!(f, "{e}"),
+            Error::UnsupportedAuth => write!(f, "Auth not supported"),
+            Error::MissmatchDataType => write!(f, "Missmatch datatype"),
+            Error::ColumnIndexOutOfBounds => write!(f, "Column index out of bounds"),
+            Error::Utf8(e) => write!(f, "{e}"),
+            Error::Other(e) => write!(f, "{e}"),
+        }
+    }
+}
+
+impl fmt::Debug for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "\"{self}\"")
     }
 }
 
@@ -66,4 +59,19 @@ macro_rules! err {
 }
 
 pub(crate) use err;
+
+macro_rules! from {
+    (<$ty:ty>$pat:pat => $body:expr) => {
+        impl From<$ty> for Error {
+            fn from($pat: $ty) -> Self {
+                $body
+            }
+        }
+    };
+}
+
+from!(<Utf8Error>e => Self::Utf8(e));
+from!(<ProtocolError>e => Self::Protocol(e));
+from!(<std::io::Error>e => Self::Io(e));
+from!(<ErrorResponse>e => Self::Database(e));
 

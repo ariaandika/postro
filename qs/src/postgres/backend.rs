@@ -208,8 +208,8 @@ impl BackendProtocol for ParameterStatus {
     fn decode(msgtype: u8, mut body: Bytes) -> Result<Self,ProtocolError> {
         assert_msgtype!(msgtype);
         Ok(Self {
-            name: body.get_nul_bytestr(),
-            value: body.get_nul_bytestr(),
+            name: body.get_nul_bytestr()?,
+            value: body.get_nul_bytestr()?,
         })
     }
 }
@@ -339,7 +339,7 @@ impl BackendProtocol for CommandComplete {
     fn decode(msgtype: u8, mut body: Bytes) -> Result<Self, ProtocolError> {
         assert_msgtype!(msgtype);
         Ok(Self {
-            tag: body.get_nul_bytestr(),
+            tag: body.get_nul_bytestr()?,
         })
     }
 }

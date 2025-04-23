@@ -1,4 +1,4 @@
-use bytes::{BufMut, Bytes, BytesMut};
+use bytes::{Buf, BufMut, Bytes, BytesMut};
 
 use crate::common::ByteStr;
 
@@ -48,9 +48,7 @@ impl<B: BufMut> BufMutExt for B {
 pub trait BytesExt {
     fn get_nul_bytes(&mut self) -> Self;
 
-    fn get_nul_string(&mut self) -> String;
-
-    fn get_nul_bytestr(&mut self) -> ByteStr;
+    fn get_nul_bytestr(&mut self) -> Result<ByteStr, std::str::Utf8Error>;
 }
 
 impl BytesExt for Bytes {
@@ -60,16 +58,12 @@ impl BytesExt for Bytes {
             .position(|e| matches!(e, b'\0'))
             .expect("Postgres string did not nul terminated");
         let me = self.split_to(end);
-        bytes::Buf::advance(self, 1); // nul
+        Buf::advance(self, 1); // nul
         me
     }
 
-    fn get_nul_string(&mut self) -> String {
-        String::from_utf8(self.get_nul_bytes().into()).expect("Postgres did not return UTF-8")
-    }
-
-    fn get_nul_bytestr(&mut self) -> ByteStr {
-        ByteStr::from_utf8(self.get_nul_bytes()).expect("Postgres did not return UTF-8")
+    fn get_nul_bytestr(&mut self) -> Result<ByteStr, std::str::Utf8Error> {
+        ByteStr::from_utf8(self.get_nul_bytes())
     }
 }
 
@@ -80,20 +74,16 @@ impl BytesExt for BytesMut {
             .position(|e| matches!(e, b'\0'))
             .expect("Postgres string did not nul terminated");
         let me = self.split_to(end);
-        bytes::Buf::advance(self, 1); // nul
+        Buf::advance(self, 1); // nul
         me
     }
 
-    fn get_nul_string(&mut self) -> String {
-        String::from_utf8(self.get_nul_bytes().into()).expect("Postgres did not return UTF-8")
-    }
-
-    fn get_nul_bytestr(&mut self) -> ByteStr {
-        ByteStr::from_utf8(self.get_nul_bytes().freeze()).expect("Postgres did not return UTF-8")
+    fn get_nul_bytestr(&mut self) -> Result<ByteStr, std::str::Utf8Error> {
+        ByteStr::from_utf8(self.get_nul_bytes().freeze())
     }
 }
 
-pub trait BindParams: bytes::Buf {
+pub trait BindParams: Buf {
     /// The length of the parameter value, in bytes (this count does not include itself).
     ///
     /// Can be zero. As a special case, -1 indicates a NULL parameter value.

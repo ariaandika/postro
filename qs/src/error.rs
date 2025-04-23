@@ -32,6 +32,9 @@ pub enum Error {
     ColumnIndexOutOfBounds,
 
     #[error(transparent)]
+    Utf8(#[from] std::str::Utf8Error),
+
+    #[error(transparent)]
     Other(BoxError)
 }
 

@@ -1,70 +1,40 @@
 use bytes::{Buf, Bytes};
 
 use crate::{
-    common::InlineVec,
+    common::ByteStr,
     ext::BytesExt,
-    postgres::{Oid, backend::RowDescription},
+    postgres::{backend::RowDescription, Oid},
 };
 
 #[derive(Debug)]
 pub struct ColumnInfo {
     /// The field name.
-    pub field_name: String,
-    // // If the field can be identified as a column of a specific table,
-    // // the object ID of the table; otherwise zero
-    // pub table_oid: u32,
-    // // If the field can be identified as a column of a specific table,
-    // // the attribute number of the column; otherwise zero.
-    // pub attribute_len: u16,
+    pub field_name: ByteStr,
     // The object ID of the field's data type.
     pub data_type: u32,
-    // // The data type size (see pg_type.typlen).
-    // // Note that negative values denote variable-width types.
-    // pub data_type_size: i16,
-    // // The type modifier (see pg_attribute.atttypmod).
-    // // The meaning of the modifier is type-specific.
-    // pub type_modifier: i32,
-    // // The format code being used for the field.
-    // // Currently will be zero (text) or one (binary).
-    // // In a RowDescription returned from the statement variant of Describe,
-    // // the format code is not yet known and will always be zero.
-    // pub format_code: u16,
 }
 
 impl ColumnInfo {
-    pub(crate) fn new(body: &mut Bytes) -> Self {
-        let field_name = body.get_nul_string();
-        let _table_oid = body.advance(size_of::<u32>());
-        let _attribute_len = body.advance(size_of::<u16>());
+    pub(crate) fn decode(body: &mut Bytes) -> Result<Self, std::str::Utf8Error> {
+        let field_name = body.get_nul_bytestr()?;
+        body.advance(size_of::<u32>()); // table_oid
+        body.advance(size_of::<u16>()); // attribute_len
         let data_type = body.get_u32();
-        let _data_type_size = body.advance(size_of::<i16>());
-        let _type_modifier = body.advance(size_of::<i32>());
-        let _format_code = body.advance(size_of::<u16>());
-        Self {
+        body.advance(size_of::<i16>()); // data_type_size
+        body.advance(size_of::<i32>()); // type_modifier
+        body.advance(size_of::<u16>()); // format_code
+        Ok(Self {
             field_name,
-            // table_oid,
-            // attribute_len,
             data_type,
-            // data_type_size,
-            // type_modifier,
-            // format_code,
-        }
+        })
     }
 
-    pub(crate) fn decode_multi(mut rd: RowDescription) -> InlineVec<Self, 8> {
-        let mut cols = InlineVec::with_capacity(rd.field_len as _);
-        for _ in 0..rd.field_len {
-            cols.push(Self::new(&mut rd.body));
-        }
-        cols
-    }
-
-    pub(crate) fn decode_multi_vec(mut rd: RowDescription) -> Vec<Self> {
+    pub(crate) fn decode_multi_vec(mut rd: RowDescription) -> Result<Vec<ColumnInfo>, std::str::Utf8Error> {
         let mut cols = Vec::with_capacity(rd.field_len as _);
         for _ in 0..rd.field_len {
-            cols.push(Self::new(&mut rd.body));
+            cols.push(Self::decode(&mut rd.body)?);
         }
-        cols
+        Ok(cols)
     }
 }
 

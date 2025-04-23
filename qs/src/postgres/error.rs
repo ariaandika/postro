@@ -1,10 +1,11 @@
 //! Protocol error
-use std::fmt;
+use std::{fmt, str::Utf8Error, string::FromUtf8Error};
 
 use super::BackendMessage;
 
 /// An error when translating buffer from postgres
 pub enum ProtocolError {
+    Utf8Error(Utf8Error),
     Unexpected {
         expect: Option<u8>,
         found: u8,
@@ -15,12 +16,19 @@ pub enum ProtocolError {
     },
 }
 
+impl BackendMessage {
+    pub fn unexpected(self, phase: &'static str) -> ProtocolError {
+        ProtocolError::unexpected_phase(self.msgtype(), phase)
+    }
+}
+
 impl std::error::Error for ProtocolError { }
 
 impl fmt::Display for ProtocolError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
-            ProtocolError::Unexpected { expect, found, phase } => {
+            Self::Utf8Error(utf) => write!(f, "Postgres returns non utf8: {utf}"),
+            Self::Unexpected { expect, found, phase } => {
                 let found = BackendMessage::message_name(found);
                 match expect {
                     Some(m) => {
@@ -37,7 +45,7 @@ impl fmt::Display for ProtocolError {
                 }
                 Ok(())
             },
-            ProtocolError::UnknownAuth { auth: _ } => todo!(),
+            Self::UnknownAuth { auth: _ } => todo!(),
         }
     }
 }
@@ -77,4 +85,17 @@ impl ProtocolError {
         Self::UnknownAuth { auth }
     }
 }
+
+macro_rules! from {
+    ($ty:ty: $pat:pat => $body:expr) => {
+        impl From<$ty> for ProtocolError {
+            fn from($pat: $ty) -> Self {
+                $body
+            }
+        }
+    };
+}
+
+from!(Utf8Error: value => Self::Utf8Error(value));
+from!(FromUtf8Error: value => Self::Utf8Error(value.utf8_error()));
 

@@ -101,7 +101,7 @@ pub async fn simple_query<R: FromRow, IO: PgTransport>(sql: &str, mut io: IO) ->
     // The contents of this message describe the column layout of the rows.
     // This will be followed by a DataRow message for each row being returned to the frontend.
     let rd = io.recv::<RowDescription>().await?;
-    let mut cols = ColumnInfo::decode_multi(rd);
+    let mut cols = ColumnInfo::decode_multi_vec(rd)?;
 
     let mut rows = vec![];
 

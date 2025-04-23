@@ -81,7 +81,7 @@ where
                 PhaseProject::RowDescription { io } => {
                     // `NoData` is invalid, because `Fetch` expect row to be returned
                     let rd = ready!(io.as_mut().unwrap().poll_recv::<backend::RowDescription>(cx)?);
-                    let cols = ColumnInfo::decode_multi_vec(rd);
+                    let cols = ColumnInfo::decode_multi_vec(rd)?;
                     *phase = Phase::DataRow { io: io.take(), cols };
                 },
                 PhaseProject::DataRow { io, cols } => {

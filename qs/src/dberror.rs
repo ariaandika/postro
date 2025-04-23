@@ -1,5 +1,5 @@
 use crate::{
-    common::LossyStr,
+    ext::FmtExt,
     postgres::backend::{ErrorResponse, NoticeResponse},
 };
 
@@ -105,7 +105,7 @@ impl MessageFields {
             map.key(&key.as_str());
             let end = body[i + 1..].iter().position(|e|matches!(e,b'\0'));
             match end {
-                Some(end) => map.value(&LossyStr(&body[i + 1..end])),
+                Some(end) => map.value(&body[i + 1..end].lossy()),
                 None => map.value(&"<??>"),
             };
         }
@@ -141,7 +141,7 @@ impl MessageFields {
                         write!(f, $s, "??")?;
                         break 'foo
                     };
-                    write!(f, $s, LossyStr(&body[i + 1..i + 1 + end]))?;
+                    write!(f, $s, &body[i + 1..i + 1 + end].lossy())?;
                 }
             };
             ($f:ident,$s:literal,?) => {

@@ -2,7 +2,7 @@
 use bytes::{Buf, Bytes};
 
 use super::ProtocolError;
-use crate::ext::BytesExt;
+use crate::{common::ByteStr, ext::BytesExt};
 
 /// A type that can be decoded into postgres backend message
 pub trait BackendProtocol: Sized {
@@ -195,9 +195,9 @@ impl BackendProtocol for BackendKeyData {
 #[derive(Debug)]
 pub struct ParameterStatus {
     /// The name of the run-time parameter being reported
-    pub name: String,
+    pub name: ByteStr,
     /// The current value of the parameter
-    pub value: String
+    pub value: ByteStr,
 }
 
 impl ParameterStatus {
@@ -208,8 +208,8 @@ impl BackendProtocol for ParameterStatus {
     fn decode(msgtype: u8, mut body: Bytes) -> Result<Self,ProtocolError> {
         assert_msgtype!(msgtype);
         Ok(Self {
-            name: body.get_nul_string(),
-            value: body.get_nul_string(),
+            name: body.get_nul_bytestr(),
+            value: body.get_nul_bytestr(),
         })
     }
 }
@@ -328,7 +328,7 @@ impl BackendProtocol for DataRow {
 #[derive(Debug)]
 pub struct CommandComplete {
     /// The command tag. This is usually a single word that identifies which SQL command was completed.
-    pub tag: String,
+    pub tag: ByteStr,
 }
 
 impl CommandComplete {
@@ -339,7 +339,7 @@ impl BackendProtocol for CommandComplete {
     fn decode(msgtype: u8, mut body: Bytes) -> Result<Self, ProtocolError> {
         assert_msgtype!(msgtype);
         Ok(Self {
-            tag: body.get_nul_string(),
+            tag: body.get_nul_bytestr(),
         })
     }
 }

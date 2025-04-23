@@ -1,11 +1,19 @@
 use bytes::Bytes;
 
 /// A cheaply cloneable and sliceable str.
+///
+/// `ByteStr` also helps prevent allocating vec as it required by [`String::from_utf8`].
 pub struct ByteStr {
     bytes: Bytes,
 }
 
 impl ByteStr {
+    /// Converts a `Bytes` to a `ByteStr`.
+    pub fn from_utf8(bytes: Bytes) -> Result<Self, std::str::Utf8Error> {
+        std::str::from_utf8(&bytes)?;
+        Ok(Self { bytes })
+    }
+
     /// Creates `ByteStr` instance from str slice, by copying it.
     pub fn copy_from_str(string: &str) -> Self {
         Self { bytes: Bytes::copy_from_slice(string.as_bytes()) }

@@ -1,5 +1,7 @@
 use bytes::{BufMut, Bytes, BytesMut};
 
+use crate::common::ByteStr;
+
 /// Integer signess in postgres docs is awful.
 pub trait UsizeExt {
     /// length is usize in rust, while sometime postgres want u32,
@@ -47,6 +49,8 @@ pub trait BytesExt {
     fn get_nul_bytes(&mut self) -> Self;
 
     fn get_nul_string(&mut self) -> String;
+
+    fn get_nul_bytestr(&mut self) -> ByteStr;
 }
 
 impl BytesExt for Bytes {
@@ -63,6 +67,10 @@ impl BytesExt for Bytes {
     fn get_nul_string(&mut self) -> String {
         String::from_utf8(self.get_nul_bytes().into()).expect("Postgres did not return UTF-8")
     }
+
+    fn get_nul_bytestr(&mut self) -> ByteStr {
+        ByteStr::from_utf8(self.get_nul_bytes()).expect("Postgres did not return UTF-8")
+    }
 }
 
 impl BytesExt for BytesMut {
@@ -78,6 +86,10 @@ impl BytesExt for BytesMut {
 
     fn get_nul_string(&mut self) -> String {
         String::from_utf8(self.get_nul_bytes().into()).expect("Postgres did not return UTF-8")
+    }
+
+    fn get_nul_bytestr(&mut self) -> ByteStr {
+        ByteStr::from_utf8(self.get_nul_bytes().freeze()).expect("Postgres did not return UTF-8")
     }
 }
 

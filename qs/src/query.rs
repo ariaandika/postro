@@ -1,3 +1,4 @@
+//! Query API types.
 use crate::{
     encode::{Encode, Encoded},
     row::FromRow,

@@ -53,7 +53,7 @@ where
             match phase.as_mut().project() {
                 PhaseProject::Portal { portal } => {
                     let io = ready!(portal.poll(cx)?);
-                    *phase = Phase::Execute { io: Some(io) };
+                    *phase = Phase::BindComplete { io: Some(io) };
                 },
                 PhaseProject::BindComplete { io } => {
                     ready!(io.as_mut().unwrap().poll_recv::<backend::BindComplete>(cx)?);

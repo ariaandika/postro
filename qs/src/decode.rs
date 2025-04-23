@@ -1,21 +1,21 @@
-use crate::{Error, Result, column::Column, postgres::PgType};
+use crate::{column::Column, postgres::PgType};
 
 /// Type that can be decoded from column value.
 pub trait Decode: Sized {
     /// Construct self from a column.
-    fn decode(col: Column) -> Result<Self>;
+    fn decode(col: Column) -> Result<Self, DecodeError>;
 }
 
 impl Decode for () {
-    fn decode(_: Column) -> Result<Self> {
+    fn decode(_: Column) -> Result<Self, DecodeError> {
         Ok(())
     }
 }
 
 impl Decode for i32 {
-    fn decode(col: Column) -> Result<Self> {
+    fn decode(col: Column) -> Result<Self, DecodeError> {
         if col.oid() != i32::OID {
-            return Err(Error::MissmatchDataType);
+            return Err(DecodeError::OidMissmatch);
         }
         let mut be = [0u8;size_of::<i32>()];
         be.copy_from_slice(&col.as_slice()[..size_of::<i32>()]);
@@ -24,11 +24,15 @@ impl Decode for i32 {
 }
 
 impl Decode for String {
-    fn decode(col: Column) -> Result<Self> {
+    fn decode(col: Column) -> Result<Self, DecodeError> {
         if col.oid() != String::OID {
-            return Err(Error::MissmatchDataType);
+            return Err(DecodeError::OidMissmatch);
         }
-        Ok(String::from_utf8(col.into_value().into()).map_err(|e|e.utf8_error())?)
+        Ok(String::from_utf8(col.into_value().into())?)
     }
 }
+
+mod error;
+
+pub use error::DecodeError;
 

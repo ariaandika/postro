@@ -2,6 +2,7 @@ use std::{fmt, io, str::Utf8Error};
 
 use crate::{
     common::BoxError,
+    decode::DecodeError,
     postgres::{ErrorResponse, ProtocolError},
 };
 
@@ -14,6 +15,7 @@ pub enum Error {
     Io(io::Error),
     Database(ErrorResponse),
     UnsupportedAuth,
+    Decode(DecodeError),
     MissmatchDataType,
     ColumnIndexOutOfBounds,
     Utf8(std::str::Utf8Error),
@@ -28,6 +30,7 @@ impl fmt::Display for Error {
             Error::Io(e) => write!(f, "{e}"),
             Error::Database(e) => write!(f, "{e}"),
             Error::UnsupportedAuth => write!(f, "Auth not supported"),
+            Error::Decode(e) => write!(f, "{e}"),
             Error::MissmatchDataType => write!(f, "Missmatch datatype"),
             Error::ColumnIndexOutOfBounds => write!(f, "Column index out of bounds"),
             Error::Utf8(e) => write!(f, "{e}"),
@@ -72,6 +75,7 @@ macro_rules! from {
 
 from!(<Utf8Error>e => Self::Utf8(e));
 from!(<ProtocolError>e => Self::Protocol(e));
+from!(<DecodeError>e => Self::Decode(e));
 from!(<std::io::Error>e => Self::Io(e));
 from!(<ErrorResponse>e => Self::Database(e));
 

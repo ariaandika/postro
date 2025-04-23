@@ -89,7 +89,7 @@ where
                     loop {
                         match ready!(io.as_mut().unwrap().poll_recv(cx)?) {
                             DataRow(dr) => {
-                                return Poll::Ready(Some(R::from_row(Row::new(cols, dr))));
+                                return Poll::Ready(Some(R::from_row(Row::new(cols, dr)).map_err(Into::into)));
                             }
 
                             // `Execute` phase is terminations:

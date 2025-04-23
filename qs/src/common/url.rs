@@ -1,4 +1,6 @@
-use super::{general, ByteStr, GeneralError};
+use std::fmt;
+
+use super::ByteStr;
 
 #[derive(Debug)]
 pub struct Url {
@@ -11,14 +13,14 @@ pub struct Url {
 }
 
 impl Url {
-    pub fn parse(url: impl Into<ByteStr>) -> Result<Self, GeneralError> {
+    pub fn parse(url: impl Into<ByteStr>) -> Result<Self, ParseError> {
         let url: ByteStr = url.into();
         let mut read = url.as_ref();
 
         macro_rules! eat {
             (@ $delim:literal,$id:tt,$len:literal) => {{
                 let Some(idx) = read.find($delim) else {
-                    return Err(general!(concat!(stringify!($id), " missing")))
+                    return Err(ParseError(concat!(stringify!($id), " missing")))
                 };
                 let capture = &read[..idx];
                 read = &read[idx + $len..];
@@ -41,7 +43,7 @@ impl Url {
 
         match port.parse() {
             Ok(port) => Ok(Self { scheme, user, pass, host, port, dbname, }),
-            Err(err) => Err(general!("invalid port: {err}")),
+            Err(_) => Err(ParseError("invalid port")),
         }
     }
 }
@@ -72,6 +74,20 @@ mod test {
         assert_eq!(opt.host,"localhost");
         assert_eq!(opt.port,5432);
         assert_eq!(opt.dbname,"post");
+    }
+}
+
+pub struct ParseError(&'static str);
+
+impl std::error::Error for ParseError { }
+impl fmt::Display for ParseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Failed to parse url: {}", self.0)
+    }
+}
+impl fmt::Debug for ParseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "\"{self}\"")
     }
 }
 

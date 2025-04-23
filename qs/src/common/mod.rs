@@ -1,12 +1,8 @@
 mod bytestr;
-mod general;
 mod url;
 
 pub use bytestr::ByteStr;
-pub use general::GeneralError;
 pub use url::Url;
-
-pub(crate) use general::general;
 
 pub type BoxError = Box<dyn std::error::Error + Send + Sync + 'static>;
 

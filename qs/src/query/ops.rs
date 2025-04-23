@@ -114,8 +114,7 @@ pub fn command_complete(cmd: backend::CommandComplete) -> u64 {
 
     if matches!(tag, "INSERT") {
         return whs
-            .skip(1)
-            .next()
+            .nth(1)
             .and_then(|e| e.parse().ok())
             .unwrap_or_default();
     }

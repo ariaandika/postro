@@ -86,19 +86,17 @@ where
                 },
                 PhaseProject::DataRow { io, cols } => {
                     use backend::BackendMessage::*;
-                    loop {
-                        match ready!(io.as_mut().unwrap().poll_recv(cx)?) {
-                            DataRow(dr) => {
-                                return Poll::Ready(Some(R::from_row(Row::new(cols, dr)).map_err(Into::into)));
-                            }
+                    match ready!(io.as_mut().unwrap().poll_recv(cx)?) {
+                        DataRow(dr) => {
+                            return Poll::Ready(Some(R::from_row(Row::new(cols, dr)).map_err(Into::into)));
+                        }
 
-                            // `Execute` phase is terminations:
-                            CommandComplete(_) | PortalSuspended(_) | EmptyQueryResponse(_) => break,
-                            f => {
-                                let err = ProtocolError::unexpected_phase(f.msgtype(), "row execution");
-                                *phase = Phase::Complete;
-                                return Poll::Ready(Some(Err(err.into())));
-                            }
+                        // `Execute` phase is terminations:
+                        CommandComplete(_) | PortalSuspended(_) | EmptyQueryResponse(_) => {},
+                        f => {
+                            let err = ProtocolError::unexpected_phase(f.msgtype(), "row execution");
+                            *phase = Phase::Complete;
+                            return Poll::Ready(Some(Err(err.into())));
                         }
                     }
                     *phase = Phase::ReadyForQuery { io: io.take().unwrap() };

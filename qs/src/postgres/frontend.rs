@@ -290,7 +290,7 @@ pub struct Bind<'a, ParamFmts, Params, ResultFmts> {
     pub result_formats: ResultFmts,
 }
 
-impl<'a, ParamFmts, Params, ResultFmts> FrontendProtocol for Bind<'a, ParamFmts, Params, ResultFmts>
+impl<ParamFmts, Params, ResultFmts> FrontendProtocol for Bind<'_, ParamFmts, Params, ResultFmts>
 where
     ParamFmts: IntoIterator<Item = PgFormat>,
     Params: Iterator,

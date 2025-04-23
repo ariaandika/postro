@@ -25,7 +25,6 @@ mod transport;
 mod connection;
 
 // Operation
-mod protocol;
 pub mod query;
 
 mod error;

@@ -82,15 +82,6 @@ match_backend! {
     RowDescription,
 }
 
-// impl BackendMessage {
-//     pub fn try_dberror(self) -> Result<Self, DatabaseError> {
-//         match self {
-//             Self::ErrorResponse(err) => Err(err.to_db_error()),
-//             ok => Ok(ok),
-//         }
-//     }
-// }
-
 macro_rules! assert_msgtype {
     ($typ:ident) => {
         if Self::MSGTYPE != $typ {
@@ -160,7 +151,7 @@ impl BackendProtocol for Authentication {
             10 => Authentication::SASL { name: body },
             11 => Authentication::SASLContinue { data: body },
             12 => Authentication::SASLFinal { data: body },
-            auth => return Err(ProtocolError::unknown_auth(auth)),
+            auth => panic!("Unknown Authentication type: \"{auth}\""),
         };
         Ok(auth)
     }

@@ -46,40 +46,31 @@ impl<B: BufMut> BufMutExt for B {
 }
 
 pub trait BytesExt {
-    fn get_nul_bytes(&mut self) -> Self;
-
+    /// Using [`ByteStr`] avoid allocating [`Vec`] as it required for [`String::from_utf8`]
     fn get_nul_bytestr(&mut self) -> Result<ByteStr, std::str::Utf8Error>;
 }
 
 impl BytesExt for Bytes {
-    fn get_nul_bytes(&mut self) -> Self {
+    fn get_nul_bytestr(&mut self) -> Result<ByteStr, std::str::Utf8Error> {
         let end = self
             .iter()
             .position(|e| matches!(e, b'\0'))
             .expect("Postgres string did not nul terminated");
         let me = self.split_to(end);
         Buf::advance(self, 1); // nul
-        me
-    }
-
-    fn get_nul_bytestr(&mut self) -> Result<ByteStr, std::str::Utf8Error> {
-        ByteStr::from_utf8(self.get_nul_bytes())
+        ByteStr::from_utf8(me)
     }
 }
 
 impl BytesExt for BytesMut {
-    fn get_nul_bytes(&mut self) -> Self {
+    fn get_nul_bytestr(&mut self) -> Result<ByteStr, std::str::Utf8Error> {
         let end = self
             .iter()
             .position(|e| matches!(e, b'\0'))
             .expect("Postgres string did not nul terminated");
         let me = self.split_to(end);
         Buf::advance(self, 1); // nul
-        me
-    }
-
-    fn get_nul_bytestr(&mut self) -> Result<ByteStr, std::str::Utf8Error> {
-        ByteStr::from_utf8(self.get_nul_bytes().freeze())
+        ByteStr::from_utf8(me.freeze())
     }
 }
 

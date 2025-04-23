@@ -5,14 +5,13 @@ use super::BackendMessage;
 
 /// An error when translating buffer from postgres
 pub enum ProtocolError {
+    /// Error when failed to convert postgres message string.
     Utf8Error(Utf8Error),
+    /// Unexpected message received for postgres.
     Unexpected {
         expect: Option<u8>,
         found: u8,
         phase: Option<&'static str>,
-    },
-    UnknownAuth {
-        auth: u32,
     },
 }
 
@@ -22,12 +21,19 @@ impl BackendMessage {
     }
 }
 
-impl std::error::Error for ProtocolError { }
+impl std::error::Error for ProtocolError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            ProtocolError::Utf8Error(u) => Some(u),
+            ProtocolError::Unexpected { .. } => None,
+        }
+    }
+}
 
 impl fmt::Display for ProtocolError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
-            Self::Utf8Error(utf) => write!(f, "Postgres returns non utf8: {utf}"),
+            Self::Utf8Error(utf) => write!(f, "Postgres returns non utf8 string: {utf}"),
             Self::Unexpected { expect, found, phase } => {
                 let found = BackendMessage::message_name(found);
                 match expect {
@@ -45,14 +51,13 @@ impl fmt::Display for ProtocolError {
                 }
                 Ok(())
             },
-            Self::UnknownAuth { auth: _ } => todo!(),
         }
     }
 }
 
 impl fmt::Debug for ProtocolError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Display::fmt(self, f)
+        write!(f, "\"{self}\"")
     }
 }
 
@@ -79,10 +84,6 @@ impl ProtocolError {
             found,
             phase: Some(phase),
         }
-    }
-
-    pub(crate) fn unknown_auth(auth: u32) -> ProtocolError {
-        Self::UnknownAuth { auth }
     }
 }
 

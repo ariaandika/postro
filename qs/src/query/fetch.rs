@@ -1,6 +1,8 @@
 use futures_core::Stream;
 use std::{
-    marker::PhantomData, pin::Pin, task::{ready, Context, Poll}
+    marker::PhantomData,
+    pin::Pin,
+    task::{Context, Poll, ready},
 };
 
 use super::portal::Portal;
@@ -40,10 +42,16 @@ pin_project_lite::pin_project! {
 }
 
 impl<'sql, 'val, R, IO> Fetch<'sql, 'val, R, IO> {
-    pub fn new(sql: &'sql str, io: IO, params: Vec<Encoded<'val>>, persistent: bool) -> Self {
+    pub fn new(
+        sql: &'sql str,
+        io: IO,
+        params: Vec<Encoded<'val>>,
+        max_row: u32,
+        persistent: bool,
+    ) -> Self {
         Self {
             phase: Phase::Portal {
-                portal: Portal::new(sql, io, params, persistent),
+                portal: Portal::new(sql, io, params, max_row, persistent),
             },
             _p: PhantomData,
         }

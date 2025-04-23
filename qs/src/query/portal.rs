@@ -18,18 +18,26 @@ pin_project_lite::pin_project! {
         io: Option<IO>,
         phase: Phase,
         params: Vec<Encoded<'val>>,
+        max_row: u32,
         persistent: bool,
     }
 }
 
 impl<'sql, 'val, IO> Portal<'sql, 'val, IO> {
     /// Create new [`Portal`] future.
-    pub fn new(sql: &'sql str, io: IO, params: Vec<Encoded<'val>>, persistent: bool) -> Self {
+    pub fn new(
+        sql: &'sql str,
+        io: IO,
+        params: Vec<Encoded<'val>>,
+        max_row: u32,
+        persistent: bool,
+    ) -> Self {
         Self {
             sql,
             io: Some(io),
             phase: Phase::Prepare,
             params,
+            max_row,
             persistent,
         }
     }
@@ -59,6 +67,7 @@ where
             io: self_io,
             phase,
             params,
+            max_row,
             persistent,
         } = self.as_mut().project();
 
@@ -89,6 +98,7 @@ where
                     *phase = Phase::Portal(data);
                 }
                 Phase::Portal(data) => {
+                    data.max_row = *max_row;
                     ops::portal(data, params, &mut *io);
                     *phase = Phase::PortalFlush;
                 }

@@ -16,6 +16,8 @@ pub struct PrepareData {
     pub sqlid: u64,
     pub stmt: StatementName,
     pub cache_hit: bool,
+    /// this field intended to be edited by called for `portal` params.
+    pub max_row: u32,
 }
 
 /// Write Prepare statement to `io`
@@ -40,7 +42,7 @@ pub fn prepare(
 
     if persistent {
         if let Some(stmt) = io.get_stmt(sqlid) {
-            return PrepareData { sqlid, stmt, cache_hit: true };
+            return PrepareData { sqlid, stmt, cache_hit: true, max_row: 0 };
         }
     }
 
@@ -57,7 +59,7 @@ pub fn prepare(
     });
     io.send(frontend::Flush);
 
-    PrepareData { sqlid, stmt, cache_hit: false }
+    PrepareData { sqlid, stmt, cache_hit: false, max_row: 0 }
 }
 
 /// Write Prepare statement to `io`
@@ -96,7 +98,7 @@ pub fn portal(data: &PrepareData, params: &mut Vec<Encoded>, mut io: impl PgTran
     });
     io.send(frontend::Execute {
         portal_name: portal.as_str(),
-        max_row: 0,
+        max_row: data.max_row,
     });
     io.send(frontend::Sync);
 }

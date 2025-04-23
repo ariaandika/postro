@@ -49,7 +49,7 @@ where
     IO: PgTransport,
 {
     pub fn fetch<R: FromRow>(self) -> Fetch<'sql, 'val, R, IO> {
-        Fetch::new(self.sql, self.io, self.params, self.persistent)
+        Fetch::new(self.sql, self.io, self.params, 0, self.persistent)
     }
 
     pub fn fetch_all<R: FromRow>(self) -> FetchAll<'sql, 'val, R, IO> {

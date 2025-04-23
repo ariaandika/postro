@@ -35,7 +35,7 @@ impl<'sql, 'val, IO> Execute<'sql, 'val, IO> {
     pub fn new(sql: &'sql str, io: IO, params: Vec<Encoded<'val>>, persistent: bool) -> Self {
         Self {
             phase: Phase::Portal {
-                portal: Portal::new(sql, io, params, persistent),
+                portal: Portal::new(sql, io, params, 0, persistent),
             },
         }
     }

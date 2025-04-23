@@ -8,11 +8,13 @@ mod ops;
 
 mod portal;
 mod fetch;
+mod fetch_one;
 mod fetch_all;
 mod execute;
 
 pub use fetch::Fetch;
 pub use fetch_all::FetchAll;
+pub use fetch_one::FetchOne;
 pub use execute::Execute;
 
 pub fn query<'val, IO: PgTransport>(sql: &str, io: IO) -> Query<'_, 'val, IO> {
@@ -54,6 +56,10 @@ where
 
     pub fn fetch_all<R: FromRow>(self) -> FetchAll<'sql, 'val, R, IO> {
         FetchAll::new(self.sql, self.io, self.params, self.persistent)
+    }
+
+    pub fn fetch_one<R: FromRow>(self) -> FetchOne<'sql, 'val, R, IO> {
+        FetchOne::new(self.sql, self.io, self.params, self.persistent)
     }
 
     pub fn execute(self) -> Execute<'sql, 'val, IO> {

@@ -1,10 +1,6 @@
-mod startup;
+use crate::common::{ByteStr, ParseError, Url};
 
-use crate::{
-    common::{ByteStr, Url},
-    error::err,
-    Result,
-};
+mod startup;
 
 pub use startup::StartupOptions;
 
@@ -32,25 +28,22 @@ impl PgOptions {
     // TODO: postgres env var convention
     // pub fn new() { }
 
-    pub fn parse(url: &str) -> Result<PgOptions> {
+    pub fn parse(url: &str) -> Result<PgOptions, ParseError> {
         Self::parse_inner(ByteStr::copy_from_str(url))
     }
 
-    pub fn parse_static(url: &'static str) -> Result<PgOptions> {
+    pub fn parse_static(url: &'static str) -> Result<PgOptions, ParseError> {
         Self::parse_inner(ByteStr::from_static(url))
     }
 
-    fn parse_inner(url: ByteStr) -> Result<Self> {
+    fn parse_inner(url: ByteStr) -> Result<Self, ParseError> {
         // TODO: socket path input
 
-        let url = match Url::parse(url) {
-            Ok(ok) => ok,
-            Err(err) => return err!(Configuration,err),
-        };
+        let url = Url::parse(url)?;
 
-        if !matches!(url.scheme.as_ref(), "postgres" | "postgresql") {
-            return err!(Configuration, "expected schema to be `postgres`");
-        }
+        // if !matches!(url.scheme.as_ref(), "postgres" | "postgresql") {
+        //     return err!(Configuration, "expected schema to be `postgres`");
+        // }
 
         let Url { user, pass, host, port, dbname, .. } = url;
         Ok(Self { user, pass, host, port, dbname, socket: None })
@@ -58,9 +51,9 @@ impl PgOptions {
 }
 
 impl std::str::FromStr for PgOptions {
-    type Err = crate::Error;
+    type Err = ParseError;
 
-    fn from_str(s: &str) -> Result<Self> {
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         Self::parse(s)
     }
 }

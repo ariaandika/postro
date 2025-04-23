@@ -1,6 +1,6 @@
 //! Postgres Driver
 
-mod common;
+pub mod common;
 mod io;
 mod net;
 mod ext;

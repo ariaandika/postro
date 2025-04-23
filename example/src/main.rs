@@ -1,31 +1,46 @@
+use std::env::var;
 use futures::TryStreamExt;
 
 #[tokio::main]
-async fn main() -> qs::Result<()> {
+async fn main() {
+    dotenvy::dotenv().ok();
 
-    let mut conn = qs::PgConnection::connect("postgres://cookiejar:cookie@127.0.0.1:5432/postgres").await?;
+    let mut conn = qs::PgConnection::connect(&var("DATABASE_URL").unwrap())
+        .await
+        .unwrap();
 
-    let _result = qs::query("select 420,'Foo',$1", &mut conn)
+    qs::query("create temp table post(id serial, name text)", &mut conn)
+        .execute()
+        .await
+        .unwrap();
+
+    let (id,) = qs::query("insert into post(name) values($1) returning id", &mut conn)
+        .bind("Foo")
+        .fetch_one::<(i32,)>()
+        .await
+        .unwrap();
+
+    let post = qs::query("select * from post", &mut conn)
+        .fetch_all::<(i32,String)>()
+        .await
+        .unwrap();
+
+    assert_eq!(post[0].0, id);
+
+    qs::query("insert into post(name) values($1)", &mut conn)
         .bind("Deez")
-        .fetch_all::<(i32,String,String)>()
-        .await?;
+        .execute()
+        .await
+        .unwrap();
 
-    dbg!(_result);
+    let mut stream = qs::query("select * from post", &mut conn).fetch::<(i32,String)>();
 
-    let _result = qs::query("select 420,'Foo',$1", &mut conn)
-        .bind("Deez")
-        .fetch_all_v2::<(i32,String,String)>()
-        .await?;
+    let p1 = stream.try_next().await.unwrap().unwrap();
+    assert_eq!(p1.0, id);
+    assert_eq!(p1.1.as_str(), "Foo");
 
-    dbg!(_result);
+    let p2 = stream.try_next().await.unwrap().unwrap();
+    assert_eq!(p2.1.as_str(), "Deez");
 
-    let mut stream = qs::query("select 420,'Foo',$1", &mut conn)
-        .bind("Deez")
-        .fetch::<(i32,String,String)>();
-
-    while let Some(_item) = stream.try_next().await? {
-        dbg!(_item);
-    }
-
-    Ok(())
+    assert!(stream.try_next().await.unwrap().is_none());
 }

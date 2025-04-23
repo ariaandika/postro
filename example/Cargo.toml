@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+dotenvy = "0.15.7"
 futures = "0.3.31"
 qs = { version = "0.1.0", path = "../qs", features = ["tokio"] }
 tokio = { version = "1.44.2", features = ["macros", "rt-multi-thread"] }

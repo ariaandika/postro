@@ -1,9 +1,6 @@
-//! An option for postgres startup phase
-//!
-//! <https://www.postgresql.org/docs/current/protocol-flow.html#PROTOCOL-FLOW-START-UP>
 use std::borrow::Cow;
 
-/// An option for postgres startup phase
+/// An option for postgres startup phase.
 ///
 /// <https://www.postgresql.org/docs/current/protocol-flow.html#PROTOCOL-FLOW-START-UP>
 pub struct StartupOptions<'a> {

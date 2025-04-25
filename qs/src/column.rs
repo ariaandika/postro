@@ -1,4 +1,4 @@
-//! Column information.
+//! Postgres Column types.
 use bytes::{Buf, Bytes};
 
 use crate::{

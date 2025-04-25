@@ -17,7 +17,7 @@ pub mod decode;
 // Component
 mod dberror;
 mod statement;
-mod row;
+pub mod row;
 
 // Connection
 pub mod options;
@@ -32,7 +32,7 @@ mod error;
 
 pub use encode::Encode;
 pub use decode::Decode;
-pub use row::{FromRow, Row};
+pub use row::FromRow;
 
 pub use options::PgOptions;
 pub use connection::PgConnection;

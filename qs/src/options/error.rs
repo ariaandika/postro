@@ -2,8 +2,10 @@ use std::fmt;
 
 use crate::common::ParseError;
 
+/// Error when parsing config.
 pub enum ConfigError {
-    Parse(ParseError),
+    /// Error parsing url.
+    Parse(String),
 }
 
 impl std::error::Error for ConfigError { }
@@ -32,5 +34,5 @@ macro_rules! from {
     };
 }
 
-from!(<ParseError>e => Self::Parse(e));
+from!(<ParseError>e => Self::Parse(e.to_string()));
 

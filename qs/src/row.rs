@@ -1,3 +1,4 @@
+//! Postgres row operation.
 use bytes::{Buf, Bytes};
 
 use crate::{
@@ -8,6 +9,7 @@ use crate::{
 
 /// Type that can be constructed from a row.
 pub trait FromRow: Sized {
+    /// Construct self from row.
     fn from_row(row: Row) -> Result<Self, DecodeError>;
 }
 
@@ -46,6 +48,7 @@ fn decode_row_data(mut dr: DataRow) -> Vec<Bytes> {
     rows
 }
 
+/// Postgres row.
 #[derive(Debug)]
 pub struct Row<'a> {
     cols: &'a mut [ColumnInfo],
@@ -57,6 +60,7 @@ impl<'a> Row<'a> {
         Self { cols, values: decode_row_data(dr) }
     }
 
+    /// Try decode specified column.
     pub fn try_decode<D: Decode, I: Index>(&self, idx: I) -> Result<D, DecodeError> {
         let Some(idx) = idx.position(self.cols) else {
             return Err(DecodeError::IndexOutOfBound);

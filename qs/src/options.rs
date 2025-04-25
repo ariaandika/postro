@@ -1,3 +1,4 @@
+//! Postgres configuration.
 use crate::common::{ByteStr, Url};
 
 mod error;
@@ -6,7 +7,7 @@ mod startup;
 pub use error::ConfigError;
 pub use startup::StartupOptions;
 
-/// postgres connection options
+/// Postgres connection options.
 #[derive(Debug)]
 pub struct PgOptions {
     pub(crate) user: ByteStr,

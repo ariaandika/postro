@@ -10,8 +10,8 @@ pub mod postgres;
 
 // Codec
 mod value;
-mod encode;
-mod column;
+pub mod column;
+pub mod encode;
 pub mod decode;
 
 // Component
@@ -30,8 +30,7 @@ pub mod query;
 mod error;
 
 
-pub use encode::{Encode, Encoded};
-pub use column::{Column, ColumnInfo, Index};
+pub use encode::Encode;
 pub use decode::Decode;
 pub use row::{FromRow, Row};
 

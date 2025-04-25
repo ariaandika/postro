@@ -1,3 +1,4 @@
+//! Query parameter encoding.
 use bytes::{Buf, Bytes};
 
 use crate::{
@@ -8,6 +9,7 @@ use crate::{
 
 /// Value that can be encoded to be bound to sql parameter.
 pub trait Encode<'q> {
+    /// Encode the value.
     fn encode(self) -> Encoded<'q>;
 }
 

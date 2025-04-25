@@ -1,4 +1,10 @@
+//! Row value decoding.
 use crate::{column::Column, postgres::PgType};
+
+mod error;
+
+pub use error::DecodeError;
+
 
 /// Type that can be decoded from column value.
 pub trait Decode: Sized {
@@ -31,8 +37,4 @@ impl Decode for String {
         Ok(String::from_utf8(col.into_value().into())?)
     }
 }
-
-mod error;
-
-pub use error::DecodeError;
 

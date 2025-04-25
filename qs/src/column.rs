@@ -1,3 +1,4 @@
+//! Column information.
 use bytes::{Buf, Bytes};
 
 use crate::{
@@ -39,10 +40,12 @@ impl ColumnInfo {
         Ok(cols)
     }
 
+    /// Get the column field name.
     pub fn field_name(&self) -> &str {
         &self.field_name
     }
 
+    /// Get the column [`Oid`].
     pub fn oid(&self) -> Oid {
         self.oid
     }

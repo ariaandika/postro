@@ -2,7 +2,6 @@
 use crate::{
     encode::{Encode, Encoded},
     row::FromRow,
-    transport::PgTransport,
 };
 
 mod ops;
@@ -20,7 +19,7 @@ pub use fetch_all::FetchAll;
 pub use execute::Execute;
 pub use helpers::{StartupResponse, simple_query, startup};
 
-pub fn query<'val, IO: PgTransport>(sql: &str, io: IO) -> Query<'_, 'val, IO> {
+pub fn query<'val, IO>(sql: &str, io: IO) -> Query<'_, 'val, IO> {
     Query { sql, io, params: Vec::new(), persistent: true }
 }
 
@@ -49,10 +48,7 @@ impl<'val, IO> Query<'_, 'val, IO> {
     }
 }
 
-impl<'sql, 'val, IO> Query<'sql, 'val, IO>
-where
-    IO: PgTransport,
-{
+impl<'sql, 'val, IO> Query<'sql, 'val, IO> {
     pub fn fetch<R: FromRow>(self) -> Fetch<'sql, 'val, R, IO> {
         Fetch::new(self.sql, self.io, self.params, 0, self.persistent)
     }

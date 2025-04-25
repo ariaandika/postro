@@ -1,39 +1,62 @@
 //! Postgres Backend Messages
+//!
+//! <https://www.postgresql.org/docs/current/protocol-message-formats.html>
 use bytes::{Buf, Bytes};
 
 use super::ProtocolError;
 use crate::{common::ByteStr, ext::BytesExt};
 
-/// A type that can be decoded into postgres backend message
+/// A type that can be decoded into postgres backend message.
 pub trait BackendProtocol: Sized {
-    fn decode(msgtype: u8, body: Bytes) -> Result<Self,ProtocolError>;
+    /// Try decode given bytes into message.
+    ///
+    /// Note that `body` is only the main body, **excluding** message type and length.
+    fn decode(msgtype: u8, body: Bytes) -> Result<Self, ProtocolError>;
 }
 
-/// Postgres backend messages
+/// Postgres backend messages.
 #[derive(Debug)]
 pub enum BackendMessage {
+    /// Identifies the message as an authentication request.
     Authentication(Authentication),
+    /// Identifies the message as cancellation key data.
     BackendKeyData(BackendKeyData),
+    /// Identifies the message as a Bind-complete indicator.
     BindComplete(BindComplete),
+    /// Identifies the message as a Close-complete indicator.
     CloseComplete(CloseComplete),
+    /// Identifies the message as a command-completed response.
     CommandComplete(CommandComplete),
+    /// Identifies the message as a data row.
     DataRow(DataRow),
+    /// Identifies the message as an error.
     ErrorResponse(ErrorResponse),
+    /// Identifies the message as a response to an empty query string.
     EmptyQueryResponse(EmptyQueryResponse),
+    /// Identifies the message as a protocol version negotiation message.
     NegotiateProtocolVersion(NegotiateProtocolVersion),
+    /// Identifies the message as a no-data indicator.
     NoData(NoData),
+    /// Identifies the message as a notice.
     NoticeResponse(NoticeResponse),
+    /// Identifies the message as a parameter description.
     ParameterDescription(ParameterDescription),
+    /// Identifies the message as a run-time parameter status report
     ParameterStatus(ParameterStatus),
+    /// Identifies the message as a Parse-complete indicator.
     ParseComplete(ParseComplete),
+    /// Identifies the message as a portal-suspended indicator.
     PortalSuspended(PortalSuspended),
+    /// Identifies the message type. ReadyForQuery is sent whenever the backend is ready for a new query cycle.
     ReadyForQuery(ReadyForQuery),
+    /// Identifies the message as a row description
     RowDescription(RowDescription),
 }
 
 macro_rules! match_backend {
     ($($name:ident,)*) => {
         impl BackendMessage {
+            /// Returns the message type.
             pub fn msgtype(&self) -> u8 {
                 match self {
                     $(Self::$name(_) => $name::MSGTYPE,)*
@@ -90,6 +113,15 @@ macro_rules! assert_msgtype {
     };
 }
 
+macro_rules! msgtype {
+    ($me:ident,$ty:literal) => {
+        impl $me {
+            #[doc = concat!("`",stringify!($ty),"`")]
+            pub const MSGTYPE: u8 = $ty;
+        }
+    };
+}
+
 /// Identifies the message as an authentication request.
 #[derive(Debug)]
 pub enum Authentication {
@@ -133,9 +165,7 @@ pub enum Authentication {
     },
 }
 
-impl Authentication {
-    pub const MSGTYPE: u8 = b'R';
-}
+msgtype!(Authentication, b'R');
 
 impl BackendProtocol for Authentication {
     fn decode(msgtype: u8, mut body: Bytes) -> Result<Self,ProtocolError> {
@@ -168,9 +198,7 @@ pub struct BackendKeyData {
     pub secret_key: u32,
 }
 
-impl BackendKeyData {
-    pub const MSGTYPE: u8 = b'K';
-}
+msgtype!(BackendKeyData, b'K');
 
 impl BackendProtocol for BackendKeyData {
     fn decode(msgtype: u8, mut body: Bytes) -> Result<Self,ProtocolError> {
@@ -182,18 +210,16 @@ impl BackendProtocol for BackendKeyData {
     }
 }
 
-/// Identifies the message as a run-time parameter status report
+/// Identifies the message as a run-time parameter status report.
 #[derive(Debug)]
 pub struct ParameterStatus {
-    /// The name of the run-time parameter being reported
+    /// The name of the run-time parameter being reported.
     pub name: ByteStr,
-    /// The current value of the parameter
+    /// The current value of the parameter.
     pub value: ByteStr,
 }
 
-impl ParameterStatus {
-    pub const MSGTYPE: u8 = b'S';
-}
+msgtype!(ParameterStatus, b'S');
 
 impl BackendProtocol for ParameterStatus {
     fn decode(msgtype: u8, mut body: Bytes) -> Result<Self,ProtocolError> {
@@ -205,14 +231,29 @@ impl BackendProtocol for ParameterStatus {
     }
 }
 
-/// A warning message. The frontend should display the message.
+/// Identifies the message as a notice.
 pub struct NoticeResponse {
+    /// Raw message body.
+    ///
+    /// The message body consists of one or more identified fields, followed by a zero byte as a terminator.
+    ///
+    /// Fields can appear in any order.
+    ///
+    /// For each field there is the following:
+    ///
+    /// - `Byte1` A code identifying the field type; if zero, this is the message terminator and no string follows.
+    ///
+    /// The presently defined field types are listed in [Section 53.8][53_8].
+    ///
+    /// Since more field types might be added in future, frontends should silently ignore fields of unrecognized type.
+    ///
+    /// - `String` The field value.
+    ///
+    /// [53_8]: https://www.postgresql.org/docs/current/protocol-error-fields.html
     pub body: Bytes
 }
 
-impl NoticeResponse {
-    pub const MSGTYPE: u8 = b'N';
-}
+msgtype!(NoticeResponse, b'N');
 
 impl BackendProtocol for NoticeResponse {
     fn decode(msgtype: u8, body: Bytes) -> Result<Self,ProtocolError> {
@@ -221,26 +262,28 @@ impl BackendProtocol for NoticeResponse {
     }
 }
 
-/// Identifies the message as an error
-///
-/// The message body consists of one or more identified fields, followed by a zero byte as a terminator.
-/// Fields can appear in any order.
-///
-/// For each field there is the following:
-///
-/// `Byte1` A code identifying the field type; if zero, this is the message terminator and no string follows.
-/// The presently defined field types are listed in Section 53.8.
-/// Since more field types might be added in future,
-/// frontends should silently ignore fields of unrecognized type.
-///
-/// `String` The field value.
+/// Identifies the message as an error.
 pub struct ErrorResponse {
+    /// Raw message body.
+    ///
+    /// The message body consists of one or more identified fields, followed by a zero byte as a terminator.
+    /// Fields can appear in any order.
+    ///
+    /// For each field there is the following:
+    ///
+    /// - `Byte1` A code identifying the field type; if zero, this is the message terminator and no string follows.
+    ///
+    /// The presently defined field types are listed in [Section 53.8][53_8].
+    ///
+    /// Since more field types might be added in future, frontends should silently ignore fields of unrecognized type.
+    ///
+    /// - `String` The field value.
+    ///
+    /// [53_8]: https://www.postgresql.org/docs/current/protocol-error-fields.html
     pub body: Bytes,
 }
 
-impl ErrorResponse {
-    pub const MSGTYPE: u8 = b'E';
-}
+msgtype!(ErrorResponse, b'E');
 
 impl BackendProtocol for ErrorResponse {
     fn decode(msgtype: u8, body: Bytes) -> Result<Self,ProtocolError> {
@@ -254,13 +297,13 @@ impl BackendProtocol for ErrorResponse {
 pub struct RowDescription {
     /// Specifies the number of fields in a row (can be zero).
     pub field_len: u16,
-    /// Undecoded response body.
+    /// Raw columns info buffer.
+    ///
+    /// Use [`ColumnInfo`][crate::column::ColumnInfo] to decode.
     pub body: Bytes,
 }
 
-impl RowDescription {
-    pub const MSGTYPE: u8 = b'T';
-}
+msgtype!(RowDescription, b'T');
 
 impl BackendProtocol for RowDescription {
     fn decode(msgtype: u8, mut body: Bytes) -> Result<Self, ProtocolError> {
@@ -272,17 +315,18 @@ impl BackendProtocol for RowDescription {
     }
 }
 
-#[derive(Debug)]
 /// Identifies the message as a data row.
+#[derive(Debug)]
 pub struct DataRow {
     /// The number of column values that follow (possibly zero).
     pub column_len: u16,
+    /// Raw row buffer.
+    ///
+    /// Use [`Row`][crate::row::Row] to decode.
     pub body: Bytes,
 }
 
-impl DataRow {
-    pub const MSGTYPE: u8 = b'D';
-}
+msgtype!(DataRow, b'D');
 
 impl BackendProtocol for DataRow {
     fn decode(msgtype: u8, mut body: Bytes) -> Result<Self, ProtocolError> {
@@ -294,37 +338,37 @@ impl BackendProtocol for DataRow {
     }
 }
 
-/// Identifies the message as a command-completed response
-///
-/// For an INSERT command, the tag is INSERT oid rows, where rows is the number of rows inserted.
-/// oid used to be the object ID of the inserted row if rows was 1 and the target table had OIDs,
-/// but OIDs system columns are not supported anymore; therefore oid is always 0.
-///
-/// For a DELETE command, the tag is DELETE rows where rows is the number of rows deleted.
-///
-/// For an UPDATE command, the tag is UPDATE rows where rows is the number of rows updated.
-///
-/// For a MERGE command, the tag is MERGE rows where rows is the number of rows inserted, updated, or deleted.
-///
-/// For a SELECT or CREATE TABLE AS command, the tag is SELECT rows where rows is the number of rows retrieved.
-///
-/// For a MOVE command, the tag is MOVE rows where rows is the number of rows
-/// the cursor's position has been changed by.
-///
-/// For a FETCH command, the tag is FETCH rows where rows is the number of rows that have
-/// been retrieved from the cursor.
-///
-/// For a COPY command, the tag is COPY rows where rows is the number of rows copied.
-/// (Note: the row count appears only in PostgreSQL 8.2 and later.)
+/// Identifies the message as a command-completed response.
 #[derive(Debug)]
 pub struct CommandComplete {
     /// The command tag. This is usually a single word that identifies which SQL command was completed.
+    ///
+    /// For an `INSERT` command, the tag is `INSERT oid rows`, where `rows` is the number of rows inserted.
+    /// `oid` used to be the object ID of the inserted row if `rows` was 1 and the target table had OIDs,
+    /// but OIDs system columns are not supported anymore; therefore `oid` is always 0.
+    ///
+    /// For a `DELETE` command, the tag is `DELETE rows` where `rows` is the number of rows deleted.
+    ///
+    /// For an `UPDATE` command, the tag is `UPDATE rows` where `rows` is the number of rows updated.
+    ///
+    /// For a `MERGE` command, the tag is `MERGE rows` where `rows` is the
+    /// number of rows inserted, updated, or deleted.
+    ///
+    /// For a `SELECT` or `CREATE TABLE AS` command, the tag is SELECT rows
+    /// where `rows` is the number of rows retrieved.
+    ///
+    /// For a `MOVE` command, the tag is `MOVE rows` where `rows` is the number of rows
+    /// the cursor's position has been changed by.
+    ///
+    /// For a `FETCH` command, the tag is `FETCH rows` where `rows` is the number of rows that have
+    /// been retrieved from the cursor.
+    ///
+    /// For a `COPY` command, the tag is `COPY rows` where `rows` is the number of rows copied.
+    /// (Note: the row count appears only in PostgreSQL 8.2 and later.)
     pub tag: ByteStr,
 }
 
-impl CommandComplete {
-    pub const MSGTYPE: u8 = b'C';
-}
+msgtype!(CommandComplete, b'C');
 
 impl BackendProtocol for CommandComplete {
     fn decode(msgtype: u8, mut body: Bytes) -> Result<Self, ProtocolError> {
@@ -342,13 +386,15 @@ pub struct NegotiateProtocolVersion {
     pub minor: u32,
     /// Number of protocol options not recognized by the server.
     pub len: u32,
-    /// Then, for protocol option not recognized by the server, there is the following:
+    /// Raw buffer for option not recognized by the server.
+    ///
+    /// There is the following:
+    ///
+    /// - `String` The option name.
     pub opt_names: Bytes,
 }
 
-impl NegotiateProtocolVersion {
-    pub const MSGTYPE: u8 = b'v';
-}
+msgtype!(NegotiateProtocolVersion, b'v');
 
 impl BackendProtocol for NegotiateProtocolVersion {
     fn decode(msgtype: u8, mut body: Bytes) -> Result<Self,ProtocolError> {
@@ -366,15 +412,15 @@ impl BackendProtocol for NegotiateProtocolVersion {
 pub struct ParameterDescription {
     /// The number of parameters used by the statement (can be zero).
     pub param_len: u16,
-    /// Then, for each parameter, there is the following:
+    /// Raw buffer for message body.
     ///
-    /// Specifies the object ID of the parameter data type.
+    /// For each parameter, there is the following:
+    ///
+    /// - `Int32` Specifies the object ID of the parameter data type.
     pub oids: Bytes,
 }
 
-impl ParameterDescription  {
-    pub const MSGTYPE: u8 = b't';
-}
+msgtype!(ParameterDescription, b't');
 
 impl BackendProtocol for ParameterDescription {
     fn decode(msgtype: u8, mut body: Bytes) -> Result<Self,ProtocolError> {
@@ -394,9 +440,7 @@ macro_rules! unit_msg {
             #[derive(Debug)]
             pub struct $name;
 
-            impl $name {
-                pub const MSGTYPE: u8 = $ty;
-            }
+            msgtype!($name, $ty);
 
             impl BackendProtocol for $name {
                 fn decode(msgtype: u8, _: Bytes) -> Result<Self,ProtocolError> {

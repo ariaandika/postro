@@ -1,6 +1,12 @@
 
+/// Postgres object identifier.
+///
+/// The oid type is implemented as an unsigned four-byte integer.
+///
+/// <https://www.postgresql.org/docs/current/datatype-oid.html>
 pub type Oid = u32;
 
+/// A type that have corresponding postgred oid.
 pub trait PgType {
     const OID: Oid;
 }

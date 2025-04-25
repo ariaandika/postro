@@ -1,67 +1,56 @@
 //! Postgres Frontend Messages
 //!
-//! All struct fields here mirror the actual message sent to postgres.
+//! <https://www.postgresql.org/docs/current/protocol-message-formats.html>
 use bytes::{BufMut, BytesMut};
 
 use super::{Oid, PgFormat};
 use crate::ext::{BindParams, BufMutExt, StrExt, UsizeExt};
 
-// Data Type Sizes	✅ Yes	e.g., typlen = -1 for variable-length types.
-// Type Modifiers	✅ Yes	e.g., -1 for "no modifier".
-
-/// write a frontend message to `buf`
-///
-/// to write multiple message at the same time, use [`write_batch`]
-/// for better capacity reserve
+/// Write a frontend message to `buf`.
 pub fn write<F: FrontendProtocol>(msg: F, buf: &mut BytesMut) {
     // msgtype + length
     const PREFIX: usize = 1 + 4;
 
-    let size = msg.size_hint();
-    buf.reserve(PREFIX + size as usize);
+    let size_hint = msg.size_hint();
+    buf.reserve(PREFIX + size_hint as usize);
 
     let offset = buf.len();
     buf.put_u8(F::MSGTYPE);
-    buf.put_u32(4 + size);
+    buf.put_u32(4 + size_hint);
 
     msg.encode(&mut *buf);
 
     assert_eq!(
         buf.len() - offset,
-        PREFIX + size as usize,
-        "[BUG] Frontend Message body not equal to size hint"
+        PREFIX + size_hint as usize,
+        "Frontend message body size not equal to size hint"
     );
 }
 
 /// A type which can be encoded into postgres frontend message
-///
-/// For historical reasons, the very first message sent by the client (the startup message)
-/// has no initial message-type byte.
-///
-/// Thus, [`Startup`] does not implement [`FrontendProtocol`]
 pub trait FrontendProtocol {
-    /// message type
+    /// Message type.
     const MSGTYPE: u8;
 
-    /// size of the main body
+    /// Size of the main body.
     ///
-    /// note that this is *only* the size of main body as oppose of actual postgres message
+    /// Note that this is **only** the size of main body as oppose of actual postgres message which
+    /// include the length itself.
     fn size_hint(&self) -> u32;
 
-    /// write the main body of the message
+    /// Write the main body of the message.
     ///
-    /// `buf` have the length returned from `size_hint`
-    ///
-    /// writing less or past length results in panic
+    /// The lenght of body written must be equal to the
+    /// length returned by [`size_hint`][FrontendProtocol::size_hint].
     fn encode(self, buf: impl BufMut);
 }
 
 /// Postgres Startup frontend message
 ///
-/// For historical reasons, the very first message sent by the client (the startup message)
-/// has no initial message-type byte.
+/// For historical reasons, the very first message sent by the client (the [`Startup`] message)
+/// has no initial message-type byte, thus [`Startup`] does not implement [`FrontendProtocol`].
 ///
-/// Thus, [`Startup`] does not implement [`FrontendProtocol`]
+/// To write startup message, use [`Startup::write`].
 #[derive(Debug)]
 pub struct Startup<'a> {
     /// The database user name to connect as. Required; there is no default.

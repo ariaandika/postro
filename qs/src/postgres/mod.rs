@@ -1,7 +1,5 @@
 //! Postgres Frontend and Backend Protocol
 //!
-//! Docs here mostly quoted from the official postgres documentation.
-//!
 //! ## Messaging Overview
 //!
 //! All communication is through a stream of messages. The first byte of a message identifies the message type,

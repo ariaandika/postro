@@ -4,6 +4,7 @@ use super::ByteStr;
 
 #[derive(Debug)]
 pub struct Url {
+    #[allow(unused)] // sokay
     pub scheme: ByteStr,
     pub user: ByteStr,
     pub pass: ByteStr,
@@ -18,33 +19,44 @@ impl Url {
         let mut read = url.as_ref();
 
         macro_rules! eat {
-            (@ $delim:literal,$id:tt,$len:literal) => {{
-                let Some(idx) = read.find($delim) else {
-                    return Err(ParseError(concat!(stringify!($id), " missing")))
+                (@ $delim:literal,$id:tt,$len:literal) => {{
+                    let Some(idx) = read.find($delim) else {
+                        return Err(ParseError(concat!(stringify!($id), " missing")))
+                    };
+                    let capture = &read[..idx];
+                    read = &read[idx + $len..];
+                    url.slice_ref(capture)
+                }};
+                ($delim:literal,$id:tt) => {
+                    eat!(@ $delim,$id,1)
                 };
-                let capture = &read[..idx];
-                read = &read[idx + $len..];
-                url.slice_ref(capture)
-            }};
-            ($delim:literal,$id:tt) => {
-                eat!(@ $delim,$id,1)
-            };
-            ($delim:literal,$id:tt,$len:literal) => {
-                eat!(@ $delim,$id,$len)
-            };
-        }
+                ($delim:literal,$id:tt,$len:literal) => {
+                    eat!(@ $delim,$id,$len)
+                };
+            }
 
-        let scheme = eat!("://",user,3);
-        let user = eat!(':',password);
-        let pass = eat!('@',host);
-        let host = eat!(':',port);
-        let port = eat!('/',dbname);
+        let scheme = eat!("://", user, 3);
+        let user = eat!(':', password);
+        let pass = eat!('@', host);
+        let host = eat!(':', port);
+        let port = eat!('/', dbname);
         let dbname = url.slice_ref(read);
 
-        match port.parse() {
-            Ok(port) => Ok(Self { scheme, user, pass, host, port, dbname, }),
-            Err(_) => Err(ParseError("invalid port")),
-        }
+        // match port.parse() {
+        //     Ok(port) => Ok(Self { scheme, user, pass, host, port, dbname, }),
+        //     Err(_) => Err(ParseError("invalid port")),
+        // }
+        port.parse()
+            .map_or(Err(ParseError("invalid port")), |port| {
+                Ok(Self {
+                    scheme,
+                    user,
+                    pass,
+                    host,
+                    port,
+                    dbname,
+                })
+            })
     }
 }
 

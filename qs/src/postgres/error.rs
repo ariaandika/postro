@@ -24,8 +24,8 @@ impl BackendMessage {
 impl std::error::Error for ProtocolError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            ProtocolError::Utf8Error(u) => Some(u),
-            ProtocolError::Unexpected { .. } => None,
+            Self::Utf8Error(u) => Some(u),
+            Self::Unexpected { .. } => None,
         }
     }
 }
@@ -62,7 +62,7 @@ impl fmt::Debug for ProtocolError {
 }
 
 impl ProtocolError {
-    pub(crate) fn unknown(found: u8) -> ProtocolError {
+    pub(crate) const fn unknown(found: u8) -> Self {
         Self::Unexpected {
             expect: None,
             found,
@@ -70,7 +70,7 @@ impl ProtocolError {
         }
     }
 
-    pub(crate) fn unexpected(expect: u8, found: u8) -> ProtocolError {
+    pub(crate) const fn unexpected(expect: u8, found: u8) -> Self {
         Self::Unexpected {
             expect: Some(expect),
             found,
@@ -78,7 +78,7 @@ impl ProtocolError {
         }
     }
 
-    pub(crate) fn unexpected_phase(found: u8, phase: &'static str) -> ProtocolError {
+    pub(crate) const fn unexpected_phase(found: u8, phase: &'static str) -> Self {
         Self::Unexpected {
             expect: None,
             found,

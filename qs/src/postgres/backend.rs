@@ -57,7 +57,7 @@ macro_rules! match_backend {
     ($($name:ident,)*) => {
         impl BackendMessage {
             /// Returns the message type.
-            pub fn msgtype(&self) -> u8 {
+            pub const fn msgtype(&self) -> u8 {
                 match self {
                     $(Self::$name(_) => $name::MSGTYPE,)*
                 }
@@ -66,7 +66,7 @@ macro_rules! match_backend {
             /// Get message name from message type.
             ///
             /// Returns `"Unknown"` for unknown message type.
-            pub fn message_name(msgtype: u8) -> &'static str {
+            pub const fn message_name(msgtype: u8) -> &'static str {
                 match msgtype {
                     $($name::MSGTYPE => stringify!($name),)*
                     _ => "Unknown",
@@ -171,16 +171,16 @@ impl BackendProtocol for Authentication {
     fn decode(msgtype: u8, mut body: Bytes) -> Result<Self,ProtocolError> {
         assert_msgtype!(msgtype);
         let auth = match body.get_u32() {
-            0 => Authentication::Ok,
-            2 => Authentication::KerberosV5,
-            3 => Authentication::CleartextPassword,
-            5 => Authentication::MD5Password { salt: body.get_u32().to_be_bytes(), },
-            7 => Authentication::GSS,
-            8 => Authentication::GSSContinue { data: body },
-            9 => Authentication::SSPI,
-            10 => Authentication::SASL { name: body },
-            11 => Authentication::SASLContinue { data: body },
-            12 => Authentication::SASLFinal { data: body },
+            0 => Self::Ok,
+            2 => Self::KerberosV5,
+            3 => Self::CleartextPassword,
+            5 => Self::MD5Password { salt: body.get_u32().to_be_bytes(), },
+            7 => Self::GSS,
+            8 => Self::GSSContinue { data: body },
+            9 => Self::SSPI,
+            10 => Self::SASL { name: body },
+            11 => Self::SASLContinue { data: body },
+            12 => Self::SASLFinal { data: body },
             auth => panic!("Unknown Authentication type: \"{auth}\""),
         };
         Ok(auth)
@@ -258,7 +258,7 @@ msgtype!(NoticeResponse, b'N');
 impl BackendProtocol for NoticeResponse {
     fn decode(msgtype: u8, body: Bytes) -> Result<Self,ProtocolError> {
         assert_msgtype!(msgtype);
-        Ok(NoticeResponse { body })
+        Ok(Self { body })
     }
 }
 

@@ -76,7 +76,7 @@ impl Startup<'_> {
         // The protocol version number.
         // The most significant 16 bits are the major version number (3 for the protocol described here).
         // The least significant 16 bits are the minor version number (0 for the protocol described here).
-        buf.put_u32(196608);
+        buf.put_u32(196_608);
 
         // The protocol version number is followed by one or more pairs of parameter name and value strings.
 
@@ -282,9 +282,8 @@ pub struct Bind<'a, ParamFmts, Params, ResultFmts> {
 impl<ParamFmts, Params, ResultFmts> FrontendProtocol for Bind<'_, ParamFmts, Params, ResultFmts>
 where
     ParamFmts: IntoIterator<Item = PgFormat>,
-    Params: Iterator,
+    Params: Iterator + ExactSizeIterator,
     <Params as Iterator>::Item: BindParams,
-    Params: ExactSizeIterator,
     ResultFmts: IntoIterator<Item = PgFormat>,
 {
     const MSGTYPE: u8 = b'B';

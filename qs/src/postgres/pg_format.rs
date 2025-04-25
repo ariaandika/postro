@@ -31,10 +31,10 @@ pub enum PgFormat {
 
 impl PgFormat {
     /// Return format code for current format.
-    pub fn format_code(&self) -> u16 {
+    pub const fn format_code(&self) -> u16 {
         match self {
-            PgFormat::Text => 0,
-            PgFormat::Binary => 1,
+            Self::Text => 0,
+            Self::Binary => 1,
         }
     }
 }

@@ -4,24 +4,24 @@ use std::{
 };
 
 use super::{ops, portal::Portal};
-use crate::{Result, encode::Encoded, postgres::backend, transport::PgTransport};
+use crate::{Result, encode::Encoded, postgres::backend, sql::Sql, transport::PgTransport};
 
 pin_project_lite::pin_project! {
     #[derive(Debug)]
     #[project = ExecuteProject]
-    pub struct Execute<'sql, 'val, IO> {
+    pub struct Execute<'val, SQL, IO> {
         #[pin]
-        phase: Phase<'sql, 'val, IO>,
+        phase: Phase<'val, SQL, IO>,
     }
 }
 
 pin_project_lite::pin_project! {
     #[derive(Debug)]
     #[project = PhaseProject]
-    enum Phase<'sql, 'val, IO> {
+    enum Phase<'val, SQL, IO> {
         Portal {
             #[pin]
-            portal: Portal<'sql, 'val, IO>,
+            portal: Portal<'val, SQL, IO>,
         },
         BindComplete { io: Option<IO> },
         NoData { io: Option<IO> },
@@ -31,18 +31,19 @@ pin_project_lite::pin_project! {
     }
 }
 
-impl<'sql, 'val, IO> Execute<'sql, 'val, IO> {
-    pub(crate) fn new(sql: &'sql str, io: IO, params: Vec<Encoded<'val>>, persistent: bool) -> Self {
+impl<'val, SQL, IO> Execute<'val, SQL, IO> {
+    pub(crate) fn new(sql: SQL, io: IO, params: Vec<Encoded<'val>>) -> Self {
         Self {
             phase: Phase::Portal {
-                portal: Portal::new(sql, io, params, 0, persistent),
+                portal: Portal::new(sql, io, params, 0),
             },
         }
     }
 }
 
-impl<IO> Future for Execute<'_, '_, IO>
+impl<SQL, IO> Future for Execute<'_, SQL, IO>
 where
+    SQL: Sql,
     IO: PgTransport,
 {
     type Output = Result<u64>;

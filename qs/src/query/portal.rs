@@ -5,7 +5,7 @@ use std::{
 };
 
 use super::ops::{self, PrepareData};
-use crate::{Result, encode::Encoded, postgres::backend, transport::PgTransport};
+use crate::{encode::Encoded, postgres::backend, sql::Sql, transport::PgTransport, Result};
 
 pin_project_lite::pin_project! {
     /// Prepare a statement and bind a portal.
@@ -13,24 +13,22 @@ pin_project_lite::pin_project! {
     /// Caller must ready to receive subsequent messages explained in [`portal`](super::ops::portal)
     #[derive(Debug)]
     #[project = PortalProject]
-    pub struct Portal<'sql, 'val, IO> {
-        sql: &'sql str,
+    pub struct Portal<'val, SQL, IO> {
+        sql: SQL,
         io: Option<IO>,
         phase: Phase,
         params: Vec<Encoded<'val>>,
         max_row: u32,
-        persistent: bool,
     }
 }
 
-impl<'sql, 'val, IO> Portal<'sql, 'val, IO> {
+impl<'val, SQL, IO> Portal<'val, SQL, IO> {
     /// Create new [`Portal`] future.
     pub(crate) fn new(
-        sql: &'sql str,
+        sql: SQL,
         io: IO,
         params: Vec<Encoded<'val>>,
         max_row: u32,
-        persistent: bool,
     ) -> Self {
         Self {
             sql,
@@ -38,7 +36,6 @@ impl<'sql, 'val, IO> Portal<'sql, 'val, IO> {
             phase: Phase::Prepare,
             params,
             max_row,
-            persistent,
         }
     }
 }
@@ -55,8 +52,9 @@ enum Phase {
     Complete,
 }
 
-impl<IO> Future for Portal<'_, '_, IO>
+impl<SQL, IO> Future for Portal<'_, SQL, IO>
 where
+    SQL: Sql,
     IO: PgTransport,
 {
     type Output = Result<IO>;
@@ -68,7 +66,6 @@ where
             phase,
             params,
             max_row,
-            persistent,
         } = self.as_mut().project();
 
         let io = self_io.as_mut().expect("foo poll after complete");
@@ -76,7 +73,7 @@ where
         loop {
             match &mut *phase {
                 Phase::Prepare => {
-                    let data = ops::prepare(sql, params, *persistent, &mut *io);
+                    let data = ops::prepare(&*sql, params, &mut *io);
                     *phase = match data.cache_hit {
                         true => Phase::Portal(data),
                         false => Phase::PrepareFlush(data),

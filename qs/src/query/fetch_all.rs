@@ -6,29 +6,30 @@ use std::{
 };
 
 use super::Fetch;
-use crate::{Result, encode::Encoded, row::FromRow, transport::PgTransport};
+use crate::{Result, encode::Encoded, row::FromRow, sql::Sql, transport::PgTransport};
 
 pin_project_lite::pin_project! {
     #[derive(Debug)]
     #[project = FetchAllProject]
-    pub struct FetchAll<'sql, 'val, R, IO> {
+    pub struct FetchAll<'val, SQL, R, IO> {
         #[pin]
-        fetch: Fetch<'sql, 'val, R, IO>,
+        fetch: Fetch<'val, SQL, R, IO>,
         output: Vec<R>,
     }
 }
 
-impl<'sql, 'val, R, IO> FetchAll<'sql, 'val, R, IO> {
-    pub(crate) fn new(sql: &'sql str, io: IO, params: Vec<Encoded<'val>>, persistent: bool) -> Self {
+impl<'val, SQL, R, IO> FetchAll<'val, SQL, R, IO> {
+    pub(crate) fn new(sql: SQL, io: IO, params: Vec<Encoded<'val>>) -> Self {
         Self {
-            fetch: Fetch::new(sql, io, params, 0, persistent),
+            fetch: Fetch::new(sql, io, params, 0),
             output: vec![],
         }
     }
 }
 
-impl<R, IO> Future for FetchAll<'_, '_, R, IO>
+impl<SQL, R, IO> Future for FetchAll<'_, SQL, R, IO>
 where
+    SQL: Sql,
     R: FromRow,
     IO: PgTransport,
 {

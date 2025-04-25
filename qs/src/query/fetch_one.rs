@@ -5,27 +5,28 @@ use std::{
 };
 
 use super::Fetch;
-use crate::{Result, encode::Encoded, row::FromRow, transport::PgTransport};
+use crate::{Result, encode::Encoded, row::FromRow, sql::Sql, transport::PgTransport};
 
 pin_project_lite::pin_project! {
     #[derive(Debug)]
     #[project = FetchOneProject]
-    pub struct FetchOne<'sql, 'val, R, IO> {
+    pub struct FetchOne<'val, SQL, R, IO> {
         #[pin]
-        fetch: Fetch<'sql, 'val, R, IO>,
+        fetch: Fetch<'val, SQL, R, IO>,
     }
 }
 
-impl<'sql, 'val, R, IO> FetchOne<'sql, 'val, R, IO> {
-    pub(crate) fn new(sql: &'sql str, io: IO, params: Vec<Encoded<'val>>, persistent: bool) -> Self {
+impl<'val, SQL, R, IO> FetchOne<'val, SQL, R, IO> {
+    pub(crate) fn new(sql: SQL, io: IO, params: Vec<Encoded<'val>>) -> Self {
         Self {
-            fetch: Fetch::new(sql, io, params, 1, persistent),
+            fetch: Fetch::new(sql, io, params, 1),
         }
     }
 }
 
-impl<R, IO> Future for FetchOne<'_, '_, R, IO>
+impl<SQL, R, IO> Future for FetchOne<'_, SQL, R, IO>
 where
+    SQL: Sql,
     R: FromRow,
     IO: PgTransport,
 {

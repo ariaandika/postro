@@ -17,6 +17,7 @@ pub mod decode;
 // Component
 mod dberror;
 mod statement;
+pub mod sql;
 pub mod row;
 
 // Connection
@@ -36,7 +37,7 @@ pub use row::FromRow;
 
 pub use options::PgOptions;
 pub use connection::PgConnection;
-pub use query::query;
+pub use query::{query, query_row};
 
 pub use postgres::{ProtocolError, ErrorResponse, NoticeResponse};
 pub use error::{Error, Result};

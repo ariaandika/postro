@@ -9,36 +9,36 @@ async fn main() {
         .await
         .unwrap();
 
-    qs::query("create temp table post(id serial, name text)", &mut conn)
+    qs::query_row("create temp table post(id serial, name text)", &mut conn)
         .execute()
         .await
         .unwrap();
 
-    let _err = qs::query("select deez", &mut conn)
-        .fetch_one::<()>()
+    let _err = qs::query::<_, _, ()>("select deez", &mut conn)
+        .fetch_one()
         .await
         .unwrap_err();
 
-    let (id,) = qs::query("insert into post(name) values($1) returning id", &mut conn)
+    let (id,) = qs::query::<_, _, (i32,)>("insert into post(name) values($1) returning id", &mut conn)
         .bind("Foo")
-        .fetch_one::<(i32,)>()
+        .fetch_one()
         .await
         .unwrap();
 
-    let post = qs::query("select * from post", &mut conn)
-        .fetch_all::<(i32,String)>()
+    let post = qs::query::<_, _, (i32,String)>("select * from post", &mut conn)
+        .fetch_all()
         .await
         .unwrap();
 
     assert_eq!(post[0].0, id);
 
-    qs::query("insert into post(name) values($1)", &mut conn)
+    qs::query_row("insert into post(name) values($1)", &mut conn)
         .bind("Deez")
         .execute()
         .await
         .unwrap();
 
-    let mut stream = qs::query("select * from post", &mut conn).fetch::<(i32,String)>();
+    let mut stream = qs::query::<_, _, (i32,String)>("select * from post", &mut conn).fetch();
 
     let p1 = stream.try_next().await.unwrap().unwrap();
     assert_eq!(p1.0, id);

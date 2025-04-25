@@ -12,15 +12,16 @@ use crate::{
     encode::Encoded,
     postgres::backend,
     row::{FromRow, Row},
+    sql::Sql,
     transport::PgTransport,
 };
 
 pin_project_lite::pin_project! {
     #[derive(Debug)]
     #[project = FetchAllProject]
-    pub struct Fetch<'sql, 'val, R, IO> {
+    pub struct Fetch<'val, SQL, R, IO> {
         #[pin]
-        phase: Phase<'sql, 'val, IO>,
+        phase: Phase<'val, SQL, IO>,
         _p: PhantomData<R>,
     }
 }
@@ -28,8 +29,8 @@ pin_project_lite::pin_project! {
 pin_project_lite::pin_project! {
     #[derive(Debug)]
     #[project = PhaseProject]
-    enum Phase<'sql, 'val, IO> {
-        Portal { #[pin] portal: Portal<'sql, 'val, IO> },
+    enum Phase<'val, SQL, IO> {
+        Portal { #[pin] portal: Portal<'val, SQL, IO> },
         BindComplete { io: Option<IO> },
         RowDescription { io: Option<IO> },
         DataRow {
@@ -41,25 +42,25 @@ pin_project_lite::pin_project! {
     }
 }
 
-impl<'sql, 'val, R, IO> Fetch<'sql, 'val, R, IO> {
+impl<'val, SQL, R, IO> Fetch<'val, SQL, R, IO> {
     pub(crate) fn new(
-        sql: &'sql str,
+        sql: SQL,
         io: IO,
         params: Vec<Encoded<'val>>,
         max_row: u32,
-        persistent: bool,
     ) -> Self {
         Self {
             phase: Phase::Portal {
-                portal: Portal::new(sql, io, params, max_row, persistent),
+                portal: Portal::new(sql, io, params, max_row),
             },
             _p: PhantomData,
         }
     }
 }
 
-impl<R, IO> Stream for Fetch<'_, '_, R, IO>
+impl<SQL, R, IO> Stream for Fetch<'_, SQL, R, IO>
 where
+    SQL: Sql,
     R: FromRow,
     IO: PgTransport,
 {

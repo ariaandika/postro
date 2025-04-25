@@ -1,12 +1,13 @@
 use std::{
-    hash::{DefaultHasher, Hash, Hasher},
+    hash::{DefaultHasher, Hasher},
     mem,
 };
 
 use crate::{
     encode::Encoded,
     ext::UsizeExt,
-    postgres::{backend, frontend, PgFormat},
+    postgres::{PgFormat, backend, frontend},
+    sql::Sql,
     statement::{PortalName, StatementName},
     transport::PgTransport,
 };
@@ -29,9 +30,8 @@ pub struct PrepareData {
 ///
 /// Also caller might want to cache the returned statement.
 pub fn prepare(
-    sql: &str,
+    sql: &impl Sql,
     params: &[Encoded],
-    persistent: bool,
     mut io: impl PgTransport,
 ) -> PrepareData {
     let sqlid = {
@@ -40,20 +40,20 @@ pub fn prepare(
         buf.finish()
     };
 
-    if persistent {
+    if sql.persistent() {
         if let Some(stmt) = io.get_stmt(sqlid) {
             return PrepareData { sqlid, stmt, cache_hit: true, max_row: 0 };
         }
     }
 
-    let stmt = match persistent {
+    let stmt = match sql.persistent() {
         true => StatementName::next(),
         false => StatementName::unnamed(),
     };
 
     io.send(frontend::Parse {
         prepare_name: stmt.as_str(),
-        sql,
+        sql: sql.sql(),
         oids_len: params.len() as _,
         oids: params.iter().map(Encoded::oid),
     });

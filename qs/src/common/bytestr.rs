@@ -2,7 +2,7 @@ use bytes::Bytes;
 
 /// A cheaply cloneable and sliceable str.
 ///
-/// `ByteStr` also helps prevent allocating vec as it required by [`String::from_utf8`].
+/// Using `ByteStr` helps prevent allocating vec as it required by [`String::from_utf8`].
 pub struct ByteStr {
     bytes: Bytes,
 }
@@ -39,6 +39,12 @@ impl ByteStr {
     /// see also [`Bytes::slice_ref`]
     pub fn slice_ref(&self, subset: &str) -> Self {
         Self { bytes: Bytes::slice_ref(&self.bytes, subset.as_bytes()) }
+    }
+
+    /// Consume `ByteStr` into [`String`].
+    pub fn into_string(self) -> String {
+        // SAFETY: input is a string and immutable
+        unsafe { String::from_utf8_unchecked(Vec::from(self.bytes)) }
     }
 }
 

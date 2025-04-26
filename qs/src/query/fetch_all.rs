@@ -8,14 +8,10 @@ use std::{
 use super::Fetch;
 use crate::{Result, encode::Encoded, row::FromRow, sql::Sql, transport::PgTransport};
 
-pin_project_lite::pin_project! {
-    #[derive(Debug)]
-    #[project = FetchAllProject]
-    pub struct FetchAll<'val, SQL, R, ExeFut, IO> {
-        #[pin]
-        fetch: Fetch<'val, SQL, R, ExeFut, IO>,
-        output: Vec<R>,
-    }
+#[derive(Debug)]
+pub struct FetchAll<'val, SQL, R, ExeFut, IO> {
+    fetch: Fetch<'val, SQL, R, ExeFut, IO>,
+    output: Vec<R>,
 }
 
 impl<'val, SQL, R, ExeFut, IO> FetchAll<'val, SQL, R, ExeFut, IO> {

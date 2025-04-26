@@ -105,6 +105,8 @@ impl PgTransport for PgConnection {
             let body = self.read_buf.split_to(len - 4).freeze();
 
             // Message fully acquired
+            #[cfg(feature = "tracing")]
+            tracing::trace!("backend: {:?}",backend::BackendMessage::decode(msgtype, body.clone()).unwrap());
 
             let res = match msgtype {
                 ErrorResponse::MSGTYPE => {
@@ -113,8 +115,9 @@ impl PgTransport for PgConnection {
                     Err(Error::Database(err))?
                 },
                 NoticeResponse::MSGTYPE => {
-                    let err = NoticeResponse::decode(msgtype, body).unwrap();
-                    eprintln!("{err}");
+                    let _err = NoticeResponse::decode(msgtype, body).unwrap();
+                    #[cfg(feature = "tracing")]
+                    tracing::warn!("{_err}");
                     continue;
                 },
                 // ignore all messages until `ReadyForQuery` received
@@ -137,22 +140,34 @@ impl PgTransport for PgConnection {
 
     fn send<F: FrontendProtocol>(&mut self, message: F) {
         if matches!(self.sync_required,SyncStatus::NeedSend) {
-            frontend::write(frontend::Sync, &mut self.write_buf);
             self.sync_required = SyncStatus::NeedRecv;
+            self.send(frontend::Sync);
         }
+        #[cfg(feature = "tracing")]
+        tracing::trace!("frontend: {message:?}");
         frontend::write(message, &mut self.write_buf);
     }
 
     fn send_startup(&mut self, startup: frontend::Startup) {
+        #[cfg(feature = "tracing")]
+        tracing::trace!("frontend: {startup:?}");
         startup.write(&mut self.write_buf);
     }
 
     fn get_stmt(&mut self, sqlid: u64) -> Option<StatementName> {
-        self.stmts.get(&sqlid).cloned()
+        self.stmts.get(&sqlid).cloned().inspect(|_e| {
+            #[cfg(feature = "tracing")]
+            tracing::trace!("prepare statement cache hit: {_e}")
+        })
     }
 
     fn add_stmt(&mut self, sql: u64, id: StatementName) {
-        self.stmts.push(sql, id);
+        #[cfg(feature = "tracing")]
+        tracing::trace!("prepare statement add: {id}");
+        if let Some((_id,pop)) = self.stmts.push(sql, id) {
+            #[cfg(feature = "tracing")]
+            tracing::trace!("prepare statement removed: {pop}");
+        }
     }
 }
 

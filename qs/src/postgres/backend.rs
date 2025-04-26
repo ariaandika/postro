@@ -7,7 +7,7 @@ use super::ProtocolError;
 use crate::{common::ByteStr, ext::BytesExt};
 
 /// A type that can be decoded into postgres backend message.
-pub trait BackendProtocol: Sized {
+pub trait BackendProtocol: Sized + std::fmt::Debug {
     /// Try decode given bytes into message.
     ///
     /// Note that `body` is only the main body, **excluding** message type and length.

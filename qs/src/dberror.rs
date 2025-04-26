@@ -98,14 +98,17 @@ pub enum MessageFields {
 impl MessageFields {
     pub fn debug(body: &[u8], f: &mut std::fmt::Formatter) -> std::fmt::Result {
         let mut map = f.debug_map();
-        for (i,b) in body.iter().copied().enumerate() {
-            let Some(key) = MessageFields::from_byte(b) else {
-                continue;
+        let mut iter = body.iter().copied().enumerate();
+        loop {
+            let Some((i,key)) = iter.next() else {
+                break;
+            };
+            let Some(key) = MessageFields::from_byte(key) else {
+                break;
             };
             map.key(&key.as_str());
-            let end = body[i + 1..].iter().position(|e|matches!(e,b'\0'));
-            match end {
-                Some(end) => map.value(&body[i + 1..end].lossy()),
+            match iter.find(|(_,e)|matches!(e,b'\0')) {
+                Some((end,_)) => map.value(&body[i + 1..end].lossy()),
                 None => map.value(&"<??>"),
             };
         }

@@ -1,9 +1,11 @@
 use std::env::var;
 use futures::TryStreamExt;
+use tracing::Instrument;
 
 #[tokio::main]
 async fn main() {
     dotenvy::dotenv().ok();
+    tracing_subscriber::fmt::init();
 
     let mut conn = qs::PgConnection::connect(&var("DATABASE_URL").unwrap())
         .await
@@ -22,6 +24,7 @@ async fn main() {
     let (id,): (i32,) = qs::query("insert into post(name) values($1) returning id", &mut conn)
         .bind("Foo")
         .fetch_one()
+        .instrument(tracing::trace_span!("inserter"))
         .await
         .unwrap();
 

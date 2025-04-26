@@ -28,7 +28,7 @@ pub fn write<F: FrontendProtocol>(msg: F, buf: &mut BytesMut) {
 }
 
 /// A type which can be encoded into postgres frontend message
-pub trait FrontendProtocol {
+pub trait FrontendProtocol: std::fmt::Debug {
     /// Message type.
     const MSGTYPE: u8;
 
@@ -153,6 +153,7 @@ impl FrontendProtocol for PasswordMessage<'_> {
 }
 
 /// Identifies the message as a simple query
+#[derive(Debug)]
 pub struct Query<'a> {
     /// the query string itself
     pub sql: &'a str,
@@ -171,6 +172,7 @@ impl FrontendProtocol for Query<'_> {
 }
 
 /// Identifies the message as a Parse command
+#[derive(Debug)]
 pub struct Parse<'a,I> {
     /// prepared statement name (an empty string selects the unnamed prepared statement).
     pub prepare_name: &'a str,
@@ -191,7 +193,7 @@ pub struct Parse<'a,I> {
 
 impl<I> FrontendProtocol for Parse<'_,I>
 where
-    I: IntoIterator<Item = Oid>
+    I: IntoIterator<Item = Oid> + std::fmt::Debug,
 {
     const MSGTYPE: u8 = b'P';
 
@@ -213,6 +215,7 @@ where
 }
 
 /// Identifies the message as a Sync command
+#[derive(Debug)]
 pub struct Sync;
 
 impl FrontendProtocol for Sync {
@@ -224,6 +227,7 @@ impl FrontendProtocol for Sync {
 }
 
 /// Identifies the message as a Flush command
+#[derive(Debug)]
 pub struct Flush;
 
 impl FrontendProtocol for Flush {
@@ -235,6 +239,7 @@ impl FrontendProtocol for Flush {
 }
 
 /// Identifies the message as a Bind command.
+#[derive(Debug)]
 pub struct Bind<'a, ParamFmts, Params, ResultFmts> {
     /// The name of the destination portal (an empty string selects the unnamed portal).
     pub portal_name: &'a str,
@@ -281,10 +286,10 @@ pub struct Bind<'a, ParamFmts, Params, ResultFmts> {
 
 impl<ParamFmts, Params, ResultFmts> FrontendProtocol for Bind<'_, ParamFmts, Params, ResultFmts>
 where
-    ParamFmts: IntoIterator<Item = PgFormat>,
-    Params: Iterator + ExactSizeIterator,
+    ParamFmts: IntoIterator<Item = PgFormat> + std::fmt::Debug,
+    Params: Iterator + ExactSizeIterator + std::fmt::Debug,
     <Params as Iterator>::Item: BindParams,
-    ResultFmts: IntoIterator<Item = PgFormat>,
+    ResultFmts: IntoIterator<Item = PgFormat> + std::fmt::Debug,
 {
     const MSGTYPE: u8 = b'B';
 
@@ -323,6 +328,7 @@ where
 }
 
 /// Identifies the message as a Execute command
+#[derive(Debug)]
 pub struct Execute<'a> {
     /// The name of the portal to execute (an empty string selects the unnamed portal).
     pub portal_name: &'a str,
@@ -345,6 +351,7 @@ impl FrontendProtocol for Execute<'_> {
 }
 
 /// Identifies the message as a Close command
+#[derive(Debug)]
 pub struct Close<'a> {
     /// 'S' to close a prepared statement; or 'P' to close a portal.
     pub variant: u8,
@@ -367,6 +374,7 @@ impl FrontendProtocol for Close<'_> {
 }
 
 /// Identifies the message as a Describe command.
+#[derive(Debug)]
 pub struct Describe<'a> {
     /// 'S' to describe a prepared statement; or 'P' to describe a portal.
     pub kind: u8,

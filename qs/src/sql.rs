@@ -7,7 +7,7 @@ pub trait Sql {
     fn persistent(&self) -> bool;
 }
 
-impl<'me> Sql for &'me str {
+impl Sql for &str {
     fn sql(&self) -> &str {
         self
     }

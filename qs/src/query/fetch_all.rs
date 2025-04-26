@@ -45,7 +45,7 @@ where
             output.push(r)
         }
 
-        return Poll::Ready(Ok(mem::take(output)));
+        Poll::Ready(Ok(mem::take(output)))
     }
 }
 

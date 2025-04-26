@@ -164,9 +164,9 @@ impl PgTransport for PgConnection {
     fn add_stmt(&mut self, sql: u64, id: StatementName) {
         #[cfg(feature = "tracing")]
         tracing::trace!("prepare statement add: {id}");
-        if let Some((_id,pop)) = self.stmts.push(sql, id) {
+        if let Some((_id,_pop)) = self.stmts.push(sql, id) {
             #[cfg(feature = "tracing")]
-            tracing::trace!("prepare statement removed: {pop}");
+            tracing::trace!("prepare statement removed: {_pop}");
         }
     }
 }

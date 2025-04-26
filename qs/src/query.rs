@@ -12,7 +12,7 @@ mod fetch_all;
 mod execute;
 mod helpers;
 
-pub use fetch_stream::Fetch;
+pub use fetch_stream::FetchStream;
 pub use fetch_one::FetchOne;
 pub use fetch_all::FetchAll;
 pub use execute::Execute;
@@ -47,8 +47,8 @@ where
     Exe: Executor,
 {
     /// Fetch rows using [`Stream`][futures_core::Stream] api.
-    pub fn fetch(self) -> Fetch<'val, SQL, R, Exe::Future, Exe::Transport> {
-        Fetch::new(self.sql, self.exe.connection(), self.params, 0)
+    pub fn fetch(self) -> FetchStream<'val, SQL, R, Exe::Future, Exe::Transport> {
+        FetchStream::new(self.sql, self.exe.connection(), self.params, 0)
     }
 
     pub fn fetch_all(self) -> FetchAll<'val, SQL, R, Exe::Future, Exe::Transport> {

@@ -4,12 +4,12 @@ use std::{
     task::{Context, Poll, ready},
 };
 
-use super::Fetch;
+use super::FetchStream;
 use crate::{Result, encode::Encoded, row::FromRow, sql::Sql, transport::PgTransport};
 
 #[derive(Debug)]
 pub struct FetchOne<'val, SQL, R, ExeMut, IO> {
-    fetch: Fetch<'val, SQL, R, ExeMut, IO>,
+    fetch: FetchStream<'val, SQL, R, ExeMut, IO>,
     row: Option<R>,
     complete: bool,
 }
@@ -17,7 +17,7 @@ pub struct FetchOne<'val, SQL, R, ExeMut, IO> {
 impl<'val, SQL, R, ExeMut, IO> FetchOne<'val, SQL, R, ExeMut, IO> {
     pub(crate) fn new(sql: SQL, exe: ExeMut, params: Vec<Encoded<'val>>) -> Self {
         Self {
-            fetch: Fetch::new(sql, exe, params, 1),
+            fetch: FetchStream::new(sql, exe, params, 1),
             row: None,
             complete: false,
         }

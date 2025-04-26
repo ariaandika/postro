@@ -17,7 +17,7 @@ use crate::{
 };
 
 #[derive(Debug)]
-pub struct Fetch<'val, SQL, R, ExeFut, IO> {
+pub struct FetchStream<'val, SQL, R, ExeFut, IO> {
     phase: Phase<'val, SQL, ExeFut, IO>,
     _p: PhantomData<R>,
 }
@@ -35,7 +35,7 @@ enum Phase<'val, SQL, ExeFut, IO> {
     Complete,
 }
 
-impl<'val, SQL, R, ExeFut, IO> Fetch<'val, SQL, R, ExeFut, IO> {
+impl<'val, SQL, R, ExeFut, IO> FetchStream<'val, SQL, R, ExeFut, IO> {
     pub(crate) fn new(
         sql: SQL,
         exe: ExeFut,
@@ -51,7 +51,7 @@ impl<'val, SQL, R, ExeFut, IO> Fetch<'val, SQL, R, ExeFut, IO> {
     }
 }
 
-impl<SQL, R, ExeFut, IO> Stream for Fetch<'_, SQL, R, ExeFut, IO>
+impl<SQL, R, ExeFut, IO> Stream for FetchStream<'_, SQL, R, ExeFut, IO>
 where
     SQL: Sql,
     R: FromRow,

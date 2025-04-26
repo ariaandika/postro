@@ -5,19 +5,19 @@ use std::{
     task::{Context, Poll, ready},
 };
 
-use super::Fetch;
+use super::FetchStream;
 use crate::{Result, encode::Encoded, row::FromRow, sql::Sql, transport::PgTransport};
 
 #[derive(Debug)]
 pub struct FetchAll<'val, SQL, R, ExeFut, IO> {
-    fetch: Fetch<'val, SQL, R, ExeFut, IO>,
+    fetch: FetchStream<'val, SQL, R, ExeFut, IO>,
     output: Vec<R>,
 }
 
 impl<'val, SQL, R, ExeFut, IO> FetchAll<'val, SQL, R, ExeFut, IO> {
     pub(crate) fn new(sql: SQL, exe: ExeFut, params: Vec<Encoded<'val>>) -> Self {
         Self {
-            fetch: Fetch::new(sql, exe, params, 0),
+            fetch: FetchStream::new(sql, exe, params, 0),
             output: vec![],
         }
     }

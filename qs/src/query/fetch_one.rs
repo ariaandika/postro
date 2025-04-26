@@ -7,7 +7,9 @@ use std::{
 use super::FetchStream;
 use crate::{Result, encode::Encoded, row::FromRow, sql::Sql, transport::PgTransport};
 
+/// Returned [`fetch_one`][super::Query::fetch_one] future.
 #[derive(Debug)]
+#[must_use = "futures do nothing unless you `.await` or poll them"]
 pub struct FetchOne<'val, SQL, R, ExeMut, IO> {
     fetch: FetchStream<'val, SQL, R, ExeMut, IO>,
     row: Option<R>,

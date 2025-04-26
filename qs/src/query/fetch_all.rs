@@ -8,7 +8,9 @@ use std::{
 use super::FetchStream;
 use crate::{Result, encode::Encoded, row::FromRow, sql::Sql, transport::PgTransport};
 
+/// Returned [`fetch_all`][super::Query::fetch_all] future.
 #[derive(Debug)]
+#[must_use = "futures do nothing unless you `.await` or poll them"]
 pub struct FetchAll<'val, SQL, R, ExeFut, IO> {
     fetch: FetchStream<'val, SQL, R, ExeFut, IO>,
     output: Vec<R>,

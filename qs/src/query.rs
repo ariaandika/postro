@@ -1,7 +1,10 @@
 //! Query API types.
 use std::marker::PhantomData;
 
-use crate::{encode::{Encode, Encoded}, executor::Executor};
+use crate::{
+    encode::{Encode, Encoded},
+    executor::Executor,
+};
 
 mod ops;
 
@@ -28,6 +31,7 @@ pub fn execute<'val, SQL, Exe>(sql: SQL, exe: Exe) -> Query<'val, SQL, Exe, ()> 
     Query { sql, exe, params: Vec::new(), _p: PhantomData }
 }
 
+/// The query API.
 pub struct Query<'val, SQL, Exe, R> {
     sql: SQL,
     exe: Exe,
@@ -36,6 +40,7 @@ pub struct Query<'val, SQL, Exe, R> {
 }
 
 impl<'val, SQL, Exe, R> Query<'val, SQL, Exe, R> {
+    /// Bind query parameter.
     pub fn bind<V: Encode<'val>>(mut self, value: V) -> Self {
         self.params.push(value.encode());
         self
@@ -47,18 +52,24 @@ where
     Exe: Executor,
 {
     /// Fetch rows using [`Stream`][futures_core::Stream] api.
+    ///
+    /// The returned `Stream` must be polled/awaited until completion,
+    /// otherwise it will disturb subsequent query.
     pub fn fetch(self) -> FetchStream<'val, SQL, R, Exe::Future, Exe::Transport> {
         FetchStream::new(self.sql, self.exe.connection(), self.params, 0)
     }
 
+    /// Fetch all rows into [`Vec`].
     pub fn fetch_all(self) -> FetchAll<'val, SQL, R, Exe::Future, Exe::Transport> {
         FetchAll::new(self.sql, self.exe.connection(), self.params)
     }
 
+    /// Fetch one row.
     pub fn fetch_one(self) -> FetchOne<'val, SQL, R, Exe::Future, Exe::Transport> {
         FetchOne::new(self.sql, self.exe.connection(), self.params)
     }
 
+    /// Execute statement and return number of rows affected.
     pub fn execute(self) -> Execute<'val, SQL, Exe::Future, Exe::Transport> {
         Execute::new(self.sql, self.exe.connection(), self.params)
     }

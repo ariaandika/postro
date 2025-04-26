@@ -19,13 +19,13 @@ async fn main() {
         .await
         .unwrap_err();
 
-    let (id,) = qs::query::<_, _, (i32,)>("insert into post(name) values($1) returning id", &mut conn)
+    let (id,): (i32,) = qs::query("insert into post(name) values($1) returning id", &mut conn)
         .bind("Foo")
         .fetch_one()
         .await
         .unwrap();
 
-    let post = qs::query::<_, _, (i32,String)>("select * from post", &mut conn)
+    let post = qs::query::<_, _, (i32, String)>("select * from post", &mut conn)
         .fetch_all()
         .await
         .unwrap();
@@ -38,7 +38,7 @@ async fn main() {
         .await
         .unwrap();
 
-    let mut stream = qs::query::<_, _, (i32,String)>("select * from post", &mut conn).fetch();
+    let mut stream = qs::query::<_, _, (i32, String)>("select * from post", &mut conn).fetch();
 
     let p1 = stream.try_next().await.unwrap().unwrap();
     assert_eq!(p1.0, id);
@@ -46,4 +46,11 @@ async fn main() {
 
     let p2 = stream.try_next().await.unwrap().unwrap();
     assert_eq!(p2.1.as_str(), "Deez");
+
+    assert!(stream.try_next().await.unwrap().is_none());
+
+    let _ok = qs::query::<_, _, ()>("select * from post", &mut conn)
+        .fetch_one()
+        .await
+        .unwrap();
 }

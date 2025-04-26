@@ -6,7 +6,9 @@ use std::{
 use super::{ops, portal::Portal};
 use crate::{Result, encode::Encoded, postgres::backend, sql::Sql, transport::PgTransport};
 
+/// Returned [`execute`][super::Query::execute] future.
 #[derive(Debug)]
+#[must_use = "futures do nothing unless you `.await` or poll them"]
 pub struct Execute<'val, SQL, ExeFut, IO> {
     phase: Phase<'val, SQL, ExeFut, IO>,
 }

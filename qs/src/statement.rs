@@ -13,11 +13,12 @@ impl Id {
     pub(crate) fn next(atomic: &AtomicId) -> Self {
         let id = atomic.fetch_add(1, Ordering::SeqCst);
         let mut buf = [b'q', b'0',b'0',b'0',b'0',b'0'];
+        let len = buf.len();
 
         let mut b = itoa::Buffer::new();
         let id = b.format(id);
         let i = id.as_bytes();
-        buf[1..1 + i.len()].copy_from_slice(i);
+        buf[len - i.len()..].copy_from_slice(i);
 
         Self(buf)
     }

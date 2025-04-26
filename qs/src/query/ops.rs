@@ -1,5 +1,5 @@
 use std::{
-    hash::{DefaultHasher, Hasher},
+    hash::{DefaultHasher, Hash as _, Hasher},
     mem,
 };
 
@@ -34,26 +34,29 @@ pub fn prepare(
     params: &[Encoded],
     mut io: impl PgTransport,
 ) -> PrepareData {
+    let persist = sql.persistent();
+    let sql = sql.sql().trim();
+
     let sqlid = {
         let mut buf = DefaultHasher::new();
         sql.hash(&mut buf);
         buf.finish()
     };
 
-    if sql.persistent() {
+    if persist {
         if let Some(stmt) = io.get_stmt(sqlid) {
             return PrepareData { sqlid, stmt, cache_hit: true, max_row: 0 };
         }
     }
 
-    let stmt = match sql.persistent() {
+    let stmt = match persist {
         true => StatementName::next(),
         false => StatementName::unnamed(),
     };
 
     io.send(frontend::Parse {
         prepare_name: stmt.as_str(),
-        sql: sql.sql(),
+        sql,
         oids_len: params.len() as _,
         oids: params.iter().map(Encoded::oid),
     });

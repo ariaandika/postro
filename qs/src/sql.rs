@@ -1,8 +1,7 @@
 //! Sql string operation.
-use std::hash::Hash;
 
 /// Type that represent sql string.
-pub trait Sql: Hash {
+pub trait Sql {
     fn sql(&self) -> &str;
 
     fn persistent(&self) -> bool;
@@ -19,7 +18,7 @@ impl<'me> Sql for &'me str {
 }
 
 /// Non persistent query string.
-#[derive(Hash)]
+#[derive(Debug)]
 pub struct SqlOnce<'sql>(&'sql str);
 
 impl Sql for SqlOnce<'_> {

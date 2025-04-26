@@ -52,8 +52,14 @@ async fn main() {
 
     assert!(stream.try_next().await.unwrap().is_none());
 
-    let _ok = qs::query::<_, _, ()>("select * from post", &mut conn)
-        .fetch_one()
-        .await
-        .unwrap();
+    for _ in 0..2 {
+        let _ok = qs::query::<_, _, ()>("Select * from post", &mut conn).fetch_one().await .unwrap();
+        let _ok = qs::query::<_, _, ()>("sElect * from post", &mut conn).fetch_one().await .unwrap();
+        let _ok = qs::query::<_, _, ()>("seLect * from post", &mut conn).fetch_one().await .unwrap();
+        let _ok = qs::query::<_, _, ()>("selEct * from post", &mut conn).fetch_one().await .unwrap();
+        let _ok = qs::query::<_, _, ()>("seleCt * from post", &mut conn).fetch_one().await .unwrap();
+        let _ok = qs::query::<_, _, ()>("selecT * from post", &mut conn).fetch_one().await .unwrap();
+        let _ok = qs::query::<_, _, ()>("select * From post", &mut conn).fetch_one().await .unwrap();
+        let _ok = qs::query::<_, _, ()>("select * fRom post", &mut conn).fetch_one().await .unwrap();
+    }
 }

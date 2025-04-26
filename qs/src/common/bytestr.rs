@@ -27,6 +27,12 @@ impl ByteStr {
         Self { bytes: Bytes::from_static(string.as_bytes()) }
     }
 
+    /// Extracts a string slice containing the entire `ByteStr`.
+    pub fn as_str(&self) -> &str {
+        // SAFETY: input is a string and immutable
+        unsafe { std::str::from_utf8_unchecked(&self.bytes) }
+    }
+
     /// Returns a slice str of self that is equivalent to the given `subset`.
     ///
     /// This operation is `O(1)`.
@@ -46,13 +52,19 @@ impl ByteStr {
         // SAFETY: input is a string and immutable
         unsafe { String::from_utf8_unchecked(Vec::from(self.bytes)) }
     }
+
+    /// Converts a `ByteStr` into a [`Bytes`].
+    ///
+    /// This consumes the `ByteStr`, so we do not need to copy its contents.
+    pub fn into_bytes(self) -> Bytes {
+        self.bytes
+    }
 }
 
 impl AsRef<str> for ByteStr {
     /// return the internal str
     fn as_ref(&self) -> &str {
-        // SAFETY: input is a string and immutable
-        unsafe { std::str::from_utf8_unchecked(&self.bytes) }
+        self.as_str()
     }
 }
 
@@ -60,7 +72,7 @@ impl std::ops::Deref for ByteStr {
     type Target = str;
 
     fn deref(&self) -> &Self::Target {
-        self.as_ref()
+        self.as_str()
     }
 }
 
@@ -78,19 +90,19 @@ impl Default for ByteStr {
 
 impl std::fmt::Display for ByteStr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        <str as std::fmt::Display>::fmt(self, f)
+        std::fmt::Display::fmt(self.as_str(), f)
     }
 }
 
 impl std::fmt::Debug for ByteStr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        std::fmt::Debug::fmt(&self.bytes, f)
+        std::fmt::Debug::fmt(self.as_str(), f)
     }
 }
 
 impl PartialEq for ByteStr {
     fn eq(&self, other: &Self) -> bool {
-        str::eq(self.as_ref(), other.as_ref())
+        str::eq(self.as_str(), other.as_str())
     }
 }
 

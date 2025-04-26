@@ -6,74 +6,74 @@ use std::{
 use super::{ops, portal::Portal};
 use crate::{Result, encode::Encoded, postgres::backend, sql::Sql, transport::PgTransport};
 
-pin_project_lite::pin_project! {
-    #[derive(Debug)]
-    #[project = ExecuteProject]
-    pub struct Execute<'val, SQL, IO> {
-        #[pin]
-        phase: Phase<'val, SQL, IO>,
-    }
+#[derive(Debug)]
+pub struct Execute<'val, SQL, ExeFut, IO> {
+    phase: Phase<'val, SQL, ExeFut, IO>,
 }
 
-pin_project_lite::pin_project! {
-    #[derive(Debug)]
-    #[project = PhaseProject]
-    enum Phase<'val, SQL, IO> {
-        Portal {
-            #[pin]
-            portal: Portal<'val, SQL, IO>,
-        },
-        BindComplete { io: Option<IO> },
-        NoData { io: Option<IO> },
-        Execute { io: Option<IO> },
-        ReadyForQuery { io: IO, row_info: u64 },
-        Complete,
-    }
+#[derive(Debug)]
+enum Phase<'val, SQL, ExeFut, IO> {
+    Portal {
+        portal: Portal<'val, SQL, ExeFut, IO>,
+    },
+    BindComplete { io: Option<IO> },
+    NoData { io: Option<IO> },
+    Execute { io: Option<IO> },
+    ReadyForQuery { io: IO, row_info: u64 },
+    Complete,
 }
 
-impl<'val, SQL, IO> Execute<'val, SQL, IO> {
-    pub(crate) fn new(sql: SQL, io: IO, params: Vec<Encoded<'val>>) -> Self {
+impl<'val, SQL, ExeFut, IO> Execute<'val, SQL, ExeFut, IO> {
+    pub(crate) fn new(sql: SQL, exe: ExeFut, params: Vec<Encoded<'val>>) -> Self {
         Self {
             phase: Phase::Portal {
-                portal: Portal::new(sql, io, params, 0),
+                portal: Portal::new(sql, exe, params, 0),
             },
         }
     }
 }
 
-impl<SQL, IO> Future for Execute<'_, SQL, IO>
+impl<SQL, ExeFut, IO> Future for Execute<'_, SQL, ExeFut, IO>
 where
     SQL: Sql,
+    ExeFut: Future<Output = IO>,
     IO: PgTransport,
 {
     type Output = Result<u64>;
 
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let ExecuteProject { mut phase, } = self.as_mut().project();
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        // SAFETY: `self` never move
+        let me = unsafe { self.get_unchecked_mut() };
+        let phase = &mut me.phase;
+
         loop {
-            match phase.as_mut().project() {
-                PhaseProject::Portal { portal } => {
+            match &mut *phase {
+                Phase::Portal { portal } => {
+                    // SAFETY: `me` never move
+                    let portal = unsafe { Pin::new_unchecked(portal) };
                     let io = ready!(portal.poll(cx)?);
                     *phase = Phase::BindComplete { io: Some(io) };
                 },
-                PhaseProject::BindComplete { io } => {
+                Phase::BindComplete { io } => {
                     ready!(io.as_mut().unwrap().poll_recv::<backend::BindComplete>(cx)?);
                     *phase = Phase::NoData { io: io.take() };
                 },
-                PhaseProject::NoData { io } => {
+                Phase::NoData { io } => {
                     ready!(io.as_mut().unwrap().poll_recv::<backend::NoData>(cx)?);
                     *phase = Phase::Execute { io: io.take() };
                 }
-                PhaseProject::Execute { io } => {
+                Phase::Execute { io } => {
                     let cmd = ready!(io.as_mut().unwrap().poll_recv::<backend::CommandComplete>(cx)?);
                     let row_info = ops::command_complete(cmd);
                     *phase = Phase::ReadyForQuery { io: io.take().unwrap(), row_info };
                 },
-                PhaseProject::ReadyForQuery { io, row_info } => {
+                Phase::ReadyForQuery { io, row_info } => {
                     ready!(io.poll_recv::<backend::ReadyForQuery>(cx)?);
-                    return Poll::Ready(Ok(*row_info));
+                    let row_info = *row_info;
+                    *phase = Phase::Complete;
+                    return Poll::Ready(Ok(row_info));
                 },
-                PhaseProject::Complete => panic!("`poll` after complete"),
+                Phase::Complete => panic!("`poll` after complete"),
             }
         }
     }

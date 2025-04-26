@@ -20,13 +20,14 @@ mod statement;
 pub mod sql;
 pub mod row;
 
+// Operation
+pub mod executor;
+pub mod transport;
+pub mod query;
+
 // Connection
 pub mod options;
-mod transport;
 mod connection;
-
-// Operation
-pub mod query;
 
 mod error;
 
@@ -37,7 +38,7 @@ pub use row::FromRow;
 
 pub use options::PgOptions;
 pub use connection::PgConnection;
-pub use query::{query, query_row};
+pub use query::{query, execute};
 
 pub use postgres::{ProtocolError, ErrorResponse, NoticeResponse};
 pub use error::{Error, Result};

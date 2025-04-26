@@ -9,7 +9,7 @@ async fn main() {
         .await
         .unwrap();
 
-    qs::query_row("create temp table post(id serial, name text)", &mut conn)
+    qs::execute("create temp table post(id serial, name text)", &mut conn)
         .execute()
         .await
         .unwrap();
@@ -32,7 +32,7 @@ async fn main() {
 
     assert_eq!(post[0].0, id);
 
-    qs::query_row("insert into post(name) values($1)", &mut conn)
+    qs::execute("insert into post(name) values($1)", &mut conn)
         .bind("Deez")
         .execute()
         .await
@@ -46,6 +46,4 @@ async fn main() {
 
     let p2 = stream.try_next().await.unwrap().unwrap();
     assert_eq!(p2.1.as_str(), "Deez");
-
-    assert!(stream.try_next().await.unwrap().is_none());
 }

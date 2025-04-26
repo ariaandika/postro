@@ -5,43 +5,23 @@ use std::{
 };
 
 use super::ops::{self, PrepareData};
-use crate::{encode::Encoded, postgres::backend, sql::Sql, transport::PgTransport, Result};
+use crate::{Result, encode::Encoded, postgres::backend, sql::Sql, transport::PgTransport};
 
-pin_project_lite::pin_project! {
-    /// Prepare a statement and bind a portal.
-    ///
-    /// Caller must ready to receive subsequent messages explained in [`portal`](super::ops::portal)
-    #[derive(Debug)]
-    #[project = PortalProject]
-    pub struct Portal<'val, SQL, IO> {
-        sql: SQL,
-        io: Option<IO>,
-        phase: Phase,
-        params: Vec<Encoded<'val>>,
-        max_row: u32,
-    }
-}
-
-impl<'val, SQL, IO> Portal<'val, SQL, IO> {
-    /// Create new [`Portal`] future.
-    pub(crate) fn new(
-        sql: SQL,
-        io: IO,
-        params: Vec<Encoded<'val>>,
-        max_row: u32,
-    ) -> Self {
-        Self {
-            sql,
-            io: Some(io),
-            phase: Phase::Prepare,
-            params,
-            max_row,
-        }
-    }
+/// Prepare a statement and bind a portal.
+///
+/// Caller must ready to receive subsequent messages explained in [`portal`](super::ops::portal).
+#[derive(Debug)]
+pub struct Portal<'val, SQL, ExeFut, IO> {
+    sql: SQL,
+    io: Option<IO>,
+    phase: Phase<ExeFut>,
+    params: Vec<Encoded<'val>>,
+    max_row: u32,
 }
 
 #[derive(Debug, Default)]
-enum Phase {
+enum Phase<ExeFut> {
+    Connect { f: ExeFut },
     Prepare,
     PrepareFlush(PrepareData),
     PrepareComplete(PrepareData),
@@ -52,41 +32,66 @@ enum Phase {
     Complete,
 }
 
-impl<SQL, IO> Future for Portal<'_, SQL, IO>
+impl<'val, SQL, ExeFut, IO> Portal<'val, SQL, ExeFut, IO> {
+    /// Create new [`Portal`] future.
+    pub(crate) fn new(
+        sql: SQL,
+        exe: ExeFut,
+        params: Vec<Encoded<'val>>,
+        max_row: u32,
+    ) -> Self {
+        Self {
+            sql,
+            io: None,
+            phase: Phase::Connect { f: exe },
+            params,
+            max_row,
+        }
+    }
+}
+
+impl<SQL, ExeFut, IO> Future for Portal<'_, SQL, ExeFut, IO>
 where
     SQL: Sql,
+    ExeFut: Future<Output = IO>,
     IO: PgTransport,
 {
     type Output = Result<IO>;
 
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let PortalProject {
-            sql,
-            io: self_io,
-            phase,
-            params,
-            max_row,
-        } = self.as_mut().project();
-
-        let io = self_io.as_mut().expect("foo poll after complete");
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        // SAFETY: self is pinned
+        let me = unsafe { self.get_unchecked_mut() };
+        let sql = &mut me.sql;
+        let io = &mut me.io;
+        let phase = &mut me.phase;
+        let params = &mut me.params;
+        let max_row = me.max_row;
 
         loop {
             match &mut *phase {
+                Phase::Connect { f } => {
+                    // SAFETY: self is pinned
+                    let f = unsafe { Pin::new_unchecked(f) };
+                    let conn = ready!(f.poll(cx));
+                    assert!(io.replace(conn).is_none());
+                    *phase = Phase::Prepare;
+                },
                 Phase::Prepare => {
-                    let data = ops::prepare(&*sql, params, &mut *io);
+                    let data = ops::prepare(&*sql, params, io.as_mut().unwrap());
                     *phase = match data.cache_hit {
                         true => Phase::Portal(data),
                         false => Phase::PrepareFlush(data),
                     };
-                }
+                },
                 Phase::PrepareFlush(_) => {
-                    ready!(io.poll_flush(cx)?);
+                    ready!(io.as_mut().unwrap().poll_flush(cx)?);
                     let Phase::PrepareFlush(data) = mem::take(phase) else {
                         unreachable!()
                     };
                     *phase = Phase::PrepareComplete(data);
                 }
                 Phase::PrepareComplete(_) => {
+                    let io = io.as_mut().unwrap();
                     ready!(io.poll_recv::<backend::ParseComplete>(cx)?);
                     let Phase::PrepareComplete(data) = mem::take(phase) else {
                         unreachable!()
@@ -95,14 +100,14 @@ where
                     *phase = Phase::Portal(data);
                 }
                 Phase::Portal(data) => {
-                    data.max_row = *max_row;
-                    ops::portal(data, params, &mut *io);
+                    data.max_row = max_row;
+                    ops::portal(data, params, &mut *io.as_mut().unwrap());
                     *phase = Phase::PortalFlush;
                 }
                 Phase::PortalFlush => {
-                    ready!(io.poll_flush(cx)?);
+                    ready!(io.as_mut().unwrap().poll_flush(cx)?);
                     *phase = Phase::Complete;
-                    return Poll::Ready(Ok(self_io.take().expect("foo poll after complete")));
+                    return Poll::Ready(Ok(io.take().unwrap()));
                 }
                 Phase::Invalid => unreachable!(),
                 Phase::Complete => panic!("`poll` after complete"),

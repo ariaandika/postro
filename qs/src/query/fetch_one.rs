@@ -7,38 +7,61 @@ use std::{
 use super::Fetch;
 use crate::{Result, encode::Encoded, row::FromRow, sql::Sql, transport::PgTransport};
 
-pin_project_lite::pin_project! {
-    #[derive(Debug)]
-    #[project = FetchOneProject]
-    pub struct FetchOne<'val, SQL, R, IO> {
-        #[pin]
-        fetch: Fetch<'val, SQL, R, IO>,
-    }
+#[derive(Debug)]
+pub struct FetchOne<'val, SQL, R, ExeMut, IO> {
+    fetch: Fetch<'val, SQL, R, ExeMut, IO>,
+    row: Option<R>,
+    complete: bool,
 }
 
-impl<'val, SQL, R, IO> FetchOne<'val, SQL, R, IO> {
-    pub(crate) fn new(sql: SQL, io: IO, params: Vec<Encoded<'val>>) -> Self {
+impl<'val, SQL, R, ExeMut, IO> FetchOne<'val, SQL, R, ExeMut, IO> {
+    pub(crate) fn new(sql: SQL, exe: ExeMut, params: Vec<Encoded<'val>>) -> Self {
         Self {
-            fetch: Fetch::new(sql, io, params, 1),
+            fetch: Fetch::new(sql, exe, params, 1),
+            row: None,
+            complete: false,
         }
     }
 }
 
-impl<SQL, R, IO> Future for FetchOne<'_, SQL, R, IO>
+impl<SQL, R, ExeFut, IO> Future for FetchOne<'_, SQL, R, ExeFut, IO>
 where
     SQL: Sql,
     R: FromRow,
+    ExeFut: Future<Output = IO>,
     IO: PgTransport,
 {
     type Output = Result<R>;
 
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-        let Some(r) = ready!(self.as_mut().project().fetch.poll_next(cx)?) else {
-            todo!()
-        };
-        // `PortalSuspended`
-        ready!(self.as_mut().project().fetch.poll_next(cx)?);
-        Poll::Ready(Ok(r))
+    fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+        if self.complete {
+            panic!("`poll` after complete");
+        }
+
+        // SAFETY: `self` never move
+        let me = unsafe { self.get_unchecked_mut() };
+
+        loop {
+            // SAFETY: `me` never move
+            let f = unsafe { Pin::new_unchecked(&mut me.fetch) };
+            let row = &mut me.row;
+            let complete = &mut me.complete;
+
+            match &mut *row {
+                None => {
+                    let Some(r) = ready!(f.poll_next(cx)?) else {
+                        todo!("Error NoRowFound")
+                    };
+                    assert!(row.replace(r).is_none());
+                },
+                Some(_) => {
+                    // `PortalSuspended`
+                    assert!(ready!(f.poll_next(cx)?).is_none());
+                    *complete = true;
+                    return Poll::Ready(Ok(row.take().unwrap()));
+                },
+            }
+        }
     }
 }
 

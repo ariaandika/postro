@@ -354,7 +354,7 @@ pub struct CommandComplete {
     /// For a `MERGE` command, the tag is `MERGE rows` where `rows` is the
     /// number of rows inserted, updated, or deleted.
     ///
-    /// For a `SELECT` or `CREATE TABLE AS` command, the tag is SELECT rows
+    /// For a `SELECT` or `CREATE TABLE AS` command, the tag is `SELECT rows`
     /// where `rows` is the number of rows retrieved.
     ///
     /// For a `MOVE` command, the tag is `MOVE rows` where `rows` is the number of rows

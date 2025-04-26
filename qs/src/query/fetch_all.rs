@@ -11,35 +11,43 @@ use crate::{Result, encode::Encoded, row::FromRow, sql::Sql, transport::PgTransp
 pin_project_lite::pin_project! {
     #[derive(Debug)]
     #[project = FetchAllProject]
-    pub struct FetchAll<'val, SQL, R, IO> {
+    pub struct FetchAll<'val, SQL, R, ExeFut, IO> {
         #[pin]
-        fetch: Fetch<'val, SQL, R, IO>,
+        fetch: Fetch<'val, SQL, R, ExeFut, IO>,
         output: Vec<R>,
     }
 }
 
-impl<'val, SQL, R, IO> FetchAll<'val, SQL, R, IO> {
-    pub(crate) fn new(sql: SQL, io: IO, params: Vec<Encoded<'val>>) -> Self {
+impl<'val, SQL, R, ExeFut, IO> FetchAll<'val, SQL, R, ExeFut, IO> {
+    pub(crate) fn new(sql: SQL, exe: ExeFut, params: Vec<Encoded<'val>>) -> Self {
         Self {
-            fetch: Fetch::new(sql, io, params, 0),
+            fetch: Fetch::new(sql, exe, params, 0),
             output: vec![],
         }
     }
 }
 
-impl<SQL, R, IO> Future for FetchAll<'_, SQL, R, IO>
+impl<SQL, R, ExeFut, IO> Future for FetchAll<'_, SQL, R, ExeFut, IO>
 where
     SQL: Sql,
     R: FromRow,
+    ExeFut: Future<Output = IO>,
     IO: PgTransport,
 {
     type Output = Result<Vec<R>>;
 
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-        while let Some(r) = ready!(self.as_mut().project().fetch.poll_next(cx)?) {
-            self.output.push(r);
+    fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+        // SAFETY: `self` never move
+        let me = unsafe { self.get_unchecked_mut() };
+        let f = &mut me.fetch;
+        let output = &mut me.output;
+
+        // SAFETY: `me` never move
+        while let Some(r) = ready!(unsafe { Pin::new_unchecked(&mut *f) }.poll_next(cx)?) {
+            output.push(r)
         }
-        Poll::Ready(Ok(mem::take(&mut self.output)))
+
+        return Poll::Ready(Ok(mem::take(output)));
     }
 }
 

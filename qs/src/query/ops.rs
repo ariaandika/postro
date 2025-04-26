@@ -21,7 +21,7 @@ pub struct PrepareData {
     pub max_row: u32,
 }
 
-/// Write Prepare statement to `io`
+/// Write Prepare statement to `io`.
 ///
 /// If cache hit, no further action is required.
 ///
@@ -62,9 +62,9 @@ pub fn prepare(
     PrepareData { sqlid, stmt, cache_hit: false, max_row: 0 }
 }
 
-/// Write Prepare statement to `io`
+/// Write Prepare statement to `io`.
 ///
-/// Flushing is requied after call.
+/// Flushing is required after call.
 ///
 /// Responses possible:
 /// - `BindComplete` from `Bind`
@@ -103,7 +103,7 @@ pub fn portal(data: &PrepareData, params: &mut Vec<Encoded>, mut io: impl PgTran
     io.send(frontend::Sync);
 }
 
-/// Decode information from [`CommandComplete`][1] message
+/// Decode information from [`CommandComplete`][1] message.
 ///
 /// [1]: backend::CommandComplete
 pub fn command_complete(cmd: backend::CommandComplete) -> u64 {
@@ -111,27 +111,21 @@ pub fn command_complete(cmd: backend::CommandComplete) -> u64 {
     let Some(tag) = whs.next() else {
         return 0;
     };
-
-    if matches!(tag, "INSERT") {
-        return whs
-            .nth(1)
-            .and_then(|e| e.parse().ok())
-            .unwrap_or_default();
-    }
-
-    match whs.next().unwrap() {
-        "SELECT" => whs,
-        "UPDATE" => whs,
-        "DELETE" => whs,
-        "MERGE" => whs,
-        "FETCH" => whs,
-        "MOVE" => whs,
-        "COPY" => whs,
+    let Some(rows) = whs.next() else {
+        return 0;
+    };
+    match tag {
+        "INSERT" => whs.next().unwrap_or_default(),
+        "SELECT" => rows,
+        "UPDATE" => rows,
+        "DELETE" => rows,
+        "MERGE" => rows,
+        "FETCH" => rows,
+        "MOVE" => rows,
+        "COPY" => rows,
         _ => return 0,
     }
-
-    .next()
-    .and_then(|e| e.parse().ok())
+    .parse()
     .unwrap_or_default()
 }
 

@@ -15,7 +15,6 @@ pub trait BackendProtocol: Sized + std::fmt::Debug {
 }
 
 /// Postgres backend messages.
-#[derive(Debug)]
 pub enum BackendMessage {
     /// Identifies the message as an authentication request.
     Authentication(Authentication),
@@ -82,8 +81,16 @@ macro_rules! match_backend {
                 Ok(message)
             }
         }
+        impl std::fmt::Debug for BackendMessage {
+            fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                match self {
+                    $(Self::$name(e) => std::fmt::Debug::fmt(e, f),)*
+                }
+            }
+        }
     };
 }
+
 
 match_backend! {
     Authentication,
@@ -295,46 +302,58 @@ impl BackendProtocol for ErrorResponse {
 /// Identifies the message as a row description
 #[derive(Debug)]
 pub struct RowDescription {
-    /// Specifies the number of fields in a row (can be zero).
-    pub field_len: u16,
-    /// Raw columns info buffer.
+    /// Raw message body.
     ///
-    /// Use [`ColumnInfo`][crate::column::ColumnInfo] to decode.
+    /// - `Int16` Specifies the number of fields in a row (can be zero).
+    ///
+    /// For each field, there is the following:
+    ///
+    /// - `String` The field name.
+    /// - `Int32` If the field can be identified as a column of a specific table,
+    ///   the object ID of the table; otherwise zero.
+    /// - `Int16` If the field can be identified as a column of a specific table,
+    ///   the attribute number of the column; otherwise zero.
+    /// - `Int32` The object ID of the field's data type.
+    /// - `Int16` The data type size (see pg_type.typlen). Note that negative values denote variable-width types.
+    /// - `Int32` The type modifier (see pg_attribute.atttypmod). The meaning of the modifier is type-specific.
+    /// - `Int16` The format code being used for the field. Currently will be zero (text) or one (binary).
+    ///   In a RowDescription returned from the statement variant of Describe,
+    ///   the format code is not yet known and will always be zero.
     pub body: Bytes,
 }
 
 msgtype!(RowDescription, b'T');
 
 impl BackendProtocol for RowDescription {
-    fn decode(msgtype: u8, mut body: Bytes) -> Result<Self, ProtocolError> {
+    fn decode(msgtype: u8, body: Bytes) -> Result<Self, ProtocolError> {
         assert_msgtype!(msgtype);
-        Ok(Self {
-            field_len: body.get_u16(),
-            body,
-        })
+        Ok(Self { body })
     }
 }
 
 /// Identifies the message as a data row.
 #[derive(Debug)]
 pub struct DataRow {
-    /// The number of column values that follow (possibly zero).
-    pub column_len: u16,
     /// Raw row buffer.
     ///
-    /// Use [`Row`][crate::row::Row] to decode.
+    /// - `Int16` The number of column values that follow (possibly zero).
+    ///
+    /// Next, the following pair of fields appear for each column:
+    ///
+    /// - `Int32` The length of the column value, in bytes (this count does not include itself).
+    ///
+    /// Can be zero. As a special case, -1 indicates a NULL column value. No value bytes follow in the NULL case.
+    ///
+    /// - `Byte[n]` The value of the column, in the format indicated by the associated format code.
     pub body: Bytes,
 }
 
 msgtype!(DataRow, b'D');
 
 impl BackendProtocol for DataRow {
-    fn decode(msgtype: u8, mut body: Bytes) -> Result<Self, ProtocolError> {
+    fn decode(msgtype: u8, body: Bytes) -> Result<Self, ProtocolError> {
         assert_msgtype!(msgtype);
-        Ok(Self {
-            column_len: body.get_u16(),
-            body,
-        })
+        Ok(Self { body })
     }
 }
 

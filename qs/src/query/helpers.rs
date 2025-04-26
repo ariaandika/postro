@@ -1,6 +1,5 @@
 use crate::{
     Error, Result,
-    column::ColumnInfo,
     options::StartupOptions,
     postgres::{
         BackendMessage,
@@ -100,8 +99,7 @@ pub async fn simple_query<R: FromRow, IO: PgTransport>(sql: &str, mut io: IO) ->
     // Indicates that rows are about to be returned in response to a SELECT, FETCH, etc. query.
     // The contents of this message describe the column layout of the rows.
     // This will be followed by a DataRow message for each row being returned to the frontend.
-    let rd = io.recv::<RowDescription>().await?;
-    let mut cols = ColumnInfo::decode_multi_vec(rd)?;
+    let row_data = Row::new(io.recv::<RowDescription>().await?.body);
 
     let mut rows = vec![];
 
@@ -110,7 +108,7 @@ pub async fn simple_query<R: FromRow, IO: PgTransport>(sql: &str, mut io: IO) ->
         match io.recv().await? {
             ReadyForQuery(_) => break,
             // One of the set of rows returned by a SELECT, FETCH, etc. query.
-            DataRow(dr) => rows.push(R::from_row(Row::new(&mut cols, dr))?),
+            DataRow(dr) => rows.push(R::from_row(row_data.inner_clone(dr.body))?),
             // An SQL command completed normally
             CommandComplete(_tag) => { }
             f => Err(f.unexpected("simple query"))?,

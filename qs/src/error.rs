@@ -1,9 +1,9 @@
 use std::{fmt, io, str::Utf8Error};
 
 use crate::{
-    decode::DecodeError,
     options::ConfigError,
     postgres::{ErrorResponse, ProtocolError},
+    row::DecodeError,
 };
 
 /// A specialized [`Result`] type for qs operation.

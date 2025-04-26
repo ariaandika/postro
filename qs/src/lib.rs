@@ -8,11 +8,9 @@ mod ext;
 // Protocol
 pub mod postgres;
 
-// Codec
+// Encoding
 mod value;
-pub mod column;
 pub mod encode;
-pub mod decode;
 
 // Component
 mod dberror;
@@ -33,7 +31,6 @@ mod error;
 
 
 pub use encode::Encode;
-pub use decode::Decode;
 pub use row::FromRow;
 
 pub use options::PgOptions;

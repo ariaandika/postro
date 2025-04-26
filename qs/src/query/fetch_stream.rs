@@ -8,7 +8,6 @@ use std::{
 use super::portal::Portal;
 use crate::{
     Result,
-    column::ColumnInfo,
     encode::Encoded,
     postgres::backend,
     row::{FromRow, Row},
@@ -29,7 +28,7 @@ enum Phase<'val, SQL, ExeFut, IO> {
     RowDescription { io: Option<IO> },
     DataRow {
         io: Option<IO>,
-        cols: Vec<ColumnInfo>,
+        row_data: Row,
     },
     ReadyForQuery { io: IO },
     Complete,
@@ -80,14 +79,14 @@ where
                 Phase::RowDescription { io } => {
                     // `NoData` is invalid, because `Fetch` expect row to be returned
                     let rd = ready!(io.as_mut().unwrap().poll_recv::<backend::RowDescription>(cx)?);
-                    let cols = ColumnInfo::decode_multi_vec(rd)?;
-                    *phase = Phase::DataRow { io: io.take(), cols };
+                    *phase = Phase::DataRow { io: io.take(), row_data: Row::new(rd.body) };
                 },
-                Phase::DataRow { io, cols } => {
+                Phase::DataRow { io, row_data } => {
                     use backend::BackendMessage::*;
                     match ready!(io.as_mut().unwrap().poll_recv(cx)?) {
                         DataRow(dr) => {
-                            return Poll::Ready(Some(R::from_row(Row::new(cols, dr)).map_err(Into::into)));
+                            let row = R::from_row(row_data.inner_clone(dr.body));
+                            return Poll::Ready(Some(row.map_err(Into::into)));
                         }
 
                         // `Execute` phase terminations:

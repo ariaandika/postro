@@ -111,22 +111,28 @@ impl PgTransport for PgConnection {
                     let err = ErrorResponse::decode(msgtype, body).unwrap();
                     self.sync_required = SyncStatus::NeedSend;
                     Err(Error::Database(err))?
-                }
+                },
                 NoticeResponse::MSGTYPE => {
                     let err = NoticeResponse::decode(msgtype, body).unwrap();
                     eprintln!("{err}");
                     continue;
-                }
+                },
+                // ignore all messages until `ReadyForQuery` received
                 _ if matches!(self.sync_required,SyncStatus::NeedRecv) => {
-                    backend::ReadyForQuery::decode(msgtype, body)?;
-                    self.sync_required = SyncStatus::Ok;
+                    if msgtype == backend::ReadyForQuery::MSGTYPE {
+                        self.sync_required = SyncStatus::Ok;
+                    }
                     continue;
-                }
+                },
                 _ => B::decode(msgtype, body)?,
             };
 
             return Poll::Ready(Ok(res));
         }
+    }
+
+    fn ready_request(&mut self) {
+        self.sync_required = SyncStatus::NeedRecv;
     }
 
     fn send<F: FrontendProtocol>(&mut self, message: F) {

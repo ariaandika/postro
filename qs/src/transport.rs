@@ -9,21 +9,31 @@ use crate::{
     statement::StatementName,
 };
 
-/// A buffered stream which can send and receive postgres message
+/// A buffered stream which can send and receive postgres message.
 pub trait PgTransport {
+    /// Poll to flush the underlying io.
     fn poll_flush(&mut self, cx: &mut Context) -> Poll<io::Result<()>>;
 
+    /// Poll to receive a message.
+    ///
+    /// Implementor should handle `NoticeResponse` and should not return it.
+    ///
+    /// Implementor also should handle `ErrorResponse` and return it as [`Err`].
     fn poll_recv<B: BackendProtocol>(&mut self, cx: &mut Context) -> Poll<Result<B>>;
 
-    /// send message to the backend
+    /// Request implementor to ignore all backend messages until `ReadyForQuery` is received.
+    fn ready_request(&mut self);
+
+    /// Send message to the backend.
     ///
-    /// this does not actually write to the underlying io,
-    /// instead implementor should buffer it
+    /// Note that this send is buffered, caller must also call
+    /// [`poll_flush`][1] or [`flush`][2] afterwards
     ///
-    /// use [`flush`][`PostgresIo::flush`] to actually send the message
+    /// [1]: PgTransport::poll_flush
+    /// [2]: PgTransportExt::flush
     fn send<F: FrontendProtocol>(&mut self, message: F);
 
-    /// send [`Startup`][1] message to the backend
+    /// Send [`Startup`][1] message to the backend.
     ///
     /// For historical reasons, the very first message sent by the client (the startup message)
     /// has no initial message-type byte.
@@ -34,14 +44,9 @@ pub trait PgTransport {
     fn send_startup(&mut self, startup: frontend::Startup);
 
     /// Check for already prepared statement
-    ///
-    /// Only if the io support statement caching.
     fn get_stmt(&mut self, _sql: u64) -> Option<StatementName>;
 
     /// Add new prepared statement.
-    ///
-    /// Return `false` if caching is not supported,
-    /// if so statement will be cleared immediately.
     fn add_stmt(&mut self, _sql: u64, _id: StatementName);
 }
 
@@ -52,6 +57,10 @@ impl<P> PgTransport for &mut P where P: PgTransport {
 
     fn poll_recv<B: BackendProtocol>(&mut self, cx: &mut Context) -> Poll<Result<B>> {
         P::poll_recv(self, cx)
+    }
+
+    fn ready_request(&mut self) {
+        P::ready_request(self);
     }
 
     fn send<F: FrontendProtocol>(&mut self, message: F) {
@@ -71,11 +80,14 @@ impl<P> PgTransport for &mut P where P: PgTransport {
     }
 }
 
+/// An extension trait to provide `Future` API for [`PgTransport`].
 pub trait PgTransportExt: PgTransport {
+    /// Flush the underlying io.
     fn flush(&mut self) -> impl Future<Output = io::Result<()>> {
         std::future::poll_fn(|cx|self.poll_flush(cx))
     }
 
+    /// Receive a backend message.
     fn recv<B: BackendProtocol>(&mut self) -> impl Future<Output = Result<B>> {
         std::future::poll_fn(|cx|self.poll_recv(cx))
     }

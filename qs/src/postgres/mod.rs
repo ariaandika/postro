@@ -37,6 +37,7 @@ mod pg_format;
 pub mod frontend;
 pub mod backend;
 
+mod notice;
 mod error;
 
 pub use pg_type::{Oid, PgType};

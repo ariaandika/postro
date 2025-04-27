@@ -13,7 +13,6 @@ mod value;
 pub mod encode;
 
 // Component
-mod dberror;
 mod statement;
 pub mod sql;
 pub mod row;

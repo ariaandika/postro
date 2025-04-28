@@ -105,8 +105,8 @@ impl PgTransport for PgConnection {
             let body = self.read_buf.split_to(len - 4).freeze();
 
             // Message fully acquired
-            #[cfg(feature = "tracing")]
-            tracing::trace!("backend: {:?}",backend::BackendMessage::decode(msgtype, body.clone()).unwrap());
+            #[cfg(feature = "log-verbose")]
+            log::trace!("backend: {:?}",backend::BackendMessage::decode(msgtype, body.clone()).unwrap());
 
             let res = match msgtype {
                 ErrorResponse::MSGTYPE => {
@@ -117,8 +117,8 @@ impl PgTransport for PgConnection {
                 },
                 NoticeResponse::MSGTYPE => {
                     let _err = NoticeResponse::decode(msgtype, body).unwrap();
-                    #[cfg(feature = "tracing")]
-                    tracing::warn!("{_err}");
+                    #[cfg(feature = "log")]
+                    log::warn!("{_err}");
                     continue;
                 },
                 // ignore all messages until `ReadyForQuery` received
@@ -140,30 +140,30 @@ impl PgTransport for PgConnection {
     }
 
     fn send<F: FrontendProtocol>(&mut self, message: F) {
-        #[cfg(feature = "tracing")]
-        tracing::trace!("frontend: {message:?}");
+        #[cfg(feature = "log-verbose")]
+        log::trace!("frontend: {message:?}");
         frontend::write(message, &mut self.write_buf);
     }
 
     fn send_startup(&mut self, startup: frontend::Startup) {
-        #[cfg(feature = "tracing")]
-        tracing::trace!("frontend: {startup:?}");
+        #[cfg(feature = "log-verbose")]
+        log::trace!("frontend: {startup:?}");
         startup.write(&mut self.write_buf);
     }
 
     fn get_stmt(&mut self, sqlid: u64) -> Option<StatementName> {
         self.stmts.get(&sqlid).cloned().inspect(|_e| {
-            #[cfg(feature = "tracing")]
-            tracing::trace!("prepare statement cache hit: {_e}")
+            #[cfg(feature = "log-verbose")]
+            log::trace!("prepare statement cache hit: {_e}")
         })
     }
 
     fn add_stmt(&mut self, sql: u64, id: StatementName) {
-        #[cfg(feature = "tracing")]
-        tracing::trace!("prepare statement add: {id}");
+        #[cfg(feature = "log-verbose")]
+        log::trace!("prepare statement add: {id}");
         if let Some((_id,_pop)) = self.stmts.push(sql, id) {
-            #[cfg(feature = "tracing")]
-            tracing::trace!("prepare statement removed: {_pop}");
+            #[cfg(feature = "log-verbose")]
+            log::trace!("prepare statement removed: {_pop}");
         }
     }
 }

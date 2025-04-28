@@ -340,10 +340,10 @@ dependencies = [
  "bytes",
  "futures-core",
  "itoa",
+ "log",
  "lru",
  "pin-project-lite",
  "tokio",
- "tracing",
 ]
 
 [[package]]

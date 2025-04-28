@@ -210,9 +210,15 @@ impl PgTransport for PgConnection {
     fn add_stmt(&mut self, sql: u64, id: StatementName) {
         #[cfg(feature = "log-verbose")]
         log::trace!("prepare statement add: {id}");
-        if let Some((_id,_pop)) = self.stmts.push(sql, id) {
+        if let Some((_id,name)) = self.stmts.push(sql, id) {
             #[cfg(feature = "log-verbose")]
-            log::trace!("prepare statement removed: {_pop}");
+            log::trace!("prepare statement removed: {name}");
+            self.send(frontend::Close {
+                variant: b'S',
+                name: name.as_str(),
+            });
+            self.send(frontend::Sync);
+            self.ready_request();
         }
     }
 }

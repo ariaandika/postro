@@ -2,7 +2,6 @@ use bytes::{Buf, Bytes};
 
 const INLINE_LEN: usize = 15;
 
-#[derive(Debug)]
 pub(crate) enum ValueRef<'a> {
     Slice(&'a [u8]),
     Inline {
@@ -53,6 +52,13 @@ impl Buf for ValueRef<'_> {
             ValueRef::Inline { offset, .. } => *offset += cnt,
             ValueRef::Bytes(bytes) => Buf::advance(bytes, cnt),
         }
+    }
+}
+
+impl<'a> std::fmt::Debug for ValueRef<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use crate::ext::FmtExt;
+        self.chunk().lossy().fmt(f)
     }
 }
 

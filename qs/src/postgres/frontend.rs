@@ -134,7 +134,6 @@ macro_rules! size_of {
 }
 
 /// Identifies the message as a Parse-complete indicator.
-#[derive(Debug)]
 pub struct PasswordMessage<'a> {
     /// The password (encrypted, if requested)
     pub password: &'a str,
@@ -172,7 +171,6 @@ impl FrontendProtocol for Query<'_> {
 }
 
 /// Identifies the message as a Parse command
-#[derive(Debug)]
 pub struct Parse<'a,I> {
     /// prepared statement name (an empty string selects the unnamed prepared statement).
     pub prepare_name: &'a str,
@@ -239,7 +237,6 @@ impl FrontendProtocol for Flush {
 }
 
 /// Identifies the message as a Bind command.
-#[derive(Debug)]
 pub struct Bind<'a, ParamFmts, Params, ResultFmts> {
     /// The name of the destination portal (an empty string selects the unnamed portal).
     pub portal_name: &'a str,
@@ -374,7 +371,6 @@ impl FrontendProtocol for Close<'_> {
 }
 
 /// Identifies the message as a Describe command.
-#[derive(Debug)]
 pub struct Describe<'a> {
     /// 'S' to describe a prepared statement; or 'P' to describe a portal.
     pub kind: u8,
@@ -406,5 +402,52 @@ impl FrontendProtocol for Terminate {
     fn size_hint(&self) -> u32 { 0 }
 
     fn encode(self, _: impl BufMut) { }
+}
+
+// CUSTOM DEBUG
+
+impl<'a> std::fmt::Debug for Describe<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Describe")
+            .field("kind", match self.kind {
+                b'S' => &"Statement('S')",
+                b'P' => &"Portal('P')",
+                _ => &"unknown"
+            })
+            .field("name", &self.name)
+            .finish()
+    }
+}
+
+impl<'a, I: std::fmt::Debug> std::fmt::Debug for Parse<'a, I> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Parse")
+            .field("prepare_name", &self.prepare_name)
+            .field("sql", &self.sql)
+            .field("oids", &self.oids)
+            .finish()
+    }
+}
+
+impl<'a, ParamFmts: std::fmt::Debug, Params: std::fmt::Debug, ResultFmts: std::fmt::Debug>
+    std::fmt::Debug for Bind<'a, ParamFmts, Params, ResultFmts>
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Bind")
+            .field("portal_name", &self.portal_name)
+            .field("stmt_name", &self.stmt_name)
+            .field("param_formats", &self.param_formats)
+            .field("params", &self.params)
+            .field("result_formats", &self.result_formats)
+            .finish()
+    }
+}
+
+impl<'a> std::fmt::Debug for PasswordMessage<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PasswordMessage")
+            .field("password", &"<REDACTED>")
+            .finish()
+    }
 }
 

@@ -18,10 +18,12 @@ async fn main() -> Result<()> {
         .instrument(tracing::trace_span!("simple query"))
         .await?;
 
-    let _err = qs::query::<_, _, ()>("select deez", &mut conn)
+    let err = qs::query::<_, _, ()>("select deez", &mut conn)
         .fetch_one()
         .await
         .unwrap_err();
+
+    tracing::error!("{err}");
 
     conn.healthcheck().await?;
 
@@ -92,6 +94,8 @@ async fn main() -> Result<()> {
             .fetch_one()
             .await?;
     }
+
+    conn.close().await?;
 
     Ok(())
 }

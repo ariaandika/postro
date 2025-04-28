@@ -197,7 +197,6 @@ impl BackendProtocol for Authentication {
 /// Identifies the message as cancellation key data.
 ///
 /// The frontend must save these values if it wishes to be able to issue CancelRequest messages later.
-#[derive(Debug)]
 pub struct BackendKeyData {
     /// The process ID of this backend.
     pub process_id: u32,
@@ -312,7 +311,6 @@ impl BackendProtocol for ErrorResponse {
 }
 
 /// Identifies the message as a row description
-#[derive(Debug)]
 pub struct RowDescription {
     /// Raw message body.
     ///
@@ -344,7 +342,6 @@ impl BackendProtocol for RowDescription {
 }
 
 /// Identifies the message as a data row.
-#[derive(Debug)]
 pub struct DataRow {
     /// Raw row buffer.
     ///
@@ -527,15 +524,42 @@ unit_msg! {
     struct PortalSuspended, b's';
 }
 
+// CUSTOM DEBUG
+
+impl std::fmt::Debug for BackendKeyData {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("BackendKeyData")
+            .field("process_id", &self.process_id)
+            .field("secret_key", &"<REDACTED>")
+            .finish()
+    }
+}
+
 impl std::fmt::Debug for ReadyForQuery {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ReadyForQuery")
             .field("tx_status", &match self.tx_status {
-                b'I' => "idle(I)",
-                b'T' => "transaction(T)",
-                b'E' => "failed_tx(E)",
+                b'I' => "Idle(I)",
+                b'T' => "Transaction(T)",
+                b'E' => "FailedTx(E)",
                 _ => "unknown",
             })
+            .finish()
+    }
+}
+
+impl std::fmt::Debug for RowDescription {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RowDescription")
+            .field("body", &"<BINARY>")
+            .finish()
+    }
+}
+
+impl std::fmt::Debug for DataRow {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DataRow")
+            .field("body", &"<BINARY>")
             .finish()
     }
 }

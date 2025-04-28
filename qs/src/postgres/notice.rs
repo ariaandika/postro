@@ -118,17 +118,26 @@ impl MessageFields {
         let mut sevr = None;
         let mut code = None;
         let mut message = None;
+        let mut routine = None;
         let mut detail = None;
         let mut hint = None;
 
-        for (i, b) in body.iter().copied().enumerate() {
-            match MessageFields::from_byte(b) {
-                Some(MessageFields::SeverityLocalized) => sevr = Some(i),
-                Some(MessageFields::Severity) if sevr.is_none() => sevr = Some(i),
-                Some(MessageFields::Code) => code = Some(i),
-                Some(MessageFields::Message) => message = Some(i),
-                Some(MessageFields::Detail) => detail = Some(i),
-                Some(MessageFields::Hint) => hint = Some(i),
+        let mut iter = body.iter().copied().enumerate();
+        loop {
+            let Some((i,key)) = iter.next() else {
+                break;
+            };
+            let Some((end,_)) = iter.find(|(_,e)|matches!(e,b'\0')) else {
+                break;
+            };
+            match MessageFields::from_byte(key) {
+                Some(MessageFields::SeverityLocalized) => sevr = Some((i,end)),
+                Some(MessageFields::Severity) if sevr.is_none() => sevr = Some((i,end)),
+                Some(MessageFields::Code) => code = Some((i,end)),
+                Some(MessageFields::Message) => message = Some((i,end)),
+                Some(MessageFields::Routine) => routine = Some((i,end)),
+                Some(MessageFields::Detail) => detail = Some((i,end)),
+                Some(MessageFields::Hint) => hint = Some((i,end)),
                 _ => {}
             }
         }
@@ -136,15 +145,11 @@ impl MessageFields {
         macro_rules! foo {
             (@ $f:ident,$s:literal;$($tt:tt)*) => {
                 'foo: {
-                    let Some(i) = $f else {
+                    let Some((i,end)) = $f else {
                         $($tt)*
                         break 'foo
                     };
-                    let Some(end) = body[i + 1..].iter().position(|e|matches!(e,b'\0')) else {
-                        write!(f, $s, "??")?;
-                        break 'foo
-                    };
-                    write!(f, $s, &body[i + 1..i + 1 + end].lossy())?;
+                    write!(f, $s, body[i + 1..end].lossy())?;
                 }
             };
             ($f:ident,$s:literal,?) => {
@@ -157,7 +162,10 @@ impl MessageFields {
 
         foo!(sevr, "[{}]");
         foo!(message, " {}");
-        foo!(code, " ({})");
+        write!(f, " (")?;
+        foo!(routine, "{}, ");
+        foo!(code, "{}");
+        write!(f, ")")?;
         foo!(detail, ",\n\n{}", ?);
         foo!(hint, ",\n\nHINT: {}", ?);
         Ok(())

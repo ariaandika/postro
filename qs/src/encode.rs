@@ -14,7 +14,6 @@ pub trait Encode<'q> {
 }
 
 /// Postgres encoded value.
-#[derive(Debug)]
 pub struct Encoded<'q> {
     value: ValueRef<'q>,
     is_null: bool,
@@ -114,3 +113,13 @@ encode!(<bool>self => ValueRef::inline(&(self as u8).to_be_bytes()));
 encode!(<i32>self => ValueRef::inline(&self.to_be_bytes()));
 encode!(<'a,str>self => ValueRef::Slice(self.as_bytes()));
 encode!(<'a,String>self => ValueRef::Slice(self.as_bytes()));
+
+impl<'q> std::fmt::Debug for Encoded<'q> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("Encoded")
+            .field(if self.is_null { &"NULL" } else { &self.value })
+            .field(&self.oid)
+            .finish()
+    }
+}
+

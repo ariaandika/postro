@@ -463,6 +463,25 @@ impl BackendProtocol for ParameterDescription {
     }
 }
 
+/// Identifies the message type. ReadyForQuery is sent whenever the backend is ready for a new query cycle.
+pub struct ReadyForQuery {
+    /// Current backend transaction status indicator.
+    ///
+    /// Possible values are 'I' if idle (not in a transaction block);
+    /// 'T' if in a transaction block;
+    /// or 'E' if in a failed transaction block (queries will be rejected until block is ended).
+    pub tx_status: u8
+}
+
+msgtype!(ReadyForQuery, b'Z');
+
+impl BackendProtocol for ReadyForQuery {
+    fn decode(msgtype: u8, mut body: Bytes) -> Result<Self,ProtocolError> {
+        assert_msgtype!(msgtype);
+        Ok(Self { tx_status: body.get_u8() })
+    }
+}
+
 macro_rules! unit_msg {
     ($(
         $(#[$doc:meta])* struct $name:ident, $ty:literal;
@@ -506,8 +525,18 @@ unit_msg! {
     ///
     /// Note this only appears if an Execute message's row-count limit was reached.
     struct PortalSuspended, b's';
+}
 
-    /// Identifies the message type. ReadyForQuery is sent whenever the backend is ready for a new query cycle.
-    struct ReadyForQuery, b'Z';
+impl std::fmt::Debug for ReadyForQuery {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ReadyForQuery")
+            .field("tx_status", &match self.tx_status {
+                b'I' => "idle(I)",
+                b'T' => "transaction(T)",
+                b'E' => "failed_tx(E)",
+                _ => "unknown",
+            })
+            .finish()
+    }
 }
 

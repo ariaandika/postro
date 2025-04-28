@@ -21,6 +21,7 @@ pub mod row;
 pub mod executor;
 pub mod transport;
 pub mod query;
+pub mod transaction;
 
 // Connection
 pub mod options;

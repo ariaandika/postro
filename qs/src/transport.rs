@@ -55,10 +55,10 @@ pub trait PgTransport {
     fn send_startup(&mut self, startup: frontend::Startup);
 
     /// Check for already prepared statement
-    fn get_stmt(&mut self, _sql: u64) -> Option<StatementName>;
+    fn get_stmt(&mut self, sql: u64) -> Option<StatementName>;
 
     /// Add new prepared statement.
-    fn add_stmt(&mut self, _sql: u64, _id: StatementName);
+    fn add_stmt(&mut self, sql: u64, id: StatementName);
 }
 
 impl<P> PgTransport for &mut P where P: PgTransport {

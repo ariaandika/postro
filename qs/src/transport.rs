@@ -10,6 +10,12 @@ use crate::{
 };
 
 /// A buffered stream which can send and receive postgres message.
+//
+// Sync Operation that can be queued:
+//
+// - close DataRow stream, can be defered to ReadyForQuery
+// - close connection
+// - transaction rollback operation, can be defered to ReadyForQuery
 pub trait PgTransport {
     /// Poll to flush the underlying io.
     fn poll_flush(&mut self, cx: &mut Context) -> Poll<io::Result<()>>;

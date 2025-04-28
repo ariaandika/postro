@@ -39,14 +39,7 @@ pub struct PgConnection {
     stmts: LruCache<u64, StatementName>,
 
     // diagnostic
-    sync_required: SyncStatus,
-}
-
-#[derive(Debug)]
-enum SyncStatus {
-    Ok,
-    NeedSend,
-    NeedRecv
+    sync_pending: usize,
 }
 
 impl PgConnection {
@@ -67,7 +60,7 @@ impl PgConnection {
             read_buf: BytesMut::with_capacity(DEFAULT_BUF_CAPACITY),
             write_buf: BytesMut::with_capacity(DEFAULT_BUF_CAPACITY),
             stmts: LruCache::new(DEFAULT_PREPARED_STMT_CACHE),
-            sync_required: SyncStatus::Ok,
+            sync_pending: 0,
         };
 
         let StartupResponse {
@@ -111,7 +104,8 @@ impl PgTransport for PgConnection {
             let res = match msgtype {
                 ErrorResponse::MSGTYPE => {
                     let err = ErrorResponse::decode(msgtype, body).unwrap();
-                    self.sync_required = SyncStatus::NeedSend;
+                    self.send(frontend::Sync);
+                    self.ready_request();
                     Err(Error::Database(err))?
                 },
                 NoticeResponse::MSGTYPE => {
@@ -121,9 +115,9 @@ impl PgTransport for PgConnection {
                     continue;
                 },
                 // ignore all messages until `ReadyForQuery` received
-                _ if matches!(self.sync_required,SyncStatus::NeedRecv) => {
+                _ if self.sync_pending != 0 => {
                     if msgtype == backend::ReadyForQuery::MSGTYPE {
-                        self.sync_required = SyncStatus::Ok;
+                        self.sync_pending -= 1;
                     }
                     continue;
                 },
@@ -135,14 +129,10 @@ impl PgTransport for PgConnection {
     }
 
     fn ready_request(&mut self) {
-        self.sync_required = SyncStatus::NeedRecv;
+        self.sync_pending += 1;
     }
 
     fn send<F: FrontendProtocol>(&mut self, message: F) {
-        if matches!(self.sync_required,SyncStatus::NeedSend) {
-            self.sync_required = SyncStatus::NeedRecv;
-            self.send(frontend::Sync);
-        }
         #[cfg(feature = "tracing")]
         tracing::trace!("frontend: {message:?}");
         frontend::write(message, &mut self.write_buf);

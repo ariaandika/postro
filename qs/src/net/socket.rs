@@ -45,14 +45,16 @@ impl Socket {
         }
     }
 
-    #[cfg(feature = "tokio")]
     pub fn shutdown(&mut self) -> impl Future<Output = io::Result<()>> {
-        tokio::io::AsyncWriteExt::shutdown(self)
-    }
+        #[cfg(feature = "tokio")]
+        {
+            tokio::io::AsyncWriteExt::shutdown(self)
+        }
 
-    #[cfg(not(feature = "tokio"))]
-    pub fn shutdown(&mut self) -> impl Future<Output = io::Result<()>> {
-        std::future::ready(Ok(()))
+        #[cfg(not(feature = "tokio"))]
+        {
+            std::future::ready(Ok(()))
+        }
     }
 }
 
@@ -78,7 +80,7 @@ impl tokio::io::AsyncWrite for Socket {
         mut self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
         buf: &[u8],
-    ) -> std::task::Poll<std::result::Result<usize, std::io::Error>> {
+    ) -> std::task::Poll<io::Result<usize>> {
         use std::pin::Pin;
         match &mut self.kind {
             Kind::TokioTcp(t) => Pin::new(t).poll_write(cx, buf),
@@ -87,16 +89,30 @@ impl tokio::io::AsyncWrite for Socket {
         }
     }
 
-    fn poll_flush(
+    fn poll_write_vectored(
         mut self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<std::result::Result<(), std::io::Error>> {
+        bufs: &[io::IoSlice<'_>],
+    ) -> std::task::Poll<io::Result<usize>> {
         use std::pin::Pin;
         match &mut self.kind {
-            Kind::TokioTcp(t) => Pin::new(t).poll_flush(cx),
+            Kind::TokioTcp(t) => Pin::new(t).poll_write_vectored(cx, bufs),
             #[cfg(unix)]
-            Kind::TokioUnixSocket(u) => Pin::new(u).poll_flush(cx),
+            Kind::TokioUnixSocket(u) => Pin::new(u).poll_write_vectored(cx, bufs),
         }
+    }
+
+    #[inline]
+    fn is_write_vectored(&self) -> bool {
+        true
+    }
+
+    #[inline]
+    fn poll_flush(
+        self: std::pin::Pin<&mut Self>,
+        _: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::result::Result<(), std::io::Error>> {
+        std::task::Poll::Ready(Ok(()))
     }
 
     fn poll_shutdown(

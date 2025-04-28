@@ -1,5 +1,6 @@
 use crate::{
     Error, Result,
+    error::ErrorKind,
     options::StartupOptions,
     postgres::{
         BackendMessage,
@@ -55,7 +56,7 @@ pub async fn startup<'a, IO: PgTransport>(
                 io.flush().await?;
             },
             // TODO: support more authentication method
-            _ => Err(Error::UnsupportedAuth)?
+            _ => Err(Error::from(ErrorKind::UnsupportedAuth))?
         }
     }
 

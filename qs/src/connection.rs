@@ -7,7 +7,7 @@ use std::{
 };
 
 use crate::{
-    Error, Result,
+    Result,
     executor::Executor,
     net::Socket,
     options::PgOptions,
@@ -172,7 +172,7 @@ impl PgTransport for PgConnection {
                 ErrorResponse::MSGTYPE => {
                     self.send(frontend::Sync);
                     self.ready_request();
-                    Err(Error::Database(ErrorResponse::new(body)))?
+                    Err(ErrorResponse::new(body))?
                 },
                 NoticeResponse::MSGTYPE => {
                     #[cfg(feature = "log")]

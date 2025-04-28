@@ -396,4 +396,15 @@ impl FrontendProtocol for Describe<'_> {
     }
 }
 
+/// Identifies the message as a termination.
+#[derive(Debug)]
+pub struct Terminate;
+
+impl FrontendProtocol for Terminate {
+    const MSGTYPE: u8 = b'X';
+
+    fn size_hint(&self) -> u32 { 0 }
+
+    fn encode(self, _: impl BufMut) { }
+}
 

@@ -44,6 +44,16 @@ impl Socket {
             panic!("runtime disabled")
         }
     }
+
+    #[cfg(feature = "tokio")]
+    pub fn shutdown(&mut self) -> impl Future<Output = io::Result<()>> {
+        tokio::io::AsyncWriteExt::shutdown(self)
+    }
+
+    #[cfg(not(feature = "tokio"))]
+    pub fn shutdown(&mut self) -> impl Future<Output = io::Result<()>> {
+        std::future::ready(Ok(()))
+    }
 }
 
 #[cfg(feature = "tokio")]

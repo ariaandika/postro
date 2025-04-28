@@ -15,7 +15,7 @@ use crate::{
     },
     query::{self, StartupResponse},
     statement::StatementName,
-    transport::PgTransport,
+    transport::{PgTransport, PgTransportExt},
 };
 
 const DEFAULT_BUF_CAPACITY: usize = 1024;
@@ -69,6 +69,13 @@ impl PgConnection {
         } = query::startup(&opt, &mut me).await?;
 
         Ok(me)
+    }
+
+    /// Gracefully close connection.
+    pub async fn close(mut self) -> io::Result<()> {
+        self.send(frontend::Terminate);
+        self.flush().await?;
+        self.socket.shutdown().await
     }
 }
 

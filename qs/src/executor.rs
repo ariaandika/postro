@@ -1,3 +1,5 @@
+use std::future::Ready;
+
 use crate::transport::PgTransport;
 
 /// A type that can returns a [`PgTransport`].
@@ -10,6 +12,16 @@ pub trait Executor {
 
     /// Acquire the transport.
     fn connection(self) -> Self::Future;
+}
+
+impl<T: PgTransport> Executor for &mut T {
+    type Transport = Self;
+
+    type Future = Ready<Self>;
+
+    fn connection(self) -> Self::Future {
+        std::future::ready(self)
+    }
 }
 
 #[cfg(test)]
@@ -26,9 +38,9 @@ mod test {
     #[allow(unused)] // type assertion
     async fn assert_type2<E: Executor>(e: E) {
         let mut e = e.connection().await;
-        let _ = query::<_, _, ()>("", &mut e);
         // TODO:
-        // let _ = query::<_, _, ()>("", &mut e).fetch_all().await;
+        let _ = query::<_, _, ()>("", &mut e).fetch_all().await;
+        let _ = query::<_, _, ()>("", &mut e).fetch_all().await;
     }
 }
 

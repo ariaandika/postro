@@ -1,11 +1,7 @@
-use std::{
-    future::{Ready, ready},
-    io,
-};
+use std::io;
 
 use crate::{
     Result,
-    executor::Executor,
     postgres::{
         BackendProtocol, backend,
         frontend::{self, FrontendProtocol},
@@ -90,18 +86,4 @@ where
         IO::add_stmt(&mut self.io, sql, id)
     }
 }
-
-impl<'a, IO> Executor for &'a mut Transaction<IO>
-where
-    IO: PgTransport
-{
-    type Transport = &'a mut IO;
-
-    type Future = Ready<&'a mut IO>;
-
-    fn connection(self) -> Self::Future {
-        ready(&mut self.io)
-    }
-}
-
 

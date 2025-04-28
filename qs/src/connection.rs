@@ -1,6 +1,7 @@
 use bytes::{Buf, BytesMut};
 use lru::LruCache;
 use std::{
+    future::Ready,
     io,
     num::NonZeroUsize,
     task::{Context, Poll, ready},
@@ -223,20 +224,12 @@ impl PgTransport for PgConnection {
     }
 }
 
-macro_rules! exec {
-    ($me:ty) => {
-        impl Executor for $me {
-            type Transport = Self;
+impl Executor for PgConnection {
+    type Transport = Self;
 
-            type Future = std::future::Ready<Self::Transport>;
+    type Future = Ready<Self::Transport>;
 
-            fn connection(self) -> Self::Future {
-                std::future::ready(self)
-            }
-        }
-    };
+    fn connection(self) -> Self::Future {
+        std::future::ready(self)
+    }
 }
-
-exec!(PgConnection);
-exec!(&mut PgConnection);
-

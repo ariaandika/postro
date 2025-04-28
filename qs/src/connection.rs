@@ -8,6 +8,7 @@ use std::{
 
 use crate::{
     Error, Result,
+    executor::Executor,
     net::Socket,
     options::PgOptions,
     postgres::{
@@ -79,59 +80,107 @@ impl PgConnection {
     }
 }
 
+macro_rules! poll_message {
+    (
+        poll($io:ident, $cx:ident);
+        let $msgtype:ident;
+        let $body:ident;
+    ) => {
+        let Some(mut header) = $io.read_buf.get(..5) else {
+            $io.read_buf.reserve(1024);
+            ready!(crate::io::poll_read(&mut $io.socket, &mut $io.read_buf, $cx)?);
+            continue;
+        };
+
+        let $msgtype = header.get_u8();
+        let len = header.get_i32() as _;
+
+        if $io.read_buf.len() - 1/*msgtype*/ < len {
+            $io.read_buf.reserve(1 + len);
+            ready!(crate::io::poll_read(&mut $io.socket, &mut $io.read_buf, $cx)?);
+            continue;
+        }
+
+        $io.read_buf.advance(5);
+        let $body = $io.read_buf.split_to(len - 4).freeze();
+
+        // Message fully acquired
+        #[cfg(feature = "log-verbose")]
+        log::trace!("(B){:?}",backend::BackendMessage::decode($msgtype, $body.clone()).unwrap());
+    };
+}
+
+impl PgConnection {
+    pub fn healthcheck(&mut self) -> impl Future<Output = Result<()>> {
+        std::future::poll_fn(|cx|self.poll_healthcheck(cx))
+    }
+
+    pub(crate) fn poll_healthcheck(&mut self, cx: &mut Context) -> Poll<Result<()>> {
+        if !self.write_buf.is_empty() {
+            ready!(self.poll_flush(cx)?)
+        }
+
+        while self.sync_pending != 0 {
+            #[cfg(feature = "log-verbose")]
+            log::trace!("healthcheck: {{sync_pending: {}}}",self.sync_pending);
+
+            poll_message! {
+                poll(self, cx);
+                let msgtype;
+                let body;
+            }
+
+            match msgtype {
+                ErrorResponse::MSGTYPE => {
+                    self.send(frontend::Sync);
+                    // FIXME: the `Sync` will get eaten by ErrorResponse (need confirm)
+                    self.ready_request();
+                    #[cfg(feature = "log")]
+                    log::error!("{}",ErrorResponse::new(body));
+                },
+                NoticeResponse::MSGTYPE => {
+                    #[cfg(feature = "log")]
+                    log::warn!("{}",NoticeResponse::new(body));
+                },
+                backend::ReadyForQuery::MSGTYPE => {
+                    self.sync_pending -= 1;
+                },
+                _ => {} // ignore all messages until `ReadyForQuery` received
+            }
+        }
+
+        Poll::Ready(Ok(()))
+    }
+}
+
 impl PgTransport for PgConnection {
     fn poll_flush(&mut self, cx: &mut Context) -> Poll<io::Result<()>> {
         crate::io::poll_write_all(&mut self.socket, &mut self.write_buf, cx)
     }
 
     fn poll_recv<B: BackendProtocol>(&mut self, cx: &mut Context) -> Poll<Result<B>> {
+        ready!(self.poll_healthcheck(cx)?);
+
         loop {
-            let Some(mut header) = self.read_buf.get(..5) else {
-                self.read_buf.reserve(1024);
-                ready!(crate::io::poll_read(&mut self.socket, &mut self.read_buf, cx)?);
-                continue;
-            };
-
-            let msgtype = header.get_u8();
-            let len = header.get_i32() as _;
-
-            if self.read_buf.len() - 1/*msgtype*/ < len {
-                self.read_buf.reserve(1 + len);
-                ready!(crate::io::poll_read(&mut self.socket, &mut self.read_buf, cx)?);
-                continue;
+            poll_message! {
+                poll(self, cx);
+                let msgtype;
+                let body;
             }
 
-            self.read_buf.advance(5);
-            let body = self.read_buf.split_to(len - 4).freeze();
-
-            // Message fully acquired
-            #[cfg(feature = "log-verbose")]
-            log::trace!("backend: {:?}",backend::BackendMessage::decode(msgtype, body.clone()).unwrap());
-
-            let res = match msgtype {
+            match msgtype {
                 ErrorResponse::MSGTYPE => {
-                    let err = ErrorResponse::decode(msgtype, body).unwrap();
                     self.send(frontend::Sync);
                     self.ready_request();
-                    Err(Error::Database(err))?
+                    Err(Error::Database(ErrorResponse::new(body)))?
                 },
                 NoticeResponse::MSGTYPE => {
-                    let _err = NoticeResponse::decode(msgtype, body).unwrap();
                     #[cfg(feature = "log")]
-                    log::warn!("{_err}");
+                    log::warn!("{}",NoticeResponse::new(body));
                     continue;
                 },
-                // ignore all messages until `ReadyForQuery` received
-                _ if self.sync_pending != 0 => {
-                    if msgtype == backend::ReadyForQuery::MSGTYPE {
-                        self.sync_pending -= 1;
-                    }
-                    continue;
-                },
-                _ => B::decode(msgtype, body)?,
-            };
-
-            return Poll::Ready(Ok(res));
+                _ => return Poll::Ready(Ok(B::decode(msgtype, body)?)),
+            }
         }
     }
 
@@ -141,13 +190,13 @@ impl PgTransport for PgConnection {
 
     fn send<F: FrontendProtocol>(&mut self, message: F) {
         #[cfg(feature = "log-verbose")]
-        log::trace!("frontend: {message:?}");
+        log::trace!("(F){message:?}");
         frontend::write(message, &mut self.write_buf);
     }
 
     fn send_startup(&mut self, startup: frontend::Startup) {
         #[cfg(feature = "log-verbose")]
-        log::trace!("frontend: {startup:?}");
+        log::trace!("(F){startup:?}");
         startup.write(&mut self.write_buf);
     }
 
@@ -167,4 +216,21 @@ impl PgTransport for PgConnection {
         }
     }
 }
+
+macro_rules! exec {
+    ($me:ty) => {
+        impl Executor for $me {
+            type Transport = Self;
+
+            type Future = std::future::Ready<Self::Transport>;
+
+            fn connection(self) -> Self::Future {
+                std::future::ready(self)
+            }
+        }
+    };
+}
+
+exec!(PgConnection);
+exec!(&mut PgConnection);
 

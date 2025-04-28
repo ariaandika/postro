@@ -21,6 +21,8 @@ async fn main() {
         .await
         .unwrap_err();
 
+    conn.healthcheck().await.unwrap();
+
     let (id,): (i32,) = qs::query("insert into post(name) values($1) returning id", &mut conn)
         .bind("Foo")
         .fetch_one()

@@ -15,6 +15,7 @@ use crate::{
 //
 // - close DataRow stream, can be defered to ReadyForQuery
 // - close connection
+// - close prepared statement
 // - transaction rollback operation, can be defered to ReadyForQuery
 pub trait PgTransport {
     /// Poll to flush the underlying io.
@@ -22,9 +23,13 @@ pub trait PgTransport {
 
     /// Poll to receive a message.
     ///
+    /// Calling `poll_recv` will also try to [`poll_flush`][1] if there is buffered message.
+    ///
     /// Implementor should handle `NoticeResponse` and should not return it.
     ///
     /// Implementor also should handle `ErrorResponse` and return it as [`Err`].
+    ///
+    /// [1]: PgTransport::poll_flush
     fn poll_recv<B: BackendProtocol>(&mut self, cx: &mut Context) -> Poll<Result<B>>;
 
     /// Request implementor to ignore all backend messages until `ReadyForQuery` is received.

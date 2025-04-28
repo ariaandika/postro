@@ -262,6 +262,12 @@ pub struct NoticeResponse {
 
 msgtype!(NoticeResponse, b'N');
 
+impl NoticeResponse {
+    pub fn new(body: Bytes) -> Self {
+        Self { body }
+    }
+}
+
 impl BackendProtocol for NoticeResponse {
     fn decode(msgtype: u8, body: Bytes) -> Result<Self,ProtocolError> {
         assert_msgtype!(msgtype);
@@ -291,6 +297,12 @@ pub struct ErrorResponse {
 }
 
 msgtype!(ErrorResponse, b'E');
+
+impl ErrorResponse {
+    pub fn new(body: Bytes) -> Self {
+        Self { body }
+    }
+}
 
 impl BackendProtocol for ErrorResponse {
     fn decode(msgtype: u8, body: Bytes) -> Result<Self,ProtocolError> {

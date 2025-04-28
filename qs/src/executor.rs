@@ -1,4 +1,4 @@
-use crate::{transport::PgTransport, PgConnection};
+use crate::transport::PgTransport;
 
 /// A type that can returns a [`PgTransport`].
 pub trait Executor {
@@ -10,15 +10,5 @@ pub trait Executor {
 
     /// Acquire the transport.
     fn connection(self) -> Self::Future;
-}
-
-impl Executor for &mut PgConnection {
-    type Transport = Self;
-
-    type Future = std::future::Ready<Self::Transport>;
-
-    fn connection(self) -> Self::Future {
-        std::future::ready(self)
-    }
 }
 

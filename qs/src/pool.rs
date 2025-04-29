@@ -1,9 +1,9 @@
-use crate::PgConnection;
+use crate::{PgConnection, PgOptions, Result};
 
 #[cfg(feature = "tokio")]
 mod worker;
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 enum PoolHandle {
     #[cfg(feature = "tokio")]
     Worker(worker::WorkerHandle),
@@ -46,6 +46,7 @@ impl PoolHandle {
 
 #[derive(Debug)]
 pub struct PoolConfig {
+    conn: PgOptions,
     max_conn: usize,
 }
 
@@ -61,8 +62,27 @@ pub struct Pool {
     handle: PoolHandle,
 }
 
+impl Clone for Pool {
+    fn clone(&self) -> Self {
+        Self {
+            conn: None,
+            handle: self.handle.clone(),
+        }
+    }
+}
+
 impl Pool {
-    pub fn new(config: PoolConfig) -> Self {
+    pub fn connect_lazy(url: &str) -> Result<Self> {
+        Ok(Self {
+            conn: None,
+            handle: PoolHandle::new_worker(PoolConfig {
+                conn: PgOptions::parse(url)?,
+                max_conn: 10,
+            }),
+        })
+    }
+
+    pub fn with(config: PoolConfig) -> Self {
         Self {
             conn: None,
             handle: PoolHandle::new_worker(config),
@@ -85,5 +105,4 @@ impl Drop for Pool {
         }
     }
 }
-
 

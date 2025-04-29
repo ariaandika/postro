@@ -172,7 +172,7 @@ impl Future for WorkerFuture {
 
                         if connecting.is_none() && *actives < config.max_conn {
                             // can create new conn
-                            connecting.replace(Box::pin(PgConnection::connect("")));
+                            connecting.replace(Box::pin(PgConnection::connect_with(config.conn.clone())));
                         }
                     }
                 },

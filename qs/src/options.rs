@@ -8,7 +8,7 @@ pub use error::ConfigError;
 pub use startup::StartupOptions;
 
 /// Postgres connection options.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct PgOptions {
     pub(crate) user: ByteStr,
     pub(crate) pass: ByteStr,

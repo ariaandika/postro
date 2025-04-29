@@ -45,10 +45,10 @@ impl Socket {
         }
     }
 
-    pub fn poll_shutdown(&mut self, cx: &mut std::task::Context) -> std::task::Poll<io::Result<()>> {
+    pub fn poll_shutdown(&mut self, _cx: &mut std::task::Context) -> std::task::Poll<io::Result<()>> {
         #[cfg(all(feature = "tokio", unix))]
         {
-            tokio::io::AsyncWrite::poll_shutdown(std::pin::Pin::new(self), cx)
+            tokio::io::AsyncWrite::poll_shutdown(std::pin::Pin::new(self), _cx)
         }
 
         #[cfg(not(all(feature = "tokio", unix)))]

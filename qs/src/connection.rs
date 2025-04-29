@@ -139,7 +139,7 @@ impl PgConnection {
             poll_message! {
                 poll(self, cx);
                 let msgtype;
-                let body;
+                let _body;
             }
 
             match msgtype {
@@ -148,11 +148,11 @@ impl PgConnection {
                     // FIXME: the `Sync` will get eaten by ErrorResponse (need confirm)
                     self.ready_request();
                     #[cfg(feature = "log")]
-                    log::error!("{}",ErrorResponse::new(body));
+                    log::error!("{}",ErrorResponse::new(_body));
                 },
                 NoticeResponse::MSGTYPE => {
                     #[cfg(feature = "log")]
-                    log::warn!("{}",NoticeResponse::new(body));
+                    log::warn!("{}",NoticeResponse::new(_body));
                 },
                 backend::ReadyForQuery::MSGTYPE => {
                     self.sync_pending -= 1;

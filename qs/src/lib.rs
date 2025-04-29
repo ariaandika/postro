@@ -25,7 +25,8 @@ pub mod transaction;
 
 // Connection
 pub mod options;
-mod connection;
+pub mod connection;
+pub mod pool;
 
 mod error;
 

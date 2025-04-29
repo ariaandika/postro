@@ -73,6 +73,10 @@ impl PgConnection {
         Ok(me)
     }
 
+    pub fn poll_shutdown(&mut self, cx: &mut Context) -> Poll<io::Result<()>> {
+        self.socket.poll_shutdown(cx)
+    }
+
     /// Gracefully close connection.
     pub async fn close(mut self) -> io::Result<()> {
         self.send(frontend::Terminate);

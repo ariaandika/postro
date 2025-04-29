@@ -45,6 +45,18 @@ impl Socket {
         }
     }
 
+    pub fn poll_shutdown(&mut self, cx: &mut std::task::Context) -> std::task::Poll<io::Result<()>> {
+        #[cfg(all(feature = "tokio", unix))]
+        {
+            tokio::io::AsyncWrite::poll_shutdown(std::pin::Pin::new(self), cx)
+        }
+
+        #[cfg(not(all(feature = "tokio", unix)))]
+        {
+            panic!("runtime disabled")
+        }
+    }
+
     pub fn shutdown(&mut self) -> impl Future<Output = io::Result<()>> {
         #[cfg(feature = "tokio")]
         {

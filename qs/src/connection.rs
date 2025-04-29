@@ -5,6 +5,7 @@ use std::{
     io,
     num::NonZeroUsize,
     task::{Context, Poll, ready},
+    time::Instant,
 };
 
 use crate::{
@@ -41,6 +42,7 @@ pub struct PgConnection {
     stmts: LruCache<u64, StatementName>,
 
     // diagnostic
+    created_at: Instant,
     sync_pending: usize,
 }
 
@@ -62,6 +64,7 @@ impl PgConnection {
             read_buf: BytesMut::with_capacity(DEFAULT_BUF_CAPACITY),
             write_buf: BytesMut::with_capacity(DEFAULT_BUF_CAPACITY),
             stmts: LruCache::new(DEFAULT_PREPARED_STMT_CACHE),
+            created_at: Instant::now(),
             sync_pending: 0,
         };
 
@@ -71,6 +74,10 @@ impl PgConnection {
         } = query::startup(&opt, &mut me).await?;
 
         Ok(me)
+    }
+
+    pub fn created_at(&self) -> Instant {
+        self.created_at
     }
 
     pub fn poll_shutdown(&mut self, cx: &mut Context) -> Poll<io::Result<()>> {

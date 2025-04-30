@@ -10,6 +10,7 @@ use std::{
 
 use crate::{
     Result,
+    common::trace,
     executor::Executor,
     net::Socket,
     options::PgOptions,
@@ -117,8 +118,7 @@ macro_rules! poll_message {
         let $body = $io.read_buf.split_to(len - 4).freeze();
 
         // Message fully acquired
-        #[cfg(feature = "log-verbose")]
-        log::trace!("(B){:?}",backend::BackendMessage::decode($msgtype, $body.clone()).unwrap());
+        trace!("(B){:?}",backend::BackendMessage::decode($msgtype, $body.clone()).unwrap());
     };
 }
 
@@ -133,8 +133,7 @@ impl PgConnection {
         }
 
         while self.sync_pending != 0 {
-            #[cfg(feature = "log-verbose")]
-            log::trace!("healthcheck: {{sync_pending: {}}}",self.sync_pending);
+            trace!("healthcheck: {{sync_pending: {}}}",self.sync_pending);
 
             poll_message! {
                 poll(self, cx);
@@ -201,30 +200,27 @@ impl PgTransport for PgConnection {
     }
 
     fn send<F: FrontendProtocol>(&mut self, message: F) {
-        #[cfg(feature = "log-verbose")]
-        log::trace!("(F){message:?}");
+        trace!("(F){message:?}");
         frontend::write(message, &mut self.write_buf);
     }
 
     fn send_startup(&mut self, startup: frontend::Startup) {
-        #[cfg(feature = "log-verbose")]
-        log::trace!("(F){startup:?}");
+        trace!("(F){startup:?}");
         startup.write(&mut self.write_buf);
     }
 
     fn get_stmt(&mut self, sqlid: u64) -> Option<StatementName> {
-        self.stmts.get(&sqlid).cloned().inspect(|_e| {
-            #[cfg(feature = "log-verbose")]
-            log::trace!("prepare statement cache hit: {_e}")
+        self.stmts.get(&sqlid).cloned().inspect(|_e|{
+            trace!("prepare statement cache hit: {_e}")
         })
     }
 
     fn add_stmt(&mut self, sql: u64, id: StatementName) {
-        #[cfg(feature = "log-verbose")]
-        log::trace!("prepare statement add: {id}");
+        trace!("prepare statement add: {id}");
+
         if let Some((_id,name)) = self.stmts.push(sql, id) {
-            #[cfg(feature = "log-verbose")]
-            log::trace!("prepare statement removed: {name}");
+            trace!("prepare statement removed: {name}");
+
             self.send(frontend::Close {
                 variant: b'S',
                 name: name.as_str(),

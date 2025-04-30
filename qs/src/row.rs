@@ -10,7 +10,10 @@
 use bytes::{Buf, Bytes};
 use std::{fmt, str::Utf8Error, string::FromUtf8Error};
 
-use crate::postgres::{Oid, PgType};
+use crate::{
+    ext::{BytesExt, FmtExt},
+    postgres::{Oid, PgType},
+};
 
 // <https://www.postgresql.org/docs/current/protocol-message-formats.html#PROTOCOL-MESSAGE-FORMATS-ROWDESCRIPTION>
 // table_oid
@@ -28,7 +31,6 @@ const SUFFIX: usize = size_of::<u32>()
 
 const OID_OFFSET: usize = size_of::<u32>() + size_of::<u16>();
 
-#[derive(Debug)]
 pub struct Row {
     field_len: u16,
     body: Bytes,
@@ -86,6 +88,23 @@ impl Row {
             body: self.body.clone(),
             values: bytes,
         }
+    }
+}
+
+impl fmt::Debug for Row {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut dbg = f.debug_map();
+        let mut b = self.body.clone();
+        let mut v = self.values.clone();
+        for _ in 0..self.field_len {
+            let Ok(key) = b.get_nul_bytestr() else { break };
+            b.advance(SUFFIX);
+            let len = v.get_u32();
+            let value = v.split_to(len as _);
+            dbg.key(&key);
+            dbg.value(&value.lossy());
+        }
+        dbg.finish()
     }
 }
 

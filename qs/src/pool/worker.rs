@@ -2,18 +2,19 @@ use std::{
     collections::VecDeque,
     io,
     pin::Pin,
-    task::{ready, Context, Poll},
+    task::{Context, Poll, ready},
     time::Duration,
 };
 use tokio::{
     sync::{
-        mpsc::{self, UnboundedReceiver, UnboundedSender}, oneshot
+        mpsc::{self, UnboundedReceiver, UnboundedSender},
+        oneshot,
     },
-    time::{sleep, Instant, Sleep},
+    time::{Instant, Sleep, sleep},
 };
 
 use super::PoolConfig;
-use crate::{PgConnection, Result};
+use crate::{PgConnection, Result, common::trace};
 
 const HALF_MINUTE: Duration = Duration::from_secs(30);
 
@@ -186,33 +187,60 @@ impl Future for WorkerFuture {
             connecting, healthcheck, closing
         } = self.as_mut().get_mut();
 
+        macro_rules! tracew {
+            ($prefix:literal) => {
+                trace!(
+                    "{:11}: Active={actives}, Idle={}, Connecting={}, Healthcheck={}, Closing={}",
+                    $prefix,
+                    conns.len(),
+                    connecting.is_some() as u8,
+                    healthcheck.is_some() as u8,
+                    closing.is_some() as u8,
+                );
+            };
+        }
+
+        // PERF: maybe we can have multiple slot for connecting futures ?
+
+        // NOTE:
+        // 1. Collect all request upfront
+        // 2. Poll any connection futures
+        // With the highest chance of connection available:
+        // 3. Try to fulfill Queues
+
         while let Poll::Ready(msg) = recv.poll_recv(cx) {
             use WorkerMessage::*;
             let Some(msg) = msg else {
                 return Poll::Ready(()) // all Pools are dropped
             };
             match msg {
-                Acquire(send) => match conns.pop_front() {
-                    // look for available idle conn
-                    Some(conn) => {
-                        // conn available, send it to client
-                        if let Err(Ok(conn)) = send.send(Ok(conn.conn)) {
-                            // client closed, put conn back to pool
-                            conns.push_front(PoolConnection::new(conn));
-                        }
-                    },
-                    None => {
-                        // no idle connection,
-                        // push into queue
-                        queue.push_back(send);
+                Acquire(send) => {
+                    tracew!("Acquire");
 
-                        if connecting.is_none() && *actives < config.max_conn {
-                            // no connecting in progress, and under max connection
-                            connecting.replace(Box::pin(PgConnection::connect_with(config.conn.clone())));
-                        }
-                    },
+                    match conns.pop_front() {
+                        // look for available idle conn
+                        Some(conn) => {
+                            // conn available, send it to client
+                            if let Err(Ok(conn)) = send.send(Ok(conn.conn)) {
+                                // client closed, put conn back to pool
+                                conns.push_front(PoolConnection::new(conn));
+                            }
+                        },
+                        None => {
+                            // no idle connection,
+                            // push into queue
+                            queue.push_back(send);
+
+                            if connecting.is_none() && *actives < config.max_conn {
+                                // no connecting in progress, and under max connection
+                                connecting.replace(Box::pin(PgConnection::connect_with(config.conn.clone())));
+                            }
+                        },
+                    }
                 },
                 Release(conn) => {
+                    tracew!("Released");
+
                     // released conn always immediately healthchecked
                     if healthcheck.is_none() {
                         healthcheck.replace(PoolConnection::new(conn));
@@ -230,9 +258,12 @@ impl Future for WorkerFuture {
                 Ok(conn) => {
                     *actives += 1;
                     connection_idle(conn, queue, conns, Instant::now());
+                    tracew!("New");
                 },
                 Err(err) => {
-                    eprintln!("failed to connect: {err}");
+                    #[cfg(feature = "log")]
+                    log::error!("failed to connect: {err}");
+
                     todo!("backpressure to try reconnect later")
                 },
             }
@@ -244,12 +275,14 @@ impl Future for WorkerFuture {
                 Ok(()) => {
                     // health ok, store connection
                     connection_idle(conn.conn, queue, conns, Instant::now());
+                    tracew!("Healthcheck");
                 },
                 Err(err) => {
-                    eprintln!("healthcheck error: {err}");
+                    #[cfg(feature = "log")]
+                    log::error!("healthcheck error: {err}");
+
                     // health not ok, close connection
                     if closing.is_some() {
-                        eprintln!("ungracefull shutdown");
                         drop(conn);
                     } else {
                         closing.replace(conn);
@@ -266,6 +299,8 @@ impl Future for WorkerFuture {
                 eprintln!("close error: {err}");
             }
             *actives -= 1;
+
+            tracew!("Closed");
         }
 
         if let Poll::Ready(()) = sleep.as_mut().poll(cx) {
@@ -283,7 +318,28 @@ impl Future for WorkerFuture {
             } else {
                 reset_sleep_time(conns, sleep.as_mut());
             }
+
+            tracew!("Cycle");
         }
+
+        while let Some(send) = queue.pop_front() {
+            match conns.pop_front() {
+                Some(conn) => {
+                    if let Err(Ok(conn)) = send.send(Ok(conn.conn)) {
+                        conns.push_front(PoolConnection::new(conn));
+                    }
+                },
+                None => {
+                    queue.push_front(send);
+                    if connecting.is_none() && *actives < config.max_conn {
+                        connecting.replace(Box::pin(PgConnection::connect_with(config.conn.clone())));
+                    }
+                    break
+                },
+            }
+        }
+
+        trace!("{:-<11}: Backpressured: {}", "", queue.len());
 
         Poll::Pending
     }

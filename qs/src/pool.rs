@@ -24,10 +24,10 @@ impl PoolHandle {
         }
     }
 
-    fn poll_acquire(&mut self, cx: &mut std::task::Context) -> std::task::Poll<Result<PgConnection>> {
+    fn poll_acquire(&mut self, _cx: &mut std::task::Context) -> std::task::Poll<Result<PgConnection>> {
         #[cfg(feature = "tokio")]
         match self {
-            PoolHandle::Worker(w) => w.poll_acquire(cx),
+            PoolHandle::Worker(w) => w.poll_acquire(_cx),
         }
 
         #[cfg(not(feature = "tokio"))]
@@ -53,6 +53,10 @@ pub struct PoolConfig {
 impl PoolConfig {
     pub fn max_connection(&self) -> usize {
         self.max_conn
+    }
+
+    pub fn connection(&self) -> &PgOptions {
+        &self.conn
     }
 }
 
@@ -99,14 +103,6 @@ impl Pool {
             }
         }
     }
-
-    // pub async fn connection(&mut self) -> &mut PgConnection {
-    //     if self.conn.is_none() {
-    //         self.conn = Some(self.handle.acquire().await)
-    //     }
-    //
-    //     self.conn.as_mut().unwrap()
-    // }
 }
 
 impl Drop for Pool {

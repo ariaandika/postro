@@ -6,7 +6,7 @@ use qs::{
     row::{DecodeError, Row},
     transaction::Transaction,
 };
-use std::env::var;
+use std::{borrow::Cow, env::var};
 use tracing::Instrument;
 
 #[tokio::main]
@@ -20,20 +20,23 @@ async fn main() -> Result<()> {
         let mut conn = PgConnection::connect(&url).await?;
         qs::execute("drop table if exists post", &mut conn).execute().await?;
         qs::execute("create table post(id serial, tag text, name text)", &mut conn).execute().await?;
-        task(&mut conn, "dedicated").await?;
+        task(&mut conn, "dedicated".into()).await?;
     }
 
     let pool = Pool::connect_lazy(&var("DATABASE_URL").unwrap())?;
+    let mut handles = vec![];
 
-    let t1 = tokio::spawn(task(pool.clone(), "thread 1"));
-    let t2 = tokio::spawn(task(pool.clone(), "thread 2"));
+    for i in 0..24 {
+        handles.push(tokio::spawn(task(pool.clone(),format!("thread {i}").into())));
+    }
 
-    t1.await.unwrap()?;
-    t2.await.unwrap()?;
+    for handle in std::mem::take(&mut handles) {
+        handle.await.unwrap()?;
+    }
 
     let foo: Vec<Post> = qs::query("select * from post", &pool).fetch_all().await?;
 
-    println!("{foo:#?}");
+    tracing::info!("{foo:#?}");
 
     Ok(())
 }
@@ -56,7 +59,7 @@ impl FromRow for Post {
     }
 }
 
-async fn task<E: Executor>(conn: E, id: &str) -> Result<()> {
+async fn task<E: Executor>(conn: E, id: Cow<'static,str>) -> Result<()> {
     let mut conn = conn.connection().await?;
 
     qs::query::simple_query::<(), _>("select * from post", &mut conn)
@@ -73,14 +76,14 @@ async fn task<E: Executor>(conn: E, id: &str) -> Result<()> {
     {
         let mut tx = Transaction::begin(&mut conn).await?;
         qs::execute("insert into post(tag,name) values($1,$2)", &mut tx)
-            .bind(id)
+            .bind(id.as_ref())
             .bind(&format!("NotExists: {id}"))
             .execute()
             .await?;
     }
 
     let (_post_id,) = qs::query::<_, _, (i32,)>("insert into post(tag,name) values($1,$2) returning id", &mut conn)
-        .bind(id)
+        .bind(id.as_ref())
         .bind(&format!("Post from: {id}"))
         .fetch_one()
         .await?;
@@ -97,7 +100,7 @@ async fn task<E: Executor>(conn: E, id: &str) -> Result<()> {
     );
 
     qs::execute("insert into post(tag,name) values($1,$2)", &mut conn)
-        .bind(id)
+        .bind(id.as_ref())
         .bind(&format!("Exectute for: {id}"))
         .execute()
         .await?;
@@ -111,7 +114,7 @@ async fn task<E: Executor>(conn: E, id: &str) -> Result<()> {
     {
         let mut tx = Transaction::begin(&mut conn).await?;
         qs::execute("insert into post(tag,name) values($1,$2)", &mut tx)
-            .bind(id)
+            .bind(id.as_ref())
             .bind(&format!("Transaction from: {id}"))
             .execute()
             .await?;

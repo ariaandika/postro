@@ -1,6 +1,12 @@
-use std::env::var;
 use futures::TryStreamExt;
-use qs::{transaction::Transaction, Result};
+use qs::{
+    FromRow, PgConnection, Result,
+    executor::Executor,
+    pool::Pool,
+    row::{DecodeError, Row},
+    transaction::Transaction,
+};
+use std::env::var;
 use tracing::Instrument;
 
 #[tokio::main]
@@ -8,94 +14,109 @@ async fn main() -> Result<()> {
     dotenvy::dotenv().ok();
     tracing_subscriber::fmt::init();
 
-    let mut conn = qs::PgConnection::connect(&var("DATABASE_URL").unwrap()).await?;
+    let url = var("DATABASE_URL").unwrap();
 
-    qs::execute("create temp table post(id serial, name text)", &mut conn)
-        .execute()
-        .await?;
+    {
+        let mut conn = PgConnection::connect(&url).await?;
+        qs::execute("drop table if exists post", &mut conn).execute().await?;
+        qs::execute("create table post(id serial, tag text, name text)", &mut conn).execute().await?;
+        task(&mut conn, "dedicated").await?;
+    }
+
+    let pool = Pool::connect_lazy(&var("DATABASE_URL").unwrap())?;
+
+    let t1 = tokio::spawn(task(pool.clone(), "thread 1"));
+    let t2 = tokio::spawn(task(pool.clone(), "thread 2"));
+
+    t1.await.unwrap()?;
+    t2.await.unwrap()?;
+
+    let foo: Vec<Post> = qs::query("select * from post", &pool).fetch_all().await?;
+
+    println!("{foo:#?}");
+
+    Ok(())
+}
+
+#[derive(Debug)]
+struct Post {
+    #[allow(unused)]
+    id: i32,
+    tag: String,
+    name: String,
+}
+
+impl FromRow for Post {
+    fn from_row(row: Row) -> Result<Self, DecodeError> {
+        Ok(Self {
+            id: row.try_get("id")?,
+            tag: row.try_get("tag")?,
+            name: row.try_get("name")?,
+        })
+    }
+}
+
+async fn task<E: Executor>(conn: E, id: &str) -> Result<()> {
+    let mut conn = conn.connection().await?;
 
     qs::query::simple_query::<(), _>("select * from post", &mut conn)
         .instrument(tracing::trace_span!("simple query"))
         .await?;
 
-    let err = qs::query::<_, _, ()>("select deez", &mut conn)
+    let err = qs::execute("select deez", &mut conn)
         .fetch_one()
         .await
         .unwrap_err();
 
-    tracing::error!("{err}");
-
-    conn.healthcheck().await?;
-
-    async {
-        let mut tx = Transaction::begin(&mut conn).await?;
-        qs::execute("insert into post(name) values('Deez2')", &mut tx)
-            .execute()
-            .await?;
-        Ok::<_, qs::Error>(())
-    }.instrument(tracing::trace_span!("transaction")).await?;
-
-    let posts = qs::query::<_, _, (i32, String)>("select * from post", &mut conn)
-        .fetch_all()
-        .await?;
-
-    assert!(posts.is_empty());
-
-    let (id,): (i32,) = qs::query("insert into post(name) values($1) returning id", &mut conn)
-        .bind("Foo")
-        .fetch_one()
-        .instrument(tracing::trace_span!("inserter"))
-        .await?;
-
-    let post = qs::query::<_, _, (i32, String)>("select * from post", &mut conn)
-        .fetch_all()
-        .await?;
-
-    assert_eq!(post[0].0, id);
-
-    qs::execute("insert into post(name) values($1)", &mut conn)
-        .bind("Deez")
-        .execute()
-        .await?;
-
-    let mut stream = qs::query::<_, _, (i32, String)>("select * from post", &mut conn).fetch();
-
-    let p1 = stream.try_next().await?.unwrap();
-    assert_eq!(p1.0, id);
-    assert_eq!(p1.1.as_str(), "Foo");
-
-    let p2 = stream.try_next().await?.unwrap();
-    assert_eq!(p2.1.as_str(), "Deez");
-
-    assert!(stream.try_next().await?.is_none());
+    tracing::error!("Expected Error: {err}");
 
     {
         let mut tx = Transaction::begin(&mut conn).await?;
-        qs::execute("insert into post(name) values('Deez2')", &mut tx)
+        qs::execute("insert into post(tag,name) values($1,$2)", &mut tx)
+            .bind(id)
+            .bind(&format!("NotExists: {id}"))
+            .execute()
+            .await?;
+    }
+
+    let (_post_id,) = qs::query::<_, _, (i32,)>("insert into post(tag,name) values($1,$2) returning id", &mut conn)
+        .bind(id)
+        .bind(&format!("Post from: {id}"))
+        .fetch_one()
+        .await?;
+
+    let post = qs::query::<_, _, Post>("select * from post", &mut conn)
+        .fetch_all()
+        .await?;
+
+    assert!(
+        post.iter()
+            .find(|e| e.tag == id)
+            .map(|e| e.name == format!("Post from: {id}"))
+            .unwrap()
+    );
+
+    qs::execute("insert into post(tag,name) values($1,$2)", &mut conn)
+        .bind(id)
+        .bind(&format!("Exectute for: {id}"))
+        .execute()
+        .await?;
+
+    let mut stream = qs::query::<_, _, Post>("select * from post", &mut conn).fetch();
+
+    while let Some(post) = stream.try_next().await? {
+        let _ = post;
+    }
+
+    {
+        let mut tx = Transaction::begin(&mut conn).await?;
+        qs::execute("insert into post(tag,name) values($1,$2)", &mut tx)
+            .bind(id)
+            .bind(&format!("Transaction from: {id}"))
             .execute()
             .await?;
         tx.commit().await?;
     }
-
-    let posts = qs::query::<_, _, (i32, String)>("select * from post", &mut conn)
-        .fetch_all()
-        .await?;
-
-    assert!(posts.iter().find(|e|matches!(e.1.as_str(),"Deez2")).is_some());
-
-    for _ in 0..2 {
-        let _ok = qs::query::<_, _, ()>("Select * from post", &mut conn)
-            .fetch_one()
-            .await?;
-        let _ok = qs::query::<_, _, ()>("sElect * from post", &mut conn)
-            .fetch_one()
-            .await?;
-        let _ok = qs::query::<_, _, ()>("seLect * from post", &mut conn)
-            .fetch_one()
-            .await?;
-    }
-
-    conn.close().await?;
 
     Ok(())
 }

@@ -2,13 +2,12 @@ use std::{
     collections::VecDeque,
     io,
     pin::Pin,
-    sync::Arc,
-    task::{Context, Poll},
+    task::{ready, Context, Poll},
     time::Duration,
 };
 use tokio::{
     sync::{
-        mpsc::{self, UnboundedReceiver, UnboundedSender}, oneshot, Notify
+        mpsc::{self, UnboundedReceiver, UnboundedSender}, oneshot
     },
     time::{sleep, Instant, Sleep},
 };
@@ -18,24 +17,29 @@ use crate::{PgConnection, Result};
 
 const HALF_MINUTE: Duration = Duration::from_secs(30);
 
-#[derive(Clone)]
 pub struct WorkerHandle {
     send: UnboundedSender<WorkerMessage>,
+    state: State,
+}
+
+enum State {
+    Idle,
+    Recv(AcquireRecv),
 }
 
 impl WorkerHandle {
     pub fn new(config: PoolConfig) -> (Self, WorkerFuture) {
         let (send, recv) = mpsc::unbounded_channel();
         (
-            Self { send },
+            Self { send, state: State::Idle },
             WorkerFuture {
                 started: Instant::now(),
                 config,
                 actives: 0,
                 conns: VecDeque::new(),
                 sleep: Box::pin(sleep(HALF_MINUTE)),
-                notify: Arc::new(Notify::new()),
                 recv,
+                queue: VecDeque::with_capacity(1),
                 connecting: None,
                 healthcheck: None,
                 closing: None,
@@ -43,20 +47,35 @@ impl WorkerHandle {
         )
     }
 
-    pub async fn acquire(&self) -> Result<PgConnection> {
+    pub fn poll_acquire(&mut self, cx: &mut Context) -> Poll<Result<PgConnection>> {
         loop {
-            let (tx,rx) = oneshot::channel();
-            self.send.send(WorkerMessage::Acquire(tx)).expect("worker task closed");
-            let notif = match rx.await.expect("worker task closed") {
-                Ok(ok) => return Ok(ok),
-                Err(err) => err,
-            };
-            notif.notified().await;
+            match &mut self.state {
+                State::Idle => {
+                    let (tx,rx) = oneshot::channel();
+                    self.send.send(WorkerMessage::Acquire(tx)).expect("worker task closed");
+                    self.state = State::Recv(rx);
+                }
+                State::Recv(recv) => {
+                    let pin = Pin::new(recv);
+                    let result = ready!(oneshot::Receiver::poll(pin, cx)).expect("worker pool closed");
+                    self.state = State::Idle;
+                    return Poll::Ready(result);
+                }
+            }
         }
     }
 
     pub fn release(&self, conn: PgConnection) {
         self.send.send(WorkerMessage::Release(conn)).expect("worker task closed");
+    }
+}
+
+impl Clone for WorkerHandle {
+    fn clone(&self) -> Self {
+        Self {
+            send: self.send.clone(),
+            state: State::Idle,
+        }
     }
 }
 
@@ -79,7 +98,7 @@ impl PoolConnection {
         }
     }
 
-    fn unhealthy(conn: PgConnection, instant: Instant) -> Self {
+    fn with_last_hc(conn: PgConnection, instant: Instant) -> Self {
         Self {
             healthc_at: instant,
             conn
@@ -99,7 +118,8 @@ impl PoolConnection {
     }
 }
 
-type AcquireSend = oneshot::Sender<Result<PgConnection,Arc<Notify>>>;
+type AcquireSend = oneshot::Sender<Result<PgConnection>>;
+type AcquireRecv = oneshot::Receiver<Result<PgConnection>>;
 
 enum WorkerMessage {
     Acquire(AcquireSend),
@@ -119,8 +139,8 @@ pub struct WorkerFuture {
     conns: VecDeque<PoolConnection>,
 
     sleep: Pin<Box<Sleep>>,
-    notify: Arc<Notify>,
     recv: UnboundedReceiver<WorkerMessage>,
+    queue: VecDeque<AcquireSend>,
 
     connecting: Option<ConnectFuture>,
     healthcheck: Option<PoolConnection>,
@@ -138,12 +158,31 @@ fn reset_sleep_time(conns: &VecDeque<PoolConnection>, sleep: Pin<&mut Sleep>) {
     sleep.reset(Instant::now() + least_time_hc);
 }
 
+fn connection_idle(
+    conn: PgConnection,
+    queue: &mut VecDeque<AcquireSend>,
+    conns: &mut VecDeque<PoolConnection>,
+    hc: Instant,
+) {
+    match queue.pop_front() {
+        Some(send) => {
+            if let Err(Ok(conn)) = send.send(Ok(conn)) {
+                conns.push_back(PoolConnection::with_last_hc(conn, hc));
+            }
+        }
+        None => {
+            conns.push_back(PoolConnection::with_last_hc(conn, hc));
+        }
+    }
+}
+
 impl Future for WorkerFuture {
     type Output = ();
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
         let WorkerFuture {
-            started, config, actives, sleep, conns, notify, recv,
+            started, config, actives, sleep, conns,
+            recv, queue,
             connecting, healthcheck, closing
         } = self.as_mut().get_mut();
 
@@ -153,34 +192,33 @@ impl Future for WorkerFuture {
                 return Poll::Ready(()) // all Pools are dropped
             };
             match msg {
-                Acquire(send) => {
+                Acquire(send) => match conns.pop_front() {
                     // look for available idle conn
-                    if let Some(conn) = conns.pop_front() {
+                    Some(conn) => {
                         // conn available, send it to client
                         if let Err(Ok(conn)) = send.send(Ok(conn.conn)) {
                             // client closed, put conn back to pool
                             conns.push_front(PoolConnection::new(conn));
                         }
-                    } else {
+                    },
+                    None => {
                         // no idle connection,
-                        // tell client to wait for notification
-                        // when new conn or released conn
-                        if send.send(Err(notify.clone())).is_err() {
-                            // client closed
-                            continue;
-                        }
+                        // push into queue
+                        queue.push_back(send);
 
                         if connecting.is_none() && *actives < config.max_conn {
-                            // can create new conn
+                            // no connecting in progress, and under max connection
                             connecting.replace(Box::pin(PgConnection::connect_with(config.conn.clone())));
                         }
-                    }
+                    },
                 },
                 Release(conn) => {
+                    // released conn always immediately healthchecked
                     if healthcheck.is_none() {
                         healthcheck.replace(PoolConnection::new(conn));
                     } else {
-                        conns.push_back(PoolConnection::unhealthy(conn, *started));
+                        // other healthcheck is in progress
+                        connection_idle(conn, queue, conns, *started);
                     }
                 }
             }
@@ -190,12 +228,8 @@ impl Future for WorkerFuture {
             connecting.take();
             match result {
                 Ok(conn) => {
-                    // store connection
-                    conns.push_back(PoolConnection::new(conn));
                     *actives += 1;
-
-                    // maybe there is one wating for new conn
-                    notify.notify_one();
+                    connection_idle(conn, queue, conns, Instant::now());
                 },
                 Err(err) => {
                     eprintln!("failed to connect: {err}");
@@ -209,7 +243,7 @@ impl Future for WorkerFuture {
             match result {
                 Ok(()) => {
                     // health ok, store connection
-                    conns.push_back(conn);
+                    connection_idle(conn.conn, queue, conns, Instant::now());
                 },
                 Err(err) => {
                     eprintln!("healthcheck error: {err}");
@@ -231,7 +265,6 @@ impl Future for WorkerFuture {
             if let Err(err) = result {
                 eprintln!("close error: {err}");
             }
-
             *actives -= 1;
         }
 

@@ -1,7 +1,11 @@
-use crate::{executor::Executor, transport::PgTransport, PgConnection, PgOptions, Result};
+use crate::{PgConnection, Result, executor::Executor, transport::PgTransport};
+
+mod config;
 
 #[cfg(feature = "tokio")]
 mod worker;
+
+pub use config::PoolConfig;
 
 #[derive(Clone, Debug)]
 enum PoolHandle {
@@ -45,22 +49,6 @@ impl PoolHandle {
 }
 
 #[derive(Debug)]
-pub struct PoolConfig {
-    conn: PgOptions,
-    max_conn: usize,
-}
-
-impl PoolConfig {
-    pub fn max_connection(&self) -> usize {
-        self.max_conn
-    }
-
-    pub fn connection(&self) -> &PgOptions {
-        &self.conn
-    }
-}
-
-#[derive(Debug)]
 pub struct Pool {
     conn: Option<PgConnection>,
     handle: PoolHandle,
@@ -76,21 +64,19 @@ impl Clone for Pool {
 }
 
 impl Pool {
-    pub fn connect_lazy(url: &str) -> Result<Self> {
-        Ok(Self {
-            conn: None,
-            handle: PoolHandle::new_worker(PoolConfig {
-                conn: PgOptions::parse(url)?,
-                max_conn: 10,
-            }),
-        })
-    }
-
-    pub fn with(config: PoolConfig) -> Self {
+    pub fn connect_lazy_with(config: PoolConfig) -> Self {
         Self {
             conn: None,
             handle: PoolHandle::new_worker(config),
         }
+    }
+
+    pub fn connect_with(config: PoolConfig) -> Result<Self> {
+        let me = Self {
+            conn: None,
+            handle: PoolHandle::new_worker(config),
+        };
+        Ok(me)
     }
 
     fn poll_connection<'a>(&'a mut self, cx: &mut std::task::Context) -> std::task::Poll<Result<&'a mut PgConnection>> {

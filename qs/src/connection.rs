@@ -238,9 +238,9 @@ impl PgTransport for PgConnection {
 impl Executor for PgConnection {
     type Transport = Self;
 
-    type Future = Ready<Self::Transport>;
+    type Future = Ready<Result<Self::Transport>>;
 
     fn connection(self) -> Self::Future {
-        std::future::ready(self)
+        std::future::ready(Ok(self))
     }
 }

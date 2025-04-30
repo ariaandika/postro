@@ -53,7 +53,7 @@ impl<'val, SQL, ExeFut, IO> Portal<'val, SQL, ExeFut, IO> {
 impl<SQL, ExeFut, IO> Future for Portal<'_, SQL, ExeFut, IO>
 where
     SQL: Sql,
-    ExeFut: Future<Output = IO>,
+    ExeFut: Future<Output = Result<IO>>,
     IO: PgTransport,
 {
     type Output = Result<IO>;
@@ -72,7 +72,7 @@ where
                 Phase::Connect { f } => {
                     // SAFETY: self is pinned
                     let f = unsafe { Pin::new_unchecked(f) };
-                    let conn = ready!(f.poll(cx));
+                    let conn = ready!(f.poll(cx)?);
                     assert!(io.replace(conn).is_none());
                     *phase = Phase::Prepare;
                 },

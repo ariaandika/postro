@@ -30,7 +30,7 @@ impl<SQL, R, ExeFut, IO> Future for FetchOne<'_, SQL, R, ExeFut, IO>
 where
     SQL: Sql,
     R: FromRow,
-    ExeFut: Future<Output = IO>,
+    ExeFut: Future<Output = Result<IO>>,
     IO: PgTransport,
 {
     type Output = Result<R>;

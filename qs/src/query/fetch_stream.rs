@@ -54,7 +54,7 @@ impl<SQL, R, ExeFut, IO> Stream for FetchStream<'_, SQL, R, ExeFut, IO>
 where
     SQL: Sql,
     R: FromRow,
-    ExeFut: Future<Output = IO>,
+    ExeFut: Future<Output = Result<IO>>,
     IO: PgTransport,
 {
     type Item = Result<R>;

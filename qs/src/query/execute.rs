@@ -38,7 +38,7 @@ impl<'val, SQL, ExeFut, IO> Execute<'val, SQL, ExeFut, IO> {
 impl<SQL, ExeFut, IO> Future for Execute<'_, SQL, ExeFut, IO>
 where
     SQL: Sql,
-    ExeFut: Future<Output = IO>,
+    ExeFut: Future<Output = Result<IO>>,
     IO: PgTransport,
 {
     type Output = Result<u64>;

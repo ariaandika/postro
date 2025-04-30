@@ -248,18 +248,22 @@ impl Index for usize {
 impl Index for &str {
     fn position(self, body: &[u8], len: u16) -> Option<(usize,u16)> {
         let mut iter = body.iter().copied().enumerate();
+        let mut offset = 0;
 
         for nth in 0..len {
             let Some((i_nul, _)) = iter.find(|(_, e)| matches!(e, b'\0')) else {
                 break;
             };
 
-            if self.as_bytes() == &body[..i_nul] {
+            if self.as_bytes() == &body[offset..i_nul] {
                 return Some((i_nul,nth));
             }
 
-            if iter.nth(SUFFIX - 1).is_none() {
-                break
+            match iter.nth(SUFFIX) {
+                Some((i,_)) => {
+                    offset = i;
+                },
+                None => break,
             }
         }
 

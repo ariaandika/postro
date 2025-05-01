@@ -32,9 +32,9 @@ pub async fn startup<'a, IO: PgTransport>(
     // (Optionally, the startup message can include additional settings for run-time parameters.)
 
     io.send_startup(frontend::Startup {
-        user: opt.get_user(),
-        database: opt.get_database(),
-        replication: opt.get_replication(),
+        user: opt.user(),
+        database: opt.database(),
+        replication: opt.replication(),
     });
     io.flush().await?;
 
@@ -52,7 +52,7 @@ pub async fn startup<'a, IO: PgTransport>(
             Ok => break,
             // The frontend must now send a PasswordMessage containing the password in clear-text form.
             CleartextPassword => {
-                io.send(frontend::PasswordMessage { password: opt.get_password().unwrap_or_default() });
+                io.send(frontend::PasswordMessage { password: opt.password().unwrap_or_default() });
                 io.flush().await?;
             },
             // TODO: support more authentication method

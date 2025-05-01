@@ -124,6 +124,15 @@ impl From<&'static str> for ByteStr {
     }
 }
 
+impl From<std::borrow::Cow<'static,str>> for ByteStr {
+    fn from(value: std::borrow::Cow<'static,str>) -> Self {
+        match value {
+            std::borrow::Cow::Borrowed(s) => Self::from(s),
+            std::borrow::Cow::Owned(s) => Self::from(s),
+        }
+    }
+}
+
 impl From<String> for ByteStr {
     fn from(value: String) -> Self {
         Self { bytes: Bytes::from(value.into_bytes()) }

@@ -8,93 +8,52 @@ mod worker;
 pub use config::PoolConfig;
 
 #[derive(Clone, Debug)]
-enum PoolHandle {
-    #[cfg(feature = "tokio")]
-    Worker(worker::WorkerHandle),
-}
-
-impl PoolHandle {
-    fn new_worker(_config: PoolConfig) -> PoolHandle {
-        #[cfg(feature = "tokio")]
-        {
-            let (handle,worker) = worker::WorkerHandle::new(_config);
-            tokio::spawn(worker);
-            Self::Worker(handle)
-        }
-
-        #[cfg(not(feature = "tokio"))]
-        {
-            panic!("runtime disabled")
-        }
-    }
-
-    fn poll_acquire(&mut self, _cx: &mut std::task::Context) -> std::task::Poll<Result<PgConnection>> {
-        #[cfg(feature = "tokio")]
-        match self {
-            PoolHandle::Worker(w) => w.poll_acquire(_cx),
-        }
-
-        #[cfg(not(feature = "tokio"))]
-        {
-            panic!("runtime disabled")
-        }
-    }
-
-    fn release(&mut self, _conn: PgConnection) {
-        #[cfg(feature = "tokio")]
-        match self {
-            PoolHandle::Worker(w) => w.release(_conn),
-        }
-    }
-}
-
-#[derive(Debug)]
 pub struct Pool {
-    conn: Option<PgConnection>,
-    handle: PoolHandle,
-}
-
-impl Clone for Pool {
-    fn clone(&self) -> Self {
-        Self {
-            conn: None,
-            handle: self.handle.clone(),
-        }
-    }
+    #[cfg(feature = "tokio")]
+    handle: worker::WorkerHandle,
 }
 
 impl Pool {
     pub fn connect_lazy_with(config: PoolConfig) -> Self {
-        Self {
-            conn: None,
-            handle: PoolHandle::new_worker(config),
+        #[cfg(feature = "tokio")]
+        {
+            let (handle,worker) = worker::WorkerHandle::new(config);
+            tokio::spawn(worker);
+            Self { handle }
+        }
+
+        #[cfg(not(feature = "tokio"))]
+        {
+            let _ = config;
+            panic!("runtime disabled")
         }
     }
 
     pub fn connect_with(config: PoolConfig) -> Result<Self> {
-        let me = Self {
-            conn: None,
-            handle: PoolHandle::new_worker(config),
-        };
-        Ok(me)
-    }
+        #[cfg(feature = "tokio")]
+        {
+            let (handle,worker) = worker::WorkerHandle::new(config);
+            tokio::spawn(worker);
+            Ok(Self { handle })
+        }
 
-    fn poll_connection<'a>(&'a mut self, cx: &mut std::task::Context) -> std::task::Poll<Result<&'a mut PgConnection>> {
-        match self.conn.is_some() {
-            true => std::task::Poll::Ready(Ok(self.conn.as_mut().expect("for fuck sake"))),
-            false => {
-                let acq = std::task::ready!(self.handle.poll_acquire(cx)?);
-                assert!(self.conn.replace(acq).is_none());
-                std::task::Poll::Ready(Ok(self.conn.as_mut().unwrap()))
-            }
+        #[cfg(not(feature = "tokio"))]
+        {
+            let _ = config;
+            panic!("runtime disabled")
         }
     }
-}
 
-impl Drop for Pool {
-    fn drop(&mut self) {
-        if let Some(conn) = self.conn.take() {
-            self.handle.release(conn);
+    fn poll_connection(&mut self, cx: &mut std::task::Context) -> std::task::Poll<Result<PgConnection>> {
+        #[cfg(feature = "tokio")]
+        {
+            self.handle.poll_acquire(cx)
+        }
+
+        #[cfg(not(feature = "tokio"))]
+        {
+            let _ = cx;
+            panic!("runtime disabled")
         }
     }
 }
@@ -119,6 +78,17 @@ impl Executor for &Pool {
     }
 }
 
+impl Executor for &mut Pool {
+    type Transport = PoolConnection;
+
+    type Future = PoolConnect;
+
+    fn connection(self) -> Self::Future {
+        PoolConnect { pool: Some(self.clone()) }
+    }
+}
+
+#[derive(Debug)]
 pub struct PoolConnect {
     pool: Option<Pool>,
 }
@@ -127,43 +97,58 @@ impl Future for PoolConnect {
     type Output = Result<PoolConnection>;
 
     fn poll(mut self: std::pin::Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> std::task::Poll<Self::Output> {
-        std::task::ready!(self.pool.as_mut().unwrap().poll_connection(cx)?);
-        std::task::Poll::Ready(Ok(PoolConnection { pool: self.pool.take().unwrap() }))
+        let conn = std::task::ready!(self.pool.as_mut().unwrap().poll_connection(cx)?);
+        std::task::Poll::Ready(Ok(PoolConnection { conn: Some(conn), pool: self.pool.take().unwrap() }))
     }
 }
 
 /// `PoolConnection` is a `Pool` which have guaranteed connection.
+#[derive(Debug)]
 pub struct PoolConnection {
     pool: Pool,
+    conn: Option<PgConnection>,
+}
+
+impl PoolConnection {
+    pub fn pool(&self) -> &Pool {
+        &self.pool
+    }
+}
+
+#[cfg(feature = "tokio")]
+impl Drop for PoolConnection {
+    fn drop(&mut self) {
+        self.pool.handle.release(self.conn.take().unwrap());
+    }
 }
 
 impl PgTransport for PoolConnection {
     fn poll_flush(&mut self, cx: &mut std::task::Context) -> std::task::Poll<std::io::Result<()>> {
-        self.pool.conn.as_mut().unwrap().poll_flush(cx)
+        self.conn.as_mut().unwrap().poll_flush(cx)
     }
 
     fn poll_recv<B: crate::postgres::BackendProtocol>(&mut self, cx: &mut std::task::Context) -> std::task::Poll<Result<B>> {
-        self.pool.conn.as_mut().unwrap().poll_recv(cx)
+        self.conn.as_mut().unwrap().poll_recv(cx)
     }
 
     fn ready_request(&mut self) {
-        self.pool.conn.as_mut().unwrap().ready_request();
+        self.conn.as_mut().unwrap().ready_request();
     }
 
     fn send<F: crate::postgres::FrontendProtocol>(&mut self, message: F) {
-        self.pool.conn.as_mut().unwrap().send(message);
+        self.conn.as_mut().unwrap().send(message);
     }
 
     fn send_startup(&mut self, startup: crate::postgres::frontend::Startup) {
-        self.pool.conn.as_mut().unwrap().send_startup(startup);
+        self.conn.as_mut().unwrap().send_startup(startup);
     }
 
     fn get_stmt(&mut self, sql: u64) -> Option<crate::statement::StatementName> {
-        self.pool.conn.as_mut().unwrap().get_stmt(sql)
+        self.conn.as_mut().unwrap().get_stmt(sql)
     }
 
     fn add_stmt(&mut self, sql: u64, id: crate::statement::StatementName) {
-        self.pool.conn.as_mut().unwrap().add_stmt(sql, id);
+        self.conn.as_mut().unwrap().add_stmt(sql, id);
     }
 }
 

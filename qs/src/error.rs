@@ -1,7 +1,7 @@
 use std::{fmt, io, str::Utf8Error};
 
 use crate::{
-    options::ConfigError,
+    connection::ConfigError,
     postgres::{ErrorResponse, ProtocolError},
     row::DecodeError,
 };

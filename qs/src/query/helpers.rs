@@ -1,7 +1,7 @@
 use crate::{
     Error, Result,
     error::ErrorKind,
-    options::StartupOptions,
+    connection::StartupConfig,
     postgres::{
         BackendMessage,
         backend::{self, RowDescription},
@@ -21,11 +21,11 @@ pub struct StartupResponse {
 ///
 /// <https://www.postgresql.org/docs/17/protocol-flow.html#PROTOCOL-FLOW-START-UP>
 pub async fn startup<'a, IO: PgTransport>(
-    opt: impl Into<StartupOptions<'a>>,
+    opt: impl Into<StartupConfig<'a>>,
     mut io: IO,
 ) -> Result<StartupResponse> {
 
-    let opt: StartupOptions = opt.into();
+    let opt: StartupConfig = opt.into();
 
     // To begin a session, a frontend opens a connection to the server and sends a startup message.
 

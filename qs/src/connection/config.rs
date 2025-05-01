@@ -1,15 +1,10 @@
 //! Postgres configuration.
 use crate::common::{ByteStr, Url};
+use super::{ConfigError, startup};
 
-mod error;
-mod startup;
-
-pub use error::ConfigError;
-pub use startup::StartupOptions;
-
-/// Postgres connection options.
+/// Postgres connection config.
 #[derive(Clone, Debug)]
-pub struct PgOptions {
+pub struct PgConfig {
     pub(crate) user: ByteStr,
     pub(crate) pass: ByteStr,
     #[allow(unused)] // socket used later
@@ -19,23 +14,23 @@ pub struct PgOptions {
     pub(crate) dbname: ByteStr,
 }
 
-impl<'a> From<&'a PgOptions> for startup::StartupOptions<'a> {
-    fn from(me: &'a PgOptions) -> startup::StartupOptions<'a> {
-        startup::StartupOptions::new(me.user.as_ref())
+impl<'a> From<&'a PgConfig> for startup::StartupConfig<'a> {
+    fn from(me: &'a PgConfig) -> startup::StartupConfig<'a> {
+        startup::StartupConfig::new(me.user.as_ref())
             .database(me.dbname.as_ref())
             .password(me.pass.as_ref())
     }
 }
 
-impl PgOptions {
+impl PgConfig {
     // TODO: postgres env var convention
     // pub fn new() { }
 
-    pub fn parse(url: &str) -> Result<PgOptions, ConfigError> {
+    pub fn parse(url: &str) -> Result<PgConfig, ConfigError> {
         Self::parse_inner(ByteStr::copy_from_str(url))
     }
 
-    pub fn parse_static(url: &'static str) -> Result<PgOptions, ConfigError> {
+    pub fn parse_static(url: &'static str) -> Result<PgConfig, ConfigError> {
         Self::parse_inner(ByteStr::from_static(url))
     }
 
@@ -53,7 +48,7 @@ impl PgOptions {
     }
 }
 
-impl std::str::FromStr for PgOptions {
+impl std::str::FromStr for PgConfig {
     type Err = ConfigError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {

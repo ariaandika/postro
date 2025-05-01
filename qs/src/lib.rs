@@ -24,7 +24,6 @@ pub mod query;
 pub mod transaction;
 
 // Connection
-pub mod options;
 pub mod connection;
 pub mod pool;
 
@@ -34,8 +33,7 @@ mod error;
 pub use encode::Encode;
 pub use row::FromRow;
 
-pub use options::PgOptions;
-pub use connection::PgConnection;
+pub use connection::{PgConnection, PgConfig};
 pub use query::{query, execute};
 
 pub use postgres::{ProtocolError, ErrorResponse, NoticeResponse};

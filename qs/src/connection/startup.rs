@@ -1,17 +1,17 @@
 use std::borrow::Cow;
 
-/// An option for postgres startup phase.
+/// An config for postgres startup phase.
 ///
 /// <https://www.postgresql.org/docs/current/protocol-flow.html#PROTOCOL-FLOW-START-UP>
-pub struct StartupOptions<'a> {
+pub struct StartupConfig<'a> {
     user: Cow<'a,str>,
     database: Option<Cow<'a,str>>,
     password: Option<Cow<'a,str>>,
     replication: Option<Cow<'a,str>>,
 }
 
-impl<'a> StartupOptions<'a> {
-    /// Create new options, the database user name is required
+impl<'a> StartupConfig<'a> {
+    /// Create new config, the database user name is required
     pub fn new(user: impl Into<Cow<'a, str>>) -> Self {
         Self { user: user.into(), database: None, password: None, replication: None  }
     }

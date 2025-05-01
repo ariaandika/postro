@@ -1,11 +1,9 @@
 use std::fmt;
 
-use crate::common::ParseError;
-
 /// Error when parsing config.
 pub enum ConfigError {
     /// Error parsing url.
-    Parse(String),
+    Parse(&'static str),
 }
 
 impl std::error::Error for ConfigError { }
@@ -23,16 +21,4 @@ impl fmt::Debug for ConfigError {
         write!(f, "\"{self}\"")
     }
 }
-
-macro_rules! from {
-    (<$ty:ty>$pat:pat => $body:expr) => {
-        impl From<$ty> for ConfigError {
-            fn from($pat: $ty) -> Self {
-                $body
-            }
-        }
-    };
-}
-
-from!(<ParseError>e => Self::Parse(e.to_string()));
 

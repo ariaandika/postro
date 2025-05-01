@@ -1,5 +1,5 @@
 //! Postgres configuration.
-use crate::common::{ByteStr, Url};
+use crate::common::ByteStr;
 use super::{ConfigError, startup};
 
 /// Postgres connection config.
@@ -37,13 +37,35 @@ impl PgConfig {
     fn parse_inner(url: ByteStr) -> Result<Self, ConfigError> {
         // TODO: socket path input
 
-        let url = Url::parse(url)?;
+        let mut read = url.as_str();
+        macro_rules! eat {
+            (@ $delim:literal,$id:tt,$len:literal) => {{
+                let Some(idx) = read.find($delim) else {
+                    return Err(ConfigError::Parse(concat!(stringify!($id), " missing")))
+                };
+                let capture = &read[..idx];
+                read = &read[idx + $len..];
+                url.slice_ref(capture)
+            }};
+            ($delim:literal,$id:tt) => {
+                eat!(@ $delim,$id,1)
+            };
+            ($delim:literal,$id:tt,$len:literal) => {
+                eat!(@ $delim,$id,$len)
+            };
+        }
 
-        // if !matches!(url.scheme.as_ref(), "postgres" | "postgresql") {
-        //     return err!(Configuration, "expected schema to be `postgres`");
-        // }
+        let _scheme = eat!("://", user, 3);
+        let user = eat!(':', password);
+        let pass = eat!('@', host);
+        let host = eat!(':', port);
+        let port = eat!('/', dbname);
+        let dbname = url.slice_ref(read);
 
-        let Url { user, pass, host, port, dbname, .. } = url;
+        let Ok(port) = port.parse() else {
+            return Err(ConfigError::Parse("invalid port"))
+        };
+
         Ok(Self { user, pass, host, port, dbname, socket: None })
     }
 }

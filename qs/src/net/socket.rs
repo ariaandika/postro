@@ -21,6 +21,8 @@ impl Socket {
         {
             let socket = tokio::net::TcpStream::connect((host,port)).await?;
             socket.set_nodelay(true)?;
+            #[cfg(feature = "log")]
+            log::debug!("Connected via TCP Stream: {:?}", socket.local_addr());
             Ok(Socket { kind: Kind::TokioTcp(socket) })
         }
 
@@ -35,6 +37,8 @@ impl Socket {
         #[cfg(all(feature = "tokio", unix))]
         {
             let socket = tokio::net::UnixStream::connect(path).await?;
+            #[cfg(feature = "log")]
+            log::debug!("Connected via Unix socket: {:?}", socket.peer_addr()?.as_pathname());
             Ok(Socket { kind: Kind::TokioUnixSocket(socket) })
         }
 

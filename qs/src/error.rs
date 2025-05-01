@@ -1,7 +1,7 @@
 use std::{fmt, io, str::Utf8Error};
 
 use crate::{
-    connection::ConfigError,
+    connection::ParseError,
     postgres::{ErrorResponse, ProtocolError},
     row::DecodeError,
 };
@@ -17,7 +17,7 @@ pub struct Error {
 
 /// All possible error from qs library.
 pub enum ErrorKind {
-    Config(ConfigError),
+    Config(ParseError),
     Protocol(ProtocolError),
     Io(io::Error),
     Database(ErrorResponse),
@@ -95,7 +95,7 @@ from!(<ErrorKind>e => e);
 from!(<Utf8Error>e => ErrorKind::Utf8(e));
 from!(<ProtocolError>e => ErrorKind::Protocol(e));
 from!(<DecodeError>e => ErrorKind::Decode(e));
-from!(<ConfigError>e => ErrorKind::Config(e));
+from!(<ParseError>e => ErrorKind::Config(e));
 from!(<std::io::Error>e => ErrorKind::Io(e));
 from!(<ErrorResponse>e => ErrorKind::Database(e));
 

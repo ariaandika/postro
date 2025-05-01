@@ -22,12 +22,10 @@ use crate::{
 };
 
 mod config;
-mod error;
 mod startup;
 
-pub use config::PgConfig;
-pub use error::ConfigError;
-pub use startup::StartupConfig;
+pub use config::{PgConfig, ParseError};
+pub use startup::{StartupConfig, StartupConfigBuilder};
 
 const DEFAULT_BUF_CAPACITY: usize = 1024;
 const DEFAULT_PREPARED_STMT_CACHE: NonZeroUsize = NonZeroUsize::new(24).unwrap();
@@ -55,6 +53,13 @@ pub struct PgConnection {
 }
 
 impl PgConnection {
+    /// Perform a startup message via environment variable.
+    ///
+    /// See [`PgConfig::from_env`] for more details.
+    pub fn connect_env() -> impl Future<Output = Result<PgConnection>> {
+        Self::connect_with(PgConfig::from_env())
+    }
+
     /// Perform a startup message via url.
     pub async fn connect(url: &str) -> Result<Self> {
         Self::connect_with(PgConfig::parse(url)?).await
@@ -62,9 +67,14 @@ impl PgConnection {
 
     /// Perform a startup message with config.
     pub async fn connect_with(opt: PgConfig) -> Result<Self> {
-        let socket = match &*opt.host {
-            "localhost" => Socket::connect_socket(&(format!("/run/postgresql/.s.PGSQL.{}",opt.port))).await?,
-            _ => Socket::connect_tcp(&opt.host, opt.port).await?,
+        let socket = if opt.host == "localhost" {
+            let socket = Socket::connect_socket(&(format!("/run/postgresql/.s.PGSQL.{}",opt.port))).await;
+            match socket {
+                Ok(ok) => ok,
+                Err(_) => Socket::connect_tcp(&opt.host, opt.port).await?,
+            }
+        } else {
+            Socket::connect_tcp(&opt.host, opt.port).await?
         };
 
         let mut me = Self {
@@ -247,3 +257,4 @@ impl Executor for PgConnection {
         std::future::ready(Ok(self))
     }
 }
+

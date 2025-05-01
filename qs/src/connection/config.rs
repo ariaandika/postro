@@ -2,7 +2,6 @@
 use std::{borrow::Cow, env::var, fmt};
 
 use crate::common::ByteStr;
-use super::{ConfigError, startup};
 
 /// Postgres connection config.
 #[derive(Clone, Debug)]
@@ -14,14 +13,6 @@ pub struct PgConfig {
     pub(crate) host: ByteStr,
     pub(crate) port: u16,
     pub(crate) dbname: ByteStr,
-}
-
-impl<'a> From<&'a PgConfig> for startup::StartupConfig<'a> {
-    fn from(me: &'a PgConfig) -> startup::StartupConfig<'a> {
-        startup::StartupConfig::new(me.user.as_ref())
-            .database(me.dbname.as_ref())
-            .password(me.pass.as_ref())
-    }
 }
 
 impl PgConfig {
@@ -53,22 +44,21 @@ impl PgConfig {
         Self { user, pass, socket, host, port, dbname }
     }
 
-    pub fn parse(url: &str) -> Result<PgConfig, ConfigError> {
+    pub fn parse(url: &str) -> Result<PgConfig, ParseError> {
         Self::parse_inner(ByteStr::copy_from_str(url))
     }
 
-    pub fn parse_static(url: &'static str) -> Result<PgConfig, ConfigError> {
+    pub fn parse_static(url: &'static str) -> Result<PgConfig, ParseError> {
         Self::parse_inner(ByteStr::from_static(url))
     }
 
-    fn parse_inner(url: ByteStr) -> Result<Self, ConfigError> {
-        // TODO: socket path input
-
+    fn parse_inner(url: ByteStr) -> Result<Self, ParseError> {
         let mut read = url.as_str();
+
         macro_rules! eat {
             (@ $delim:literal,$id:tt,$len:literal) => {{
                 let Some(idx) = read.find($delim) else {
-                    return Err(ConfigError::Parse(concat!(stringify!($id), " missing")))
+                    return Err(ParseError { reason: concat!(stringify!($id), " missing").into() })
                 };
                 let capture = &read[..idx];
                 read = &read[idx + $len..];
@@ -90,7 +80,7 @@ impl PgConfig {
         let dbname = url.slice_ref(read);
 
         let Ok(port) = port.parse() else {
-            return Err(ConfigError::Parse("invalid port"))
+            return Err(ParseError { reason: "invalid port".into() })
         };
 
         Ok(Self { user, pass, host, port, dbname, socket: None })
@@ -98,10 +88,32 @@ impl PgConfig {
 }
 
 impl std::str::FromStr for PgConfig {
-    type Err = ConfigError;
+    type Err = ParseError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Self::parse(s)
+    }
+}
+
+/// Error when parsing url.
+pub struct ParseError {
+    pub(crate) reason: Cow<'static,str>,
+}
+
+impl std::error::Error for ParseError { }
+
+impl fmt::Display for ParseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if f.alternate() {
+            return f.write_str(&self.reason)
+        }
+        write!(f, "failed to parse url: {}", self.reason)
+    }
+}
+
+impl fmt::Debug for ParseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "\"{self}\"")
     }
 }
 

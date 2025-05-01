@@ -10,7 +10,8 @@ use crate::{
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
 pub struct Error {
-    bt: std::backtrace::Backtrace,
+    context: String,
+    backtrace: std::backtrace::Backtrace,
     kind: ErrorKind,
 }
 
@@ -31,29 +32,16 @@ impl std::error::Error for Error { }
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match &self.kind {
-            ErrorKind::Config(e) => write!(f, "Configuration error: {e}"),
-            ErrorKind::Protocol(e) => write!(f, "{e}"),
-            ErrorKind::Io(e) => write!(f, "{e}"),
-            ErrorKind::Database(e) => write!(f, "{e}"),
-            ErrorKind::UnsupportedAuth => write!(f, "Auth not supported"),
-            ErrorKind::Decode(e) => write!(f, "{e}"),
-            ErrorKind::MissmatchDataType => write!(f, "Missmatch datatype"),
-            ErrorKind::ColumnIndexOutOfBounds => write!(f, "Column index out of bounds"),
-            ErrorKind::Utf8(e) => write!(f, "{e}"),
-        }?;
+        if !self.context.is_empty() {
+            write!(f, "{}: ", self.context)?;
+        }
 
-        if let std::backtrace::BacktraceStatus::Captured = self.bt.status() {
-            let mut backtrace = self.bt.to_string();
+        fmt::Display::fmt(&self.kind, f)?;
+
+        if let std::backtrace::BacktraceStatus::Captured = self.backtrace.status() {
+            let mut backtrace = self.backtrace.to_string();
             write!(f, "\n\n")?;
-            if backtrace.starts_with("stack backtrace:") {
-                // Capitalize to match "Caused by:"
-                backtrace.replace_range(0..1, "S");
-            } else {
-                // "stack backtrace:" prefix was removed in
-                // https://github.com/rust-lang/backtrace-rs/pull/286
-                writeln!(f, "Stack backtrace:")?;
-            }
+            writeln!(f, "Stack backtrace:")?;
             backtrace.truncate(backtrace.trim_end().len());
             write!(f, "{}", backtrace)?;
         }
@@ -68,12 +56,36 @@ impl fmt::Debug for Error {
     }
 }
 
+impl std::error::Error for ErrorKind { }
+
+impl fmt::Display for ErrorKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Config(e) => write!(f, "Configuration error: {e}"),
+            Self::Protocol(e) => write!(f, "{e}"),
+            Self::Io(e) => write!(f, "{e}"),
+            Self::Database(e) => write!(f, "{e}"),
+            Self::UnsupportedAuth => write!(f, "Auth not supported"),
+            Self::Decode(e) => write!(f, "{e}"),
+            Self::MissmatchDataType => write!(f, "Missmatch datatype"),
+            Self::ColumnIndexOutOfBounds => write!(f, "Column index out of bounds"),
+            Self::Utf8(e) => write!(f, "{e}"),
+        }
+    }
+}
+
+impl fmt::Debug for ErrorKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "\"{self}\"")
+    }
+}
+
 macro_rules! from {
     (<$ty:ty>$pat:pat => $body:expr) => {
         impl From<$ty> for Error {
             fn from($pat: $ty) -> Self {
-                let bt = std::backtrace::Backtrace::capture();
-                Self { bt, kind: $body }
+                let backtrace = std::backtrace::Backtrace::capture();
+                Self { context: String::new(), backtrace, kind: $body }
             }
         }
     };

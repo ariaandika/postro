@@ -1,4 +1,6 @@
 //! Postgres configuration.
+use std::{borrow::Cow, env::var, fmt};
+
 use crate::common::ByteStr;
 use super::{ConfigError, startup};
 
@@ -23,8 +25,33 @@ impl<'a> From<&'a PgConfig> for startup::StartupConfig<'a> {
 }
 
 impl PgConfig {
-    // TODO: postgres env var convention
-    // pub fn new() { }
+    pub fn from_env() -> PgConfig {
+        let url = var("DATABASE_URL").ok().and_then(|e|PgConfig::parse_inner(e.into()).ok());
+
+        macro_rules! env {
+            ($name:literal,$or:ident,$def:expr) => {
+                match (var($name),url.as_ref()) {
+                    (Ok(ok),_) => ok.into(),
+                    (Err(_),Some(e)) => e.$or.clone(),
+                    (Err(_),None) => $def.into(),
+                }
+            };
+        }
+
+        let user = env!("PGUSER",user,"postgres");
+        let pass = env!("PGPASS",pass,"");
+        let host = env!("PGHOST",host,"localhost");
+        let dbname = env!("PGDATABASE",dbname,user.clone());
+        let socket = url.as_ref().and_then(|e|e.socket.clone());
+
+        let port = match (var("PGPORT"),url.as_ref()) {
+            (Ok(ok),_) => ok.parse().unwrap_or(5432),
+            (Err(_),Some(e)) => e.port,
+            (Err(_),None) => 5432,
+        };
+
+        Self { user, pass, socket, host, port, dbname }
+    }
 
     pub fn parse(url: &str) -> Result<PgConfig, ConfigError> {
         Self::parse_inner(ByteStr::copy_from_str(url))

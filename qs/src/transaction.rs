@@ -13,9 +13,28 @@ use crate::{
 
 /// An RAII implementation of transaction scope.
 ///
+/// To begin a transaction, use [`begin`][1] function.
+///
 /// To commit transaction, use [`Transaction::commit`].
 ///
 /// If not commited, when this structure is dropped, transaction will be rolled back.
+///
+/// # Example
+///
+/// ```no_run
+/// # async fn test(mut conn: qs::Connection) -> qs::Result<()> {
+/// let mut tx = qs::query::begin(&mut conn).await?;
+///
+/// qs::execute("insert into post(name) values('foo')", &mut tx)
+///     .execute()
+///     .await?;
+///
+/// tx.commit().await?;
+/// # Ok(())
+/// # }
+/// ```
+///
+/// [1]: crate::query::begin
 pub struct Transaction<IO: PgTransport> {
     io: IO,
     commited: bool,
@@ -29,6 +48,7 @@ where
         Self { io, commited: false }
     }
 
+    /// Commit transaction.
     pub async fn commit(mut self) -> Result<()> {
         self.io.send(frontend::Query { sql: "COMMIT" });
         self.io.flush().await?;

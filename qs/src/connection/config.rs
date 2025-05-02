@@ -1,7 +1,7 @@
 //! Postgres configuration.
 use std::{borrow::Cow, env::var, fmt};
 
-use crate::common::ByteStr;
+use crate::{common::ByteStr, query::StartupConfig};
 
 /// Postgres connection config.
 #[derive(Clone, Debug)]
@@ -101,6 +101,17 @@ impl Config {
         };
 
         Ok(Self { user, pass, host, port, dbname, socket: None })
+    }
+}
+
+impl<'a> From<&'a Config> for StartupConfig<'a> {
+    fn from(me: &'a Config) -> StartupConfig<'a> {
+        StartupConfig {
+            user: me.user.as_str().into(),
+            database: Some(me.user.as_str().into()),
+            password: Some(me.pass.as_str().into()),
+            replication: None,
+        }
     }
 }
 

@@ -23,10 +23,8 @@ use crate::{
 };
 
 mod config;
-mod startup;
 
 pub use config::{Config, ParseError};
-pub use startup::{StartupConfig, StartupConfigBuilder};
 
 const DEFAULT_BUF_CAPACITY: usize = 1024;
 const DEFAULT_PREPARED_STMT_CACHE: NonZeroUsize = NonZeroUsize::new(24).unwrap();

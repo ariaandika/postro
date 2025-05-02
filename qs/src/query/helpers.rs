@@ -1,7 +1,8 @@
+use std::borrow::Cow;
+
 use crate::{
     Error, Result,
     error::ErrorKind,
-    connection::StartupConfig,
     postgres::{
         BackendMessage,
         backend::{self, RowDescription},
@@ -11,9 +12,23 @@ use crate::{
     transport::{PgTransport, PgTransportExt},
 };
 
+/// Config for postgres startup phase.
+///
+/// <https://www.postgresql.org/docs/current/protocol-flow.html#PROTOCOL-FLOW-START-UP>
+pub struct StartupConfig<'a> {
+    pub(crate) user: Cow<'a,str>,
+    pub(crate) database: Option<Cow<'a,str>>,
+    pub(crate) password: Option<Cow<'a,str>>,
+    pub(crate) replication: Option<Cow<'a,str>>,
+}
+
 /// Startup phase successful response.
 pub struct StartupResponse {
+    /// This message provides secret-key data that the frontend must
+    /// save if it wants to be able to issue cancel requests later.
     pub backend_key_data: backend::BackendKeyData,
+    /// This message informs the frontend about the current (initial) setting
+    /// of backend parameters, such as client_encoding or date style.
     pub param_status: Vec<backend::ParameterStatus>,
 }
 
@@ -79,7 +94,6 @@ pub async fn startup<'a, IO: PgTransport>(
             ReadyForQuery(_) => break,
             BackendKeyData(new_key_data) => key_data = Some(new_key_data),
             ParameterStatus(param) => param_status.push(param),
-            NoticeResponse(warn) => eprintln!("{warn}"),
             f => Err(f.unexpected("startup phase"))?,
         }
     }
@@ -119,3 +133,54 @@ pub async fn simple_query<R: FromRow, IO: PgTransport>(sql: &str, mut io: IO) ->
     Ok(rows)
 }
 
+impl<'a> StartupConfig<'a> {
+    /// Create new config, the database user name is required.
+    pub fn new(user: impl Into<Cow<'a, str>>) -> Self {
+        Self { user: user.into(), database: None, password: None, replication: None  }
+    }
+
+    /// The database user name to connect as.
+    pub fn user(&self) -> &str {
+        &self.user
+    }
+
+    /// The database to connect to. Defaults to the user name.
+    pub fn database(&self) -> Option<&str> {
+        self.database.as_ref().map(<_>::as_ref)
+    }
+
+    /// The database to connect to. Defaults to the user name.
+    pub fn set_database(&mut self, database: impl Into<Cow<'a,str>>) {
+        self.database = Some(database.into());
+    }
+
+    /// Authentication password, the default is empty string.
+    pub fn password(&self) -> Option<&str> {
+        self.password.as_ref().map(<_>::as_ref)
+    }
+
+    /// Authentication password, the default is empty string.
+    pub fn set_password(&mut self, password: impl Into<Cow<'a,str>>) {
+        self.password = Some(password.into());
+    }
+
+    /// Used to connect in streaming replication mode, where a small set of replication commands can be issued
+    /// instead of SQL statements.
+    ///
+    /// Value can be true, false, or database, and the default is false.
+    ///
+    /// See [Section 53.4](https://www.postgresql.org/docs/current/protocol-replication.html) for details.
+    pub fn replication(&self) -> Option<&str> {
+        self.replication.as_ref().map(<_>::as_ref)
+    }
+
+    /// Used to connect in streaming replication mode, where a small set of replication commands can be issued
+    /// instead of SQL statements.
+    ///
+    /// Value can be true, false, or database, and the default is false.
+    ///
+    /// See [Section 53.4](https://www.postgresql.org/docs/current/protocol-replication.html) for details.
+    pub fn set_replication(&mut self, replication: impl Into<Cow<'a,str>>) {
+        self.replication = Some(replication.into());
+    }
+}

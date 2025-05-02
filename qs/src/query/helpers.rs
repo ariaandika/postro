@@ -29,9 +29,6 @@ pub struct StartupResponse {
     /// This message provides secret-key data that the frontend must
     /// save if it wants to be able to issue cancel requests later.
     pub backend_key_data: backend::BackendKeyData,
-    /// This message informs the frontend about the current (initial) setting
-    /// of backend parameters, such as client_encoding or date style.
-    pub param_status: Vec<backend::ParameterStatus>,
 }
 
 /// Perform a startup message.
@@ -87,7 +84,6 @@ pub async fn startup<'a, IO: PgTransport>(
     // were given in the startup message. If successful, these values become session defaults.
     // An error causes ErrorResponse and exit.
 
-    let mut param_status = vec![];
     let mut key_data = None;
 
     loop {
@@ -95,13 +91,12 @@ pub async fn startup<'a, IO: PgTransport>(
         match io.recv().await? {
             ReadyForQuery(_) => break,
             BackendKeyData(new_key_data) => key_data = Some(new_key_data),
-            ParameterStatus(param) => param_status.push(param),
+            // NOTE: ParameterStatus will get eaten by the IO
             f => Err(f.unexpected("startup phase"))?,
         }
     }
 
     Ok(StartupResponse {
-        param_status,
         backend_key_data: key_data.expect("postgres never send backend key data"),
     })
 }

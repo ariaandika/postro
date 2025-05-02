@@ -197,6 +197,7 @@ impl BackendProtocol for Authentication {
 /// Identifies the message as cancellation key data.
 ///
 /// The frontend must save these values if it wishes to be able to issue CancelRequest messages later.
+#[derive(Clone, Copy)]
 pub struct BackendKeyData {
     /// The process ID of this backend.
     pub process_id: u32,

@@ -17,7 +17,7 @@ use crate::{
     postgres::{
         BackendProtocol, ErrorResponse, FrontendProtocol, NoticeResponse, backend, frontend,
     },
-    query::{self, StartupResponse},
+    query,
     statement::StatementName,
     transport::{PgTransport, PgTransportExt},
 };
@@ -41,6 +41,8 @@ const DEFAULT_PREPARED_STMT_CACHE: NonZeroUsize = NonZeroUsize::new(24).unwrap()
 /// Connection handle `Sync` after receive an `ErrorResponse` message.
 /// This is postgres specific and happens transparently, most users
 /// does not need to worry about this.
+///
+/// Connection will also consume `ParameterStatus` message
 ///
 /// # Pending Messages
 ///
@@ -72,6 +74,7 @@ pub struct Connection {
     // diagnostic
     connected_at: Instant,
     sync_pending: usize,
+    backend_key: backend::BackendKeyData,
 }
 
 impl Connection {
@@ -117,13 +120,12 @@ impl Connection {
             write_buf: BytesMut::with_capacity(DEFAULT_BUF_CAPACITY),
             stmts: LruCache::new(DEFAULT_PREPARED_STMT_CACHE),
             connected_at: Instant::now(),
+            backend_key: backend::BackendKeyData { process_id: 0, secret_key: 0 },
             sync_pending: 0,
         };
 
-        let StartupResponse {
-            backend_key_data: _,
-            param_status: _,
-        } = query::startup(&config, &mut me).await?;
+        let res = query::startup(&config, &mut me).await?;
+        me.backend_key = res.backend_key_data;
 
         Ok(me)
     }
@@ -133,6 +135,13 @@ impl Connection {
     /// Get the [`Instant`] value of when the socket is connected to postgres server.
     pub fn connected_at(&self) -> Instant {
         self.connected_at
+    }
+
+    /// Get the [`BackendKeyData`][1] retrieved from startup message.
+    ///
+    /// [1]: backend::BackendKeyData
+    pub fn backend_key(&self) -> backend::BackendKeyData {
+        self.backend_key
     }
 }
 
@@ -223,6 +232,9 @@ impl Connection {
                     #[cfg(feature = "log")]
                     log::warn!("{}",NoticeResponse::new(_body));
                 },
+                backend::ParameterStatus::MSGTYPE => {
+                    // currently, we dont care about parameter status
+                }
                 backend::ReadyForQuery::MSGTYPE => {
                     self.sync_pending -= 1;
                 },
@@ -260,6 +272,9 @@ impl PgTransport for Connection {
                     log::warn!("{}",NoticeResponse::new(body));
                     continue;
                 },
+                backend::ParameterStatus::MSGTYPE => {
+                    // currently, we dont care about parameter status
+                }
                 _ => return Poll::Ready(Ok(B::decode(msgtype, body)?)),
             }
         }

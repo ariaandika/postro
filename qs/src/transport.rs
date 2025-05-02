@@ -10,13 +10,6 @@ use crate::{
 };
 
 /// A buffered stream which can send and receive postgres message.
-//
-// Sync Operation that can be queued:
-//
-// - close DataRow stream, can be defered to ReadyForQuery
-// - close connection
-// - close prepared statement
-// - transaction rollback operation, can be defered to ReadyForQuery
 pub trait PgTransport {
     /// Poll to flush the underlying io.
     fn poll_flush(&mut self, cx: &mut Context) -> Poll<io::Result<()>>;
@@ -38,7 +31,7 @@ pub trait PgTransport {
     /// Send message to the backend.
     ///
     /// Note that this send is buffered, caller must also call
-    /// [`poll_flush`][1] or [`flush`][2] afterwards
+    /// [`poll_flush`][1] or [`flush`][2] afterwards.
     ///
     /// [1]: PgTransport::poll_flush
     /// [2]: PgTransportExt::flush
@@ -54,7 +47,7 @@ pub trait PgTransport {
     /// [1]: frontend::Startup
     fn send_startup(&mut self, startup: frontend::Startup);
 
-    /// Check for already prepared statement
+    /// Check for already prepared statement.
     fn get_stmt(&mut self, sql: u64) -> Option<StatementName>;
 
     /// Add new prepared statement.

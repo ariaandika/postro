@@ -114,8 +114,8 @@ encode!(<i32>self => ValueRef::inline(&self.to_be_bytes()));
 encode!(<'a,str>self => ValueRef::Slice(self.as_bytes()));
 encode!(<'a,String>self => ValueRef::Slice(self.as_bytes()));
 
-impl<'q> std::fmt::Debug for Encoded<'q> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl std::fmt::Debug for Encoded<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         f.debug_tuple("Encoded")
             .field(if self.is_null { &"NULL" } else { &self.value })
             .field(&self.oid)

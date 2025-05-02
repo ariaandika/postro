@@ -2,6 +2,7 @@
 //!
 //! <https://www.postgresql.org/docs/current/protocol-message-formats.html>
 use bytes::{BufMut, BytesMut};
+use std::fmt;
 
 use super::{Oid, PgFormat};
 use crate::ext::{BindParams, BufMutExt, StrExt, UsizeExt};
@@ -28,7 +29,7 @@ pub fn write<F: FrontendProtocol>(msg: F, buf: &mut BytesMut) {
 }
 
 /// A type which can be encoded into postgres frontend message
-pub trait FrontendProtocol: std::fmt::Debug {
+pub trait FrontendProtocol: fmt::Debug {
     /// Message type.
     const MSGTYPE: u8;
 
@@ -191,7 +192,7 @@ pub struct Parse<'a,I> {
 
 impl<I> FrontendProtocol for Parse<'_,I>
 where
-    I: IntoIterator<Item = Oid> + std::fmt::Debug,
+    I: IntoIterator<Item = Oid> + fmt::Debug,
 {
     const MSGTYPE: u8 = b'P';
 
@@ -283,10 +284,10 @@ pub struct Bind<'a, ParamFmts, Params, ResultFmts> {
 
 impl<ParamFmts, Params, ResultFmts> FrontendProtocol for Bind<'_, ParamFmts, Params, ResultFmts>
 where
-    ParamFmts: IntoIterator<Item = PgFormat> + std::fmt::Debug,
-    Params: Iterator + ExactSizeIterator + std::fmt::Debug,
+    ParamFmts: IntoIterator<Item = PgFormat> + fmt::Debug,
+    Params: Iterator + ExactSizeIterator + fmt::Debug,
     <Params as Iterator>::Item: BindParams,
-    ResultFmts: IntoIterator<Item = PgFormat> + std::fmt::Debug,
+    ResultFmts: IntoIterator<Item = PgFormat> + fmt::Debug,
 {
     const MSGTYPE: u8 = b'B';
 
@@ -406,8 +407,8 @@ impl FrontendProtocol for Terminate {
 
 // CUSTOM DEBUG
 
-impl<'a> std::fmt::Debug for Describe<'a> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Debug for Describe<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("Describe")
             .field("kind", match self.kind {
                 b'S' => &"Statement('S')",
@@ -419,8 +420,8 @@ impl<'a> std::fmt::Debug for Describe<'a> {
     }
 }
 
-impl<'a, I: std::fmt::Debug> std::fmt::Debug for Parse<'a, I> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl<I: fmt::Debug> fmt::Debug for Parse<'_, I> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("Parse")
             .field("prepare_name", &self.prepare_name)
             .field("sql", &self.sql)
@@ -429,10 +430,10 @@ impl<'a, I: std::fmt::Debug> std::fmt::Debug for Parse<'a, I> {
     }
 }
 
-impl<'a, ParamFmts: std::fmt::Debug, Params: std::fmt::Debug, ResultFmts: std::fmt::Debug>
-    std::fmt::Debug for Bind<'a, ParamFmts, Params, ResultFmts>
+impl<ParamFmts: fmt::Debug, Params: fmt::Debug, ResultFmts: fmt::Debug> fmt::Debug
+    for Bind<'_, ParamFmts, Params, ResultFmts>
 {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("Bind")
             .field("portal_name", &self.portal_name)
             .field("stmt_name", &self.stmt_name)
@@ -443,8 +444,8 @@ impl<'a, ParamFmts: std::fmt::Debug, Params: std::fmt::Debug, ResultFmts: std::f
     }
 }
 
-impl<'a> std::fmt::Debug for PasswordMessage<'a> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Debug for PasswordMessage<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("PasswordMessage")
             .field("password", &"<REDACTED>")
             .finish()

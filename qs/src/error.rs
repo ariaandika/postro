@@ -21,12 +21,31 @@ pub enum ErrorKind {
     Protocol(ProtocolError),
     Io(io::Error),
     Database(ErrorResponse),
+    Utf8(std::str::Utf8Error),
+
     UnsupportedAuth,
     Decode(DecodeError),
-    MissmatchDataType,
-    ColumnIndexOutOfBounds,
-    Utf8(std::str::Utf8Error),
 }
+
+macro_rules! from {
+    (<$ty:ty>$pat:pat => $body:expr) => {
+        impl From<$ty> for Error {
+            fn from($pat: $ty) -> Self {
+                let backtrace = std::backtrace::Backtrace::capture();
+                Self { context: String::new(), backtrace, kind: $body }
+            }
+        }
+    };
+}
+
+from!(<ErrorKind>e => e);
+from!(<ParseError>e => ErrorKind::Config(e));
+from!(<ProtocolError>e => ErrorKind::Protocol(e));
+from!(<std::io::Error>e => ErrorKind::Io(e));
+from!(<ErrorResponse>e => ErrorKind::Database(e));
+from!(<Utf8Error>e => ErrorKind::Utf8(e));
+
+from!(<DecodeError>e => ErrorKind::Decode(e));
 
 impl std::error::Error for Error { }
 
@@ -61,14 +80,12 @@ impl std::error::Error for ErrorKind { }
 impl fmt::Display for ErrorKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Config(e) => write!(f, "Configuration error: {e}"),
+            Self::Config(e) => write!(f, "{e}"),
             Self::Protocol(e) => write!(f, "{e}"),
             Self::Io(e) => write!(f, "{e}"),
             Self::Database(e) => write!(f, "{e}"),
             Self::UnsupportedAuth => write!(f, "Auth not supported"),
             Self::Decode(e) => write!(f, "{e}"),
-            Self::MissmatchDataType => write!(f, "Missmatch datatype"),
-            Self::ColumnIndexOutOfBounds => write!(f, "Column index out of bounds"),
             Self::Utf8(e) => write!(f, "{e}"),
         }
     }
@@ -79,23 +96,4 @@ impl fmt::Debug for ErrorKind {
         write!(f, "\"{self}\"")
     }
 }
-
-macro_rules! from {
-    (<$ty:ty>$pat:pat => $body:expr) => {
-        impl From<$ty> for Error {
-            fn from($pat: $ty) -> Self {
-                let backtrace = std::backtrace::Backtrace::capture();
-                Self { context: String::new(), backtrace, kind: $body }
-            }
-        }
-    };
-}
-
-from!(<ErrorKind>e => e);
-from!(<Utf8Error>e => ErrorKind::Utf8(e));
-from!(<ProtocolError>e => ErrorKind::Protocol(e));
-from!(<DecodeError>e => ErrorKind::Decode(e));
-from!(<ParseError>e => ErrorKind::Config(e));
-from!(<std::io::Error>e => ErrorKind::Io(e));
-from!(<ErrorResponse>e => ErrorKind::Database(e));
 

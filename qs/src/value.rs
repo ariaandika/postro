@@ -55,8 +55,8 @@ impl Buf for ValueRef<'_> {
     }
 }
 
-impl<'a> std::fmt::Debug for ValueRef<'a> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl std::fmt::Debug for ValueRef<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         use crate::ext::FmtExt;
         self.chunk().lossy().fmt(f)
     }

@@ -33,7 +33,7 @@ mod error;
 pub use encode::Encode;
 pub use row::FromRow;
 
-pub use connection::{PgConnection, PgConfig};
+pub use connection::{Connection, Config};
 pub use query::{query, execute};
 
 pub use postgres::{ProtocolError, ErrorResponse, NoticeResponse};

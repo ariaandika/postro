@@ -1,17 +1,17 @@
-use crate::{PgConfig, Result, common::ByteStr};
+use crate::{Config, Result, common::ByteStr};
 
 use super::Pool;
 
 /// Pool configuration builder.
 pub struct PoolConfig {
-    pub(crate) conn: PgConfig,
+    pub(crate) conn: Config,
     pub(crate) max_conn: usize,
 }
 
 impl PoolConfig {
     pub fn new() -> PoolConfig {
         Self {
-            conn: PgConfig {
+            conn: Config {
                 user: ByteStr::default(),
                 pass: ByteStr::default(),
                 socket: None,
@@ -24,7 +24,7 @@ impl PoolConfig {
     }
 
     /// Get connection config.
-    pub fn connection(&self) -> &PgConfig {
+    pub fn connection(&self) -> &Config {
         &self.conn
     }
 
@@ -37,13 +37,13 @@ impl PoolConfig {
 
 impl PoolConfig {
     pub fn connect(mut self, url: &str) -> Result<Pool> {
-        let conn = PgConfig::parse(url)?;
+        let conn = Config::parse(url)?;
         self.conn = conn;
         Pool::connect_with(self)
     }
 
     pub fn connect_lazy(mut self, url: &str) -> Result<Pool> {
-        let conn = PgConfig::parse(url)?;
+        let conn = Config::parse(url)?;
         self.conn = conn;
         Ok(Pool::connect_lazy_with(self))
     }

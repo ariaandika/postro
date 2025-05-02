@@ -1,4 +1,4 @@
-use crate::{PgConnection, Result, executor::Executor, transport::PgTransport};
+use crate::{Connection, Result, executor::Executor, transport::PgTransport};
 
 mod config;
 
@@ -44,7 +44,7 @@ impl Pool {
         }
     }
 
-    fn poll_connection(&mut self, cx: &mut std::task::Context) -> std::task::Poll<Result<PgConnection>> {
+    fn poll_connection(&mut self, cx: &mut std::task::Context) -> std::task::Poll<Result<Connection>> {
         #[cfg(feature = "tokio")]
         {
             self.handle.poll_acquire(cx)
@@ -106,7 +106,7 @@ impl Future for PoolConnect {
 #[derive(Debug)]
 pub struct PoolConnection {
     pool: Pool,
-    conn: Option<PgConnection>,
+    conn: Option<Connection>,
 }
 
 impl PoolConnection {

@@ -1,3 +1,4 @@
+//! Postgres Connection
 use bytes::{Buf, BytesMut};
 use lru::LruCache;
 use std::{
@@ -24,7 +25,7 @@ use crate::{
 mod config;
 mod startup;
 
-pub use config::{PgConfig, ParseError};
+pub use config::{Config, ParseError};
 pub use startup::{StartupConfig, StartupConfigBuilder};
 
 const DEFAULT_BUF_CAPACITY: usize = 1024;
@@ -32,13 +33,36 @@ const DEFAULT_PREPARED_STMT_CACHE: NonZeroUsize = NonZeroUsize::new(24).unwrap()
 
 /// Postgres Connection.
 ///
-/// Connection cache a prepared statement transparently.
+/// # Features
 ///
-/// Connection handle `Sync` after receive an `ErrorResponse` message transparently.
+/// Connection cache a prepared statement. To opt out, use [`once`][1] when querying.
 ///
-/// Connection handle `NoticeResponse` message.
+/// Connection handle `NoticeResponse` message. If the `log` feature is enabled,
+/// `NoticeResponse` will be logged, otherwise it ignored.
+///
+/// Connection handle `Sync` after receive an `ErrorResponse` message.
+/// This is postgres specific and happens transparently, most users
+/// does not need to worry about this.
+///
+/// # Pending Messages
+///
+/// All RAII Guard API drop behavior are sync, so to perform async operation,
+/// like sending rollback transaction, it can only be queued. Queued actions
+/// is send on the next asynchronous operation. This is crucial for something
+/// like failed transaction, where rollback can possibly delayed.
+///
+/// Note that with the [`Pool`][2] api, queued actions is executed automatically
+/// when connection is released. The use of [`Connection`] directly
+/// is only for short lived connection.
+///
+/// # Runtime
+///
+/// All constructor will panic if `tokio` features is not enabled.
+///
+/// [1]: crate::sql::SqlExt::once
+/// [2]: crate::pool::Pool
 #[derive(Debug)]
-pub struct PgConnection {
+pub struct Connection {
     // io
     socket: Socket,
     read_buf: BytesMut,
@@ -48,33 +72,45 @@ pub struct PgConnection {
     stmts: LruCache<u64, StatementName>,
 
     // diagnostic
-    created_at: Instant,
+    connected_at: Instant,
     sync_pending: usize,
 }
 
-impl PgConnection {
-    /// Perform a startup message via environment variable.
+impl Connection {
+    /// Connect to postgres server via environment variables.
     ///
-    /// See [`PgConfig::from_env`] for more details.
-    pub fn connect_env() -> impl Future<Output = Result<PgConnection>> {
-        Self::connect_with(PgConfig::from_env())
+    /// See [`Config::from_env`] for more details.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `tokio` feature is not enabled.
+    pub fn connect_env() -> impl Future<Output = Result<Connection>> {
+        Self::connect_with(Config::from_env())
     }
 
-    /// Perform a startup message via url.
+    /// Connect to postgres server via url.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `tokio` feature is not enabled.
     pub async fn connect(url: &str) -> Result<Self> {
-        Self::connect_with(PgConfig::parse(url)?).await
+        Self::connect_with(Config::parse(url)?).await
     }
 
-    /// Perform a startup message with config.
-    pub async fn connect_with(opt: PgConfig) -> Result<Self> {
-        let socket = if opt.host == "localhost" {
-            let socket = Socket::connect_socket(&(format!("/run/postgresql/.s.PGSQL.{}",opt.port))).await;
+    /// Connect to postgres server with provided config.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `tokio` feature is not enabled.
+    pub async fn connect_with(config: Config) -> Result<Self> {
+        let socket = if config.host == "localhost" {
+            let socket = Socket::connect_socket(&(format!("/run/postgresql/.s.PGSQL.{}",config.port))).await;
             match socket {
                 Ok(ok) => ok,
-                Err(_) => Socket::connect_tcp(&opt.host, opt.port).await?,
+                Err(_) => Socket::connect_tcp(&config.host, config.port).await?,
             }
         } else {
-            Socket::connect_tcp(&opt.host, opt.port).await?
+            Socket::connect_tcp(&config.host, config.port).await?
         };
 
         let mut me = Self {
@@ -82,27 +118,34 @@ impl PgConnection {
             read_buf: BytesMut::with_capacity(DEFAULT_BUF_CAPACITY),
             write_buf: BytesMut::with_capacity(DEFAULT_BUF_CAPACITY),
             stmts: LruCache::new(DEFAULT_PREPARED_STMT_CACHE),
-            created_at: Instant::now(),
+            connected_at: Instant::now(),
             sync_pending: 0,
         };
 
         let StartupResponse {
             backend_key_data: _,
             param_status: _,
-        } = query::startup(&opt, &mut me).await?;
+        } = query::startup(&config, &mut me).await?;
 
         Ok(me)
     }
+}
 
-    pub fn created_at(&self) -> Instant {
-        self.created_at
+impl Connection {
+    /// Get the [`Instant`] value of when the socket is connected to postgres server.
+    pub fn connected_at(&self) -> Instant {
+        self.connected_at
     }
+}
 
+impl Connection {
+    /// Initiates or attempts to shut down socket, returning success when
+    /// the I/O connection has completely shut down.
     pub fn poll_shutdown(&mut self, cx: &mut Context) -> Poll<io::Result<()>> {
         self.socket.poll_shutdown(cx)
     }
 
-    /// Gracefully close connection.
+    /// Close connection cleanly.
     pub async fn close(mut self) -> io::Result<()> {
         self.send(frontend::Terminate);
         self.flush().await?;
@@ -139,12 +182,22 @@ macro_rules! poll_message {
     };
 }
 
-impl PgConnection {
-    pub fn healthcheck(&mut self) -> impl Future<Output = Result<()>> {
-        std::future::poll_fn(|cx|self.poll_healthcheck(cx))
+impl Connection {
+    /// Execute all queued action.
+    ///
+    /// See the struct module for [more details][1].
+    ///
+    /// [1]: Connection#pending-messages
+    pub fn ready(&mut self) -> impl Future<Output = Result<()>> {
+        std::future::poll_fn(|cx|self.poll_ready(cx))
     }
 
-    pub(crate) fn poll_healthcheck(&mut self, cx: &mut Context) -> Poll<Result<()>> {
+    /// Attempt to execute all queued action.
+    ///
+    /// See the struct module for [more details][1].
+    ///
+    /// [1]: Connection#pending-messages
+    pub(crate) fn poll_ready(&mut self, cx: &mut Context) -> Poll<Result<()>> {
         if !self.write_buf.is_empty() {
             ready!(self.poll_flush(cx)?)
         }
@@ -161,7 +214,9 @@ impl PgConnection {
             match msgtype {
                 ErrorResponse::MSGTYPE => {
                     self.send(frontend::Sync);
-                    // FIXME: the `Sync` will get eaten by ErrorResponse (need confirm)
+                    // NOTE:
+                    // not documented but the `Sync` will get
+                    // eaten by ErrorResponse based on currently happening
                     self.ready_request();
                     #[cfg(feature = "log")]
                     log::error!("{}",ErrorResponse::new(_body));
@@ -181,13 +236,13 @@ impl PgConnection {
     }
 }
 
-impl PgTransport for PgConnection {
+impl PgTransport for Connection {
     fn poll_flush(&mut self, cx: &mut Context) -> Poll<io::Result<()>> {
         crate::io::poll_write_all(&mut self.socket, &mut self.write_buf, cx)
     }
 
     fn poll_recv<B: BackendProtocol>(&mut self, cx: &mut Context) -> Poll<Result<B>> {
-        ready!(self.poll_healthcheck(cx)?);
+        ready!(self.poll_ready(cx)?);
 
         loop {
             poll_message! {
@@ -228,15 +283,15 @@ impl PgTransport for PgConnection {
 
     fn get_stmt(&mut self, sqlid: u64) -> Option<StatementName> {
         self.stmts.get(&sqlid).cloned().inspect(|_e|{
-            trace!("prepare statement cache hit: {_e}")
+            trace!("statement cache hit: {_e}")
         })
     }
 
-    fn add_stmt(&mut self, sql: u64, id: StatementName) {
-        trace!("prepare statement add: {id}");
+    fn add_stmt(&mut self, id: u64, name: StatementName) {
+        trace!("statement added: {name}");
 
-        if let Some((_id,name)) = self.stmts.push(sql, id) {
-            trace!("prepare statement removed: {name}");
+        if let Some((_id,name)) = self.stmts.push(id, name) {
+            trace!("statement removed: {name}");
 
             self.send(frontend::Close {
                 variant: b'S',
@@ -248,7 +303,7 @@ impl PgTransport for PgConnection {
     }
 }
 
-impl Executor for PgConnection {
+impl Executor for Connection {
     type Transport = Self;
 
     type Future = Ready<Result<Self::Transport>>;

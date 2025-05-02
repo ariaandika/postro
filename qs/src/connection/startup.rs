@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 
-use super::PgConfig;
+use super::Config;
 
 /// A config for postgres startup phase.
 ///
@@ -106,8 +106,8 @@ impl<'a> StartupConfigBuilder<'a> {
     }
 }
 
-impl<'a> From<&'a PgConfig> for StartupConfig<'a> {
-    fn from(me: &'a PgConfig) -> StartupConfig<'a> {
+impl<'a> From<&'a Config> for StartupConfig<'a> {
+    fn from(me: &'a Config) -> StartupConfig<'a> {
         StartupConfig::new(me.user.as_ref())
             .set_database(me.dbname.as_ref())
             .set_password(me.pass.as_ref())

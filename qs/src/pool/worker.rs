@@ -14,7 +14,7 @@ use tokio::{
 };
 
 use super::PoolConfig;
-use crate::{PgConnection, Result, common::trace};
+use crate::{Connection, Result, common::trace};
 
 const HALF_MINUTE: Duration = Duration::from_secs(30);
 
@@ -48,7 +48,7 @@ impl WorkerHandle {
         )
     }
 
-    pub fn poll_acquire(&mut self, cx: &mut Context) -> Poll<Result<PgConnection>> {
+    pub fn poll_acquire(&mut self, cx: &mut Context) -> Poll<Result<Connection>> {
         loop {
             match &mut self.state {
                 State::Idle => {
@@ -66,7 +66,7 @@ impl WorkerHandle {
         }
     }
 
-    pub fn release(&self, conn: PgConnection) {
+    pub fn release(&self, conn: Connection) {
         self.send.send(WorkerMessage::Release(conn)).expect("worker task closed");
     }
 }
@@ -88,18 +88,18 @@ impl std::fmt::Debug for WorkerHandle {
 
 struct PoolConnection {
     healthc_at: Instant,
-    conn: PgConnection,
+    conn: Connection,
 }
 
 impl PoolConnection {
-    fn new(conn: PgConnection) -> Self {
+    fn new(conn: Connection) -> Self {
         Self {
             healthc_at: Instant::now(),
             conn
         }
     }
 
-    fn with_last_hc(conn: PgConnection, instant: Instant) -> Self {
+    fn with_last_hc(conn: Connection, instant: Instant) -> Self {
         Self {
             healthc_at: instant,
             conn
@@ -111,7 +111,7 @@ impl PoolConnection {
     }
 
     fn poll_healthcheck(&mut self, cx: &mut Context) -> Poll<Result<()>> {
-        self.conn.poll_healthcheck(cx)
+        self.conn.poll_ready(cx)
     }
 
     fn poll_shutdown(&mut self, cx: &mut Context) -> Poll<io::Result<()>> {
@@ -119,12 +119,12 @@ impl PoolConnection {
     }
 }
 
-type AcquireSend = oneshot::Sender<Result<PgConnection>>;
-type AcquireRecv = oneshot::Receiver<Result<PgConnection>>;
+type AcquireSend = oneshot::Sender<Result<Connection>>;
+type AcquireRecv = oneshot::Receiver<Result<Connection>>;
 
 enum WorkerMessage {
     Acquire(AcquireSend),
-    Release(PgConnection),
+    Release(Connection),
 }
 
 pub struct WorkerFuture {
@@ -148,19 +148,19 @@ pub struct WorkerFuture {
     closing: Option<PoolConnection>,
 }
 
-type ConnectFuture = Pin<Box<dyn Future<Output = Result<PgConnection>> + Send + Sync + 'static>>;
+type ConnectFuture = Pin<Box<dyn Future<Output = Result<Connection>> + Send + Sync + 'static>>;
 
 /// Reset `sleep` to the least time to get to the next healthcheck
 fn reset_sleep_time(conns: &VecDeque<PoolConnection>, sleep: Pin<&mut Sleep>) {
     let least_time_hc = conns.iter().fold(HALF_MINUTE, |acc, n| {
-        (HALF_MINUTE.saturating_sub(n.conn.created_at().elapsed())).min(acc)
+        (HALF_MINUTE.saturating_sub(n.conn.connected_at().elapsed())).min(acc)
     });
 
     sleep.reset(Instant::now() + least_time_hc);
 }
 
 fn connection_idle(
-    conn: PgConnection,
+    conn: Connection,
     queue: &mut VecDeque<AcquireSend>,
     conns: &mut VecDeque<PoolConnection>,
     hc: Instant,
@@ -233,7 +233,7 @@ impl Future for WorkerFuture {
 
                             if connecting.is_none() && *actives < config.max_conn {
                                 // no connecting in progress, and under max connection
-                                connecting.replace(Box::pin(PgConnection::connect_with(config.conn.clone())));
+                                connecting.replace(Box::pin(Connection::connect_with(config.conn.clone())));
                             }
                         },
                     }
@@ -332,7 +332,7 @@ impl Future for WorkerFuture {
                 None => {
                     queue.push_front(send);
                     if connecting.is_none() && *actives < config.max_conn {
-                        connecting.replace(Box::pin(PgConnection::connect_with(config.conn.clone())));
+                        connecting.replace(Box::pin(Connection::connect_with(config.conn.clone())));
                     }
                     break
                 },

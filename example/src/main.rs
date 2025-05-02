@@ -1,6 +1,6 @@
 use futures::TryStreamExt;
 use qs::{
-    FromRow, PgConnection, Result,
+    FromRow, Connection, Result,
     executor::Executor,
     pool::Pool,
     row::{DecodeError, Row},
@@ -17,7 +17,7 @@ async fn main() -> Result<()> {
     let url = var("DATABASE_URL").unwrap();
 
     {
-        let mut conn = PgConnection::connect(&url).await?;
+        let mut conn = Connection::connect(&url).await?;
         qs::execute("drop table if exists post", &mut conn).execute().await?;
         qs::execute("create table post(id serial, tag text, name text)", &mut conn).execute().await?;
         task(&mut conn, "dedicated".into()).await?;

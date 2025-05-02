@@ -5,7 +5,7 @@ use crate::common::ByteStr;
 
 /// Postgres connection config.
 #[derive(Clone, Debug)]
-pub struct PgConfig {
+pub struct Config {
     pub(crate) user: ByteStr,
     pub(crate) pass: ByteStr,
     #[allow(unused)] // socket used later
@@ -15,9 +15,20 @@ pub struct PgConfig {
     pub(crate) dbname: ByteStr,
 }
 
-impl PgConfig {
-    pub fn from_env() -> PgConfig {
-        let url = var("DATABASE_URL").ok().and_then(|e|PgConfig::parse_inner(e.into()).ok());
+impl Config {
+    /// Retrieve configuration from environment variable.
+    ///
+    /// It reads:
+    /// - `PGUSER`
+    /// - `PGPASS`
+    /// - `PGHOST`
+    /// - `PGDATABASE`
+    /// - `PGPORT`
+    ///
+    /// Additionally, it also read `DATABASE_URL` to provide missing value from
+    /// previous variables before fallback to default value.
+    pub fn from_env() -> Config {
+        let url = var("DATABASE_URL").ok().and_then(|e|Config::parse_inner(e.into()).ok());
 
         macro_rules! env {
             ($name:literal,$or:ident,$def:expr) => {
@@ -44,11 +55,17 @@ impl PgConfig {
         Self { user, pass, socket, host, port, dbname }
     }
 
-    pub fn parse(url: &str) -> Result<PgConfig, ParseError> {
+    /// Parse config from url.
+    pub fn parse(url: &str) -> Result<Config, ParseError> {
         Self::parse_inner(ByteStr::copy_from_str(url))
     }
 
-    pub fn parse_static(url: &'static str) -> Result<PgConfig, ParseError> {
+    /// Parse config from static strign url.
+    ///
+    /// This is for micro optimization, see [`Bytes::from_static`][1].
+    ///
+    /// [1]: bytes::Bytes::from_static
+    pub fn parse_static(url: &'static str) -> Result<Config, ParseError> {
         Self::parse_inner(ByteStr::from_static(url))
     }
 
@@ -87,7 +104,7 @@ impl PgConfig {
     }
 }
 
-impl std::str::FromStr for PgConfig {
+impl std::str::FromStr for Config {
     type Err = ParseError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {

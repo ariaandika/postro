@@ -18,8 +18,8 @@ pub mod sql;
 pub mod row;
 
 // Operation
-pub mod executor;
 pub mod transport;
+pub mod executor;
 pub mod query;
 pub mod transaction;
 
@@ -32,9 +32,12 @@ mod error;
 
 pub use encode::Encode;
 pub use row::FromRow;
+pub use sql::SqlExt;
 
+pub use executor::Executor;
 pub use connection::{Connection, Config};
-pub use query::{query, execute};
+pub use pool::{Pool, PoolConfig};
+pub use query::{query, execute, begin};
 
 pub use postgres::{ProtocolError, ErrorResponse, NoticeResponse};
 pub use error::{Error, Result};

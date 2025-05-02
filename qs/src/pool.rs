@@ -1,3 +1,4 @@
+//! The [`Pool`] type.
 use crate::{Connection, Result, executor::Executor, transport::PgTransport};
 
 mod config;

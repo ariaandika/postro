@@ -1,4 +1,4 @@
-//! Postgres Connection
+//! The [`Connection`] type.
 use bytes::{Buf, BytesMut};
 use lru::LruCache;
 use std::{

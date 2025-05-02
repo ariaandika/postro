@@ -2,8 +2,10 @@
 
 /// Type that represent sql string.
 pub trait Sql {
+    /// Returns sql string.
     fn sql(&self) -> &str;
 
+    /// Return `true` if current statement should be cached.
     fn persistent(&self) -> bool;
 }
 
@@ -33,28 +35,19 @@ impl Sql for SqlOnce<'_> {
 
 /// Extension trait for easier query persistence config.
 pub trait SqlExt<'a> {
+    /// Disable statement caching.
     fn once(self) -> SqlOnce<'a>;
-
-    fn persistent(self) -> &'a str;
 }
 
 impl<'a> SqlExt<'a> for &'a str {
     fn once(self) -> SqlOnce<'a> {
         SqlOnce(self)
     }
-
-    fn persistent(self) -> &'a str {
-        self
-    }
 }
 
 impl<'a> SqlExt<'a> for SqlOnce<'a> {
     fn once(self) -> SqlOnce<'a> {
         self
-    }
-
-    fn persistent(self) -> &'a str {
-        self.0
     }
 }
 

@@ -1,3 +1,4 @@
+//! The [`Executor`] trait.
 use std::future::Ready;
 
 use crate::{transport::PgTransport, Result};

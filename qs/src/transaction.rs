@@ -1,4 +1,4 @@
-//! Postgres Transaction
+//! The [`Transaction`] type.
 use std::io;
 
 use crate::{

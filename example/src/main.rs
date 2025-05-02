@@ -1,12 +1,11 @@
 use futures::TryStreamExt;
-use qs::{
-    Connection, FromRow, Result,
-    executor::Executor,
-    pool::Pool,
-    row::{DecodeError, Row},
-};
 use std::{borrow::Cow, env::var};
 use tracing::Instrument;
+
+use qs::{
+    Connection, Executor, FromRow, Pool, Result,
+    row::{DecodeError, Row},
+};
 
 #[tokio::main]
 async fn main() -> Result<()> {

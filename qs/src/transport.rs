@@ -1,3 +1,4 @@
+//! The [`PgTransport`] trait.
 use std::{
     io,
     task::{Context, Poll},

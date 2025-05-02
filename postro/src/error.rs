@@ -6,7 +6,7 @@ use crate::{
     row::DecodeError,
 };
 
-/// A specialized [`Result`] type for qs operation.
+/// A specialized [`Result`] type for `postro` operation.
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
 pub struct Error {
@@ -15,7 +15,7 @@ pub struct Error {
     kind: ErrorKind,
 }
 
-/// All possible error from qs library.
+/// All possible error from `postro` library.
 pub enum ErrorKind {
     Config(ParseError),
     Protocol(ProtocolError),

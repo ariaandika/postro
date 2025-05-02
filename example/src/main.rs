@@ -2,7 +2,7 @@ use futures::TryStreamExt;
 use std::{borrow::Cow, env::var};
 use tracing::Instrument;
 
-use qs::{
+use postro::{
     Connection, Executor, FromRow, Pool, Result,
     row::{DecodeError, Row},
 };
@@ -16,8 +16,8 @@ async fn main() -> Result<()> {
 
     {
         let mut conn = Connection::connect(&url).await?;
-        qs::execute("drop table if exists post", &mut conn).execute().await?;
-        qs::execute("create table post(id serial, tag text, name text)", &mut conn).execute().await?;
+        postro::execute("drop table if exists post", &mut conn).execute().await?;
+        postro::execute("create table post(id serial, tag text, name text)", &mut conn).execute().await?;
         task(&mut conn, "dedicated".into()).await?;
     }
 
@@ -32,7 +32,7 @@ async fn main() -> Result<()> {
         handle.await.unwrap()?;
     }
 
-    let foo: Vec<Post> = qs::query("select * from post", &pool).fetch_all().await?;
+    let foo: Vec<Post> = postro::query("select * from post", &pool).fetch_all().await?;
 
     tracing::info!("{foo:#?}");
 
@@ -60,11 +60,11 @@ impl FromRow for Post {
 async fn task<E: Executor>(conn: E, id: Cow<'static,str>) -> Result<()> {
     let mut conn = conn.connection().await?;
 
-    qs::query::simple_query::<(), _>("select * from post", &mut conn)
+    postro::query::simple_query::<(), _>("select * from post", &mut conn)
         .instrument(tracing::trace_span!("simple query"))
         .await?;
 
-    let err = qs::execute("select deez", &mut conn)
+    let err = postro::execute("select deez", &mut conn)
         .fetch_one()
         .await
         .unwrap_err();
@@ -72,21 +72,21 @@ async fn task<E: Executor>(conn: E, id: Cow<'static,str>) -> Result<()> {
     tracing::error!("Expected Error: {err}");
 
     {
-        let mut tx = qs::query::begin(&mut conn).await?;
-        qs::execute("insert into post(tag,name) values($1,$2)", &mut tx)
+        let mut tx = postro::query::begin(&mut conn).await?;
+        postro::execute("insert into post(tag,name) values($1,$2)", &mut tx)
             .bind(id.as_ref())
             .bind(&format!("NotExists: {id}"))
             .execute()
             .await?;
     }
 
-    let (_post_id,) = qs::query::<_, _, (i32,)>("insert into post(tag,name) values($1,$2) returning id", &mut conn)
+    let (_post_id,) = postro::query::<_, _, (i32,)>("insert into post(tag,name) values($1,$2) returning id", &mut conn)
         .bind(id.as_ref())
         .bind(&format!("Post from: {id}"))
         .fetch_one()
         .await?;
 
-    let post = qs::query::<_, _, Post>("select * from post", &mut conn)
+    let post = postro::query::<_, _, Post>("select * from post", &mut conn)
         .fetch_all()
         .await?;
 
@@ -97,21 +97,21 @@ async fn task<E: Executor>(conn: E, id: Cow<'static,str>) -> Result<()> {
             .unwrap()
     );
 
-    qs::execute("insert into post(tag,name) values($1,$2)", &mut conn)
+    postro::execute("insert into post(tag,name) values($1,$2)", &mut conn)
         .bind(id.as_ref())
         .bind(&format!("Exectute for: {id}"))
         .execute()
         .await?;
 
-    let mut stream = qs::query::<_, _, Post>("select * from post", &mut conn).fetch();
+    let mut stream = postro::query::<_, _, Post>("select * from post", &mut conn).fetch();
 
     while let Some(post) = stream.try_next().await? {
         let _ = post;
     }
 
     {
-        let mut tx = qs::query::begin(&mut conn).await?;
-        qs::execute("insert into post(tag,name) values($1,$2)", &mut tx)
+        let mut tx = postro::query::begin(&mut conn).await?;
+        postro::execute("insert into post(tag,name) values($1,$2)", &mut tx)
             .bind(id.as_ref())
             .bind(&format!("Transaction from: {id}"))
             .execute()

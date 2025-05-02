@@ -22,10 +22,10 @@ use crate::{
 /// # Example
 ///
 /// ```no_run
-/// # async fn test(mut conn: qs::Connection) -> qs::Result<()> {
-/// let mut tx = qs::query::begin(&mut conn).await?;
+/// # async fn test(mut conn: postro::Connection) -> postro::Result<()> {
+/// let mut tx = postro::query::begin(&mut conn).await?;
 ///
-/// qs::execute("insert into post(name) values('foo')", &mut tx)
+/// postro::execute("insert into post(name) values('foo')", &mut tx)
 ///     .execute()
 ///     .await?;
 ///

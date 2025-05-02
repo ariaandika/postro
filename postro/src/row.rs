@@ -116,6 +116,15 @@ pub struct IntoIter {
     iter_n: u16,
 }
 
+impl IntoIter {
+    pub fn try_next(&mut self) -> Result<Column, DecodeError> {
+        match self.next() {
+            Some(ok) => ok,
+            None => Err(DecodeError::IndexOutOfBounds(self.iter_n as _)),
+        }
+    }
+}
+
 impl Iterator for IntoIter {
     type Item = Result<Column, DecodeError>;
 
@@ -351,6 +360,8 @@ pub enum DecodeError {
     Utf8(Utf8Error),
     /// Column requested not found.
     ColumnNotFound(Cow<'static,str>),
+    /// Index requested is out of bounds.
+    IndexOutOfBounds(usize),
     /// Oid requested missmatch.
     OidMissmatch,
 }
@@ -363,6 +374,7 @@ impl fmt::Display for DecodeError {
         match self {
             DecodeError::Utf8(e) => write!(f, "{e}"),
             DecodeError::ColumnNotFound(name) => write!(f, "column not found: {name}"),
+            Self::IndexOutOfBounds(u) => write!(f, "index out of bounds: {u}"),
             DecodeError::OidMissmatch => write!(f, "data type missmatch"),
         }
     }

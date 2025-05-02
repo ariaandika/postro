@@ -42,3 +42,6 @@ pub use query::{query, execute, begin};
 pub use postgres::{ProtocolError, ErrorResponse, NoticeResponse};
 pub use error::{Error, Result};
 
+#[cfg(feature = "macros")]
+pub use postro_macros::FromRow;
+

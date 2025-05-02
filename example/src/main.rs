@@ -2,7 +2,19 @@ use futures::TryStreamExt;
 use std::{borrow::Cow, env::var};
 use tracing::Instrument;
 
-use postro::{Connection, DecodeError, Executor, FromColumn, FromRow, Pool, Result, Row};
+use postro::{Connection, DecodeError, Executor, FromRow, Pool, Result};
+
+#[derive(Debug, FromRow)]
+struct Post {
+    #[allow(unused)]
+    id: i32,
+    name: String,
+    tag: String,
+}
+
+#[derive(Debug, FromRow)]
+#[allow(unused)]
+struct PostTuple(i32, String, String);
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -34,40 +46,6 @@ async fn main() -> Result<()> {
     tracing::info!("{foo:#?}");
 
     Ok(())
-}
-
-#[derive(Debug)]
-struct Post {
-    #[allow(unused)]
-    id: i32,
-    name: String,
-    tag: String,
-}
-
-impl FromRow for Post {
-    fn from_row(row: Row) -> Result<Self, DecodeError> {
-        use DecodeError::ColumnNotFound as Nope;
-
-        let mut id = Err(Nope("id".into()));
-        let mut name = Err(Nope("name".into()));
-        let mut tag = Err(Nope("tag".into()));
-
-        for column in row {
-            let col = column?;
-            match col.name() {
-                "id" => id = Ok(col.decode()?),
-                "name" => name = Ok(col.decode()?),
-                "tag" => tag = Ok(col.decode()?),
-                _ => {}
-            }
-        }
-
-        Ok(Self {
-            id: id?,
-            name: name?,
-            tag: tag?,
-        })
-    }
 }
 
 async fn task<E: Executor>(conn: E, id: Cow<'static,str>) -> Result<()> {

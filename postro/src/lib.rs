@@ -31,7 +31,7 @@ mod error;
 
 
 pub use encode::Encode;
-pub use row::FromRow;
+pub use row::{Row, FromRow, FromColumn, DecodeError};
 pub use sql::SqlExt;
 
 pub use executor::Executor;

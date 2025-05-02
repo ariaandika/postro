@@ -8,9 +8,10 @@
 //! - [`Index`]
 //! - [`DecodeError`]
 use bytes::{Buf, Bytes};
-use std::{fmt, str::Utf8Error, string::FromUtf8Error};
+use std::{borrow::Cow, fmt, str::Utf8Error, string::FromUtf8Error};
 
 use crate::{
+    common::ByteStr,
     ext::{BytesExt, FmtExt},
     postgres::{Oid, PgType},
 };
@@ -59,9 +60,9 @@ impl Row {
 
     /// Try get and decode column.
     pub fn try_get<I: Index, R: FromColumn>(&self, idx: I) -> Result<R, DecodeError> {
-        let Some((nul,nth)) = idx.position(&self.body, self.field_len) else {
-            return Err(DecodeError::ColumnNotFound)
-        };
+        let (offset,nul,nth) = idx.position(&self.body, self.field_len)?;
+
+        let name = ByteStr::from_utf8(self.body.slice(offset..nul))?;
 
         let mut i = 0;
         let mut values = self.values.clone();
@@ -74,7 +75,7 @@ impl Row {
             i += 1;
         };
 
-        R::decode(Column::new(&self.body[nul + 1..], value))
+        R::decode(Column::new(name, &self.body[nul + 1..], value))
     }
 
     /// `DataRow` message
@@ -88,6 +89,54 @@ impl Row {
             body: self.body.clone(),
             values: bytes,
         }
+    }
+}
+
+impl IntoIterator for Row {
+    type Item = Result<Column, DecodeError>;
+
+    type IntoIter = IntoIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        IntoIter {
+            field_len: self.field_len,
+            body: self.body,
+            values: self.values,
+            iter_n: 0,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct IntoIter {
+    field_len: u16,
+    body: Bytes,
+    values: Bytes,
+
+    iter_n: u16,
+}
+
+impl Iterator for IntoIter {
+    type Item = Result<Column, DecodeError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.iter_n == self.field_len {
+            return None
+        }
+
+        let field_name = match self.body.get_nul_bytestr() {
+            Ok(ok) => ok,
+            Err(err) => {
+                self.iter_n = self.field_len;
+                return Some(Err(err.into()))
+            },
+        };
+        let column = self.body.split_to(SUFFIX);
+        let len = self.values.get_u32();
+        let value = self.values.split_to(len as _);
+        self.iter_n += 1;
+
+        Some(Ok(Column::new(field_name, &column, value)))
     }
 }
 
@@ -113,12 +162,14 @@ impl fmt::Debug for Row {
 pub struct Column {
     oid: Oid,
     value: Bytes,
+    name: ByteStr,
 }
 
 impl Column {
     /// `body` is start of data **after** field name
-    fn new(body: &[u8], value: Bytes) -> Self {
+    fn new(name: ByteStr, body: &[u8], value: Bytes) -> Self {
         Self {
+            name,
             oid: (&mut &body[OID_OFFSET..]).get_u32(),
             value
         }
@@ -129,6 +180,11 @@ impl Column {
         self.oid
     }
 
+    /// Returns column name.
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
     /// Extract the inner bytes as slice.
     pub fn as_slice(&self) -> &[u8] {
         &self.value
@@ -137,6 +193,11 @@ impl Column {
     /// Clone the inner [`Bytes`].
     pub fn value(&self) -> Bytes {
         self.value.clone()
+    }
+
+    /// Consume self into the inner [`Bytes`].
+    pub fn into_value(self) -> Bytes {
+        self.value
     }
 }
 
@@ -213,61 +274,63 @@ impl FromColumn for String {
         if col.oid() != String::OID {
             return Err(DecodeError::OidMissmatch);
         }
-        Ok(String::from_utf8(col.value().into())?)
+        Ok(String::from_utf8(col.into_value().into())?)
     }
 }
 
 /// Type that can be used for indexing column.
 pub trait Index: Sized + sealed::Sealed {
-    /// Returns (nul string index, nth column).
-    fn position(self, body: &[u8], len: u16) -> Option<(usize,u16)>;
+    /// Returns (bytes start offset, nul string index, nth column).
+    fn position(self, body: &[u8], len: u16) -> Result<(usize,usize,u16), DecodeError>;
 }
 
-impl Index for usize {
-    fn position(self, body: &[u8], len: u16) -> Option<(usize,u16)> {
-        let mut iter = body.iter().copied().enumerate();
+macro_rules! position {
+    (
+        $self:pat, $body:ident, $len:ident,
+        ($offset:ident,$i_nul:ident,$nth:ident) => $test:expr,
+        () => $into:expr
+    ) => {
+        let mut iter = $body.iter().copied().enumerate();
+        let mut $offset = 0;
 
-        for nth in 0..len {
-            let Some((i_nul,_)) = iter.find(|(_,e)| matches!(e, b'\0')) else {
+        for $nth in 0..$len {
+            let Some(($i_nul, _)) = iter.find(|(_, e)| matches!(e, b'\0')) else {
                 break;
             };
 
-            if self == nth as _ {
-                return Some((i_nul,nth));
+            if $test {
+                return Ok(($offset,$i_nul,$nth));
             }
 
-            if iter.nth(SUFFIX - 1).is_none() {
-                break
-            }
-        }
-
-        None
-    }
-}
-
-impl Index for &str {
-    fn position(self, body: &[u8], len: u16) -> Option<(usize,u16)> {
-        let mut iter = body.iter().copied().enumerate();
-        let mut offset = 0;
-
-        for nth in 0..len {
-            let Some((i_nul, _)) = iter.find(|(_, e)| matches!(e, b'\0')) else {
-                break;
-            };
-
-            if self.as_bytes() == &body[offset..i_nul] {
-                return Some((i_nul,nth));
-            }
-
-            match iter.nth(SUFFIX) {
+            match iter.$nth(SUFFIX) {
                 Some((i,_)) => {
-                    offset = i;
+                    $offset = i;
                 },
                 None => break,
             }
         }
 
-        None
+        Err(DecodeError::ColumnNotFound($into))
+    };
+}
+
+impl Index for usize {
+    fn position(self, body: &[u8], len: u16) -> Result<(usize,usize,u16), DecodeError> {
+        position! {
+            self, body, len,
+            (off,i_nul,nth) => self == nth as _,
+            () => String::from(itoa::Buffer::new().format(self)).into()
+        }
+    }
+}
+
+impl Index for &str {
+    fn position(self, body: &[u8], len: u16) -> Result<(usize,usize,u16), DecodeError> {
+        position! {
+            self, body, len,
+            (off,i_nul,nth) => self.as_bytes() == &body[off..i_nul],
+            () => String::from(self).into()
+        }
     }
 }
 
@@ -282,7 +345,7 @@ pub enum DecodeError {
     /// Postgres return non utf8 string.
     Utf8(Utf8Error),
     /// Column requested not found.
-    ColumnNotFound,
+    ColumnNotFound(Cow<'static,str>),
     /// Oid requested missmatch.
     OidMissmatch,
 }
@@ -294,7 +357,7 @@ impl fmt::Display for DecodeError {
         f.write_str("Failed to decode value, ")?;
         match self {
             DecodeError::Utf8(e) => write!(f, "{e}"),
-            DecodeError::ColumnNotFound => write!(f, "column not found"),
+            DecodeError::ColumnNotFound(name) => write!(f, "column not found: {name}"),
             DecodeError::OidMissmatch => write!(f, "data type missmatch"),
         }
     }

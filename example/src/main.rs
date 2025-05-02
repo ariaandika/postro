@@ -2,10 +2,7 @@ use futures::TryStreamExt;
 use std::{borrow::Cow, env::var};
 use tracing::Instrument;
 
-use postro::{
-    Connection, Executor, FromRow, Pool, Result,
-    row::{DecodeError, Row},
-};
+use postro::{Connection, DecodeError, Executor, FromColumn, FromRow, Pool, Result, Row};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -43,16 +40,30 @@ async fn main() -> Result<()> {
 struct Post {
     #[allow(unused)]
     id: i32,
-    tag: String,
     name: String,
+    tag: String,
 }
 
 impl FromRow for Post {
     fn from_row(row: Row) -> Result<Self, DecodeError> {
+        let mut id = None;
+        let mut name = None;
+        let mut tag = None;
+
+        for column in row {
+            let col = column?;
+            match col.name() {
+                "id" => id = Some(<_>::decode(col)?),
+                "name" => name = Some(<_>::decode(col)?),
+                "tag" => tag = Some(<_>::decode(col)?),
+                _ => {}
+            }
+        }
+
         Ok(Self {
-            id: row.try_get("id")?,
-            tag: row.try_get("tag")?,
-            name: row.try_get("name")?,
+            id: id.ok_or(DecodeError::ColumnNotFound("id".into()))?,
+            name: name.ok_or(DecodeError::ColumnNotFound("name".into()))?,
+            tag: tag.ok_or(DecodeError::ColumnNotFound("tag".into()))?,
         })
     }
 }

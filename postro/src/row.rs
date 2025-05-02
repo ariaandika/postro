@@ -199,6 +199,11 @@ impl Column {
     pub fn into_value(self) -> Bytes {
         self.value
     }
+
+    /// Decode value from self.
+    pub fn decode<D: FromColumn>(self) -> Result<D, DecodeError> {
+        D::decode(self)
+    }
 }
 
 // ===== Traits =====

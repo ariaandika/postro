@@ -46,24 +46,26 @@ struct Post {
 
 impl FromRow for Post {
     fn from_row(row: Row) -> Result<Self, DecodeError> {
-        let mut id = None;
-        let mut name = None;
-        let mut tag = None;
+        use DecodeError::ColumnNotFound as Nope;
+
+        let mut id = Err(Nope("id".into()));
+        let mut name = Err(Nope("name".into()));
+        let mut tag = Err(Nope("tag".into()));
 
         for column in row {
             let col = column?;
             match col.name() {
-                "id" => id = Some(<_>::decode(col)?),
-                "name" => name = Some(<_>::decode(col)?),
-                "tag" => tag = Some(<_>::decode(col)?),
+                "id" => id = Ok(col.decode()?),
+                "name" => name = Ok(col.decode()?),
+                "tag" => tag = Ok(col.decode()?),
                 _ => {}
             }
         }
 
         Ok(Self {
-            id: id.ok_or(DecodeError::ColumnNotFound("id".into()))?,
-            name: name.ok_or(DecodeError::ColumnNotFound("name".into()))?,
-            tag: tag.ok_or(DecodeError::ColumnNotFound("tag".into()))?,
+            id: id?,
+            name: name?,
+            tag: tag?,
         })
     }
 }

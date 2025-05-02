@@ -3,12 +3,14 @@ use std::borrow::Cow;
 use crate::{
     Error, Result,
     error::ErrorKind,
+    executor::Executor,
     postgres::{
         BackendMessage,
         backend::{self, RowDescription},
         frontend,
     },
     row::{FromRow, Row},
+    transaction::Transaction,
     transport::{PgTransport, PgTransportExt},
 };
 
@@ -107,7 +109,9 @@ pub async fn startup<'a, IO: PgTransport>(
 /// perform a simple query
 ///
 /// <https://www.postgresql.org/docs/current/protocol-flow.html#PROTOCOL-FLOW-SIMPLE-QUERY>
-pub async fn simple_query<R: FromRow, IO: PgTransport>(sql: &str, mut io: IO) -> Result<Vec<R>> {
+pub async fn simple_query<R: FromRow, Exec: Executor>(sql: &str, exec: Exec) -> Result<Vec<R>> {
+    let mut io = exec.connection().await?;
+
     io.send(frontend::Query { sql });
     io.flush().await?;
 
@@ -131,6 +135,17 @@ pub async fn simple_query<R: FromRow, IO: PgTransport>(sql: &str, mut io: IO) ->
     }
 
     Ok(rows)
+}
+
+/// Begin transaction with given executor.
+pub async fn begin<Exec: Executor>(exec: Exec) -> Result<Transaction<Exec::Transport>> {
+    let mut io = exec.connection().await?;
+    io.send(frontend::Query { sql: "BEGIN" });
+    io.flush().await?;
+    io.recv::<backend::CommandComplete>().await?;
+    let r = io.recv::<backend::ReadyForQuery>().await?;
+    assert_eq!(r.tx_status,b'T');
+    Ok(Transaction::new(io))
 }
 
 impl<'a> StartupConfig<'a> {

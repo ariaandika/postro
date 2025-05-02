@@ -19,7 +19,7 @@ pub use fetch_stream::FetchStream;
 pub use fetch_one::FetchOne;
 pub use fetch_all::FetchAll;
 pub use execute::Execute;
-pub use helpers::{StartupConfig, StartupResponse, simple_query, startup};
+pub use helpers::{StartupConfig, StartupResponse, begin, simple_query, startup};
 
 /// Entrypoint of the query API.
 pub fn query<'val, SQL, Exe, R>(sql: SQL, exe: Exe) -> Query<'val, SQL, Exe, R> {

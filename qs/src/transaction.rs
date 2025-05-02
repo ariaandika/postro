@@ -1,3 +1,4 @@
+//! Postgres Transaction
 use std::io;
 
 use crate::{
@@ -10,10 +11,12 @@ use crate::{
     transport::{PgTransport, PgTransportExt},
 };
 
-pub struct Transaction<IO>
-where
-    IO: PgTransport
-{
+/// An RAII implementation of transaction scope.
+///
+/// To commit transaction, use [`Transaction::commit`].
+///
+/// If not commited, when this structure is dropped, transaction will be rolled back.
+pub struct Transaction<IO: PgTransport> {
     io: IO,
     commited: bool,
 }
@@ -22,13 +25,8 @@ impl<IO> Transaction<IO>
 where
     IO: PgTransport
 {
-    pub async fn begin(mut io: IO) -> Result<Self> {
-        io.send(frontend::Query { sql: "BEGIN" });
-        io.flush().await?;
-        io.recv::<backend::CommandComplete>().await?;
-        let r = io.recv::<backend::ReadyForQuery>().await?;
-        assert_eq!(r.tx_status,b'T');
-        Ok(Self { io, commited: false })
+    pub(crate) fn new(io: IO) -> Self {
+        Self { io, commited: false }
     }
 
     pub async fn commit(mut self) -> Result<()> {

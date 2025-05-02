@@ -1,10 +1,9 @@
 use futures::TryStreamExt;
 use qs::{
-    FromRow, Connection, Result,
+    Connection, FromRow, Result,
     executor::Executor,
     pool::Pool,
     row::{DecodeError, Row},
-    transaction::Transaction,
 };
 use std::{borrow::Cow, env::var};
 use tracing::Instrument;
@@ -74,7 +73,7 @@ async fn task<E: Executor>(conn: E, id: Cow<'static,str>) -> Result<()> {
     tracing::error!("Expected Error: {err}");
 
     {
-        let mut tx = Transaction::begin(&mut conn).await?;
+        let mut tx = qs::query::begin(&mut conn).await?;
         qs::execute("insert into post(tag,name) values($1,$2)", &mut tx)
             .bind(id.as_ref())
             .bind(&format!("NotExists: {id}"))
@@ -112,7 +111,7 @@ async fn task<E: Executor>(conn: E, id: Cow<'static,str>) -> Result<()> {
     }
 
     {
-        let mut tx = Transaction::begin(&mut conn).await?;
+        let mut tx = qs::query::begin(&mut conn).await?;
         qs::execute("insert into post(tag,name) values($1,$2)", &mut tx)
             .bind(id.as_ref())
             .bind(&format!("Transaction from: {id}"))

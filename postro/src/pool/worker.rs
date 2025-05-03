@@ -16,7 +16,7 @@ use tokio::{
 use super::PoolConfig;
 use crate::{Connection, Result, common::trace};
 
-const HALF_MINUTE: Duration = Duration::from_secs(30);
+const HALF_MINUTE: Duration = Duration::from_secs(3);
 
 pub struct WorkerHandle {
     send: UnboundedSender<WorkerMessage>,
@@ -92,14 +92,7 @@ struct PoolConnection {
 }
 
 impl PoolConnection {
-    fn new(conn: Connection) -> Self {
-        Self {
-            healthc_at: Instant::now(),
-            conn
-        }
-    }
-
-    fn with_last_hc(conn: Connection, instant: Instant) -> Self {
+    fn new(conn: Connection, instant: Instant) -> Self {
         Self {
             healthc_at: instant,
             conn
@@ -137,11 +130,13 @@ pub struct WorkerFuture {
     /// - released conn is pushed back
     /// - healthcheck is swap taken out from the front with the back
     /// - healthcheck ok is pushed front
+    ///
+    /// front queue is the most fresh connection
     conns: VecDeque<PoolConnection>,
+    queue: VecDeque<AcquireSend>,
 
     sleep: Pin<Box<Sleep>>,
     recv: UnboundedReceiver<WorkerMessage>,
-    queue: VecDeque<AcquireSend>,
 
     connecting: Option<ConnectFuture>,
     healthcheck: Option<PoolConnection>,
@@ -153,27 +148,35 @@ type ConnectFuture = Pin<Box<dyn Future<Output = Result<Connection>> + Send + Sy
 /// Reset `sleep` to the least time to get to the next healthcheck
 fn reset_sleep_time(conns: &VecDeque<PoolConnection>, sleep: Pin<&mut Sleep>) {
     let least_time_hc = conns.iter().fold(HALF_MINUTE, |acc, n| {
-        (HALF_MINUTE.saturating_sub(n.conn.connected_at().elapsed())).min(acc)
+        (HALF_MINUTE.saturating_sub(n.healthc_at.elapsed())).min(acc)
     });
+
+    trace!("Cycle reset to: {least_time_hc:?}");
 
     sleep.reset(Instant::now() + least_time_hc);
 }
 
-fn connection_idle(
-    conn: Connection,
+/// Handle connection that is not yet in idle queue.
+fn new_connection(
+    mut conn: Connection,
     queue: &mut VecDeque<AcquireSend>,
     conns: &mut VecDeque<PoolConnection>,
-    hc: Instant,
+    instant: Instant,
+    is_fresh: bool,
 ) {
-    match queue.pop_front() {
-        Some(send) => {
-            if let Err(Ok(conn)) = send.send(Ok(conn)) {
-                conns.push_back(PoolConnection::with_last_hc(conn, hc));
-            }
+    while let Some(send) = queue.pop_front() {
+        if let Err(Ok(_conn)) = send.send(Ok(conn)) {
+            conn = _conn;
+            continue;
         }
-        None => {
-            conns.push_back(PoolConnection::with_last_hc(conn, hc));
-        }
+
+        return;
+    }
+
+    if is_fresh {
+        conns.push_front(PoolConnection::new(conn, instant));
+    } else {
+        conns.push_back(PoolConnection::new(conn, instant));
     }
 }
 
@@ -209,45 +212,57 @@ impl Future for WorkerFuture {
         // 3. Try to fulfill Queues
 
         while let Poll::Ready(msg) = recv.poll_recv(cx) {
-            use WorkerMessage::*;
             let Some(msg) = msg else {
-                return Poll::Ready(()) // all Pools are dropped
+                // all Pools handle are dropped
+                return Poll::Ready(())
             };
+
+            use WorkerMessage::*;
             match msg {
                 Acquire(send) => {
-                    tracew!("Acquire");
-
                     match conns.pop_front() {
-                        // look for available idle conn
                         Some(conn) => {
-                            // conn available, send it to client
+                            let hc = conn.healthc_at;
                             if let Err(Ok(conn)) = send.send(Ok(conn.conn)) {
-                                // client closed, put conn back to pool
-                                conns.push_front(PoolConnection::new(conn));
+                                conns.push_front(PoolConnection::new(conn, hc));
                             }
                         },
                         None => {
-                            // no idle connection,
-                            // push into queue
                             queue.push_back(send);
-
                             if connecting.is_none() && *actives < config.max_conn {
-                                // no connecting in progress, and under max connection
-                                connecting.replace(Box::pin(Connection::connect_with(config.conn.clone())));
+                                *connecting = Some(Box::pin(Connection::connect_with(config.conn.clone())));
                             }
                         },
                     }
-                },
-                Release(conn) => {
-                    tracew!("Released");
 
-                    // released conn always immediately healthchecked
+                    tracew!("Acquired");
+                },
+                Release(mut conn) => {
                     if healthcheck.is_none() {
-                        healthcheck.replace(PoolConnection::new(conn));
+                        // `poll_ready` is most likely to resolved in one poll
+                        match conn.poll_ready(cx) {
+                            Poll::Ready(Ok(_)) => {
+                                new_connection(conn, queue, conns, Instant::now(), true);
+                            },
+                            Poll::Ready(Err(_err)) => {
+                                #[cfg(feature = "log")]
+                                log::error!("healthcheck error: {_err}");
+
+                                if closing.is_some() {
+                                    drop(conn);
+                                } else {
+                                    *closing = Some(PoolConnection::new(conn, *started));
+                                }
+                            },
+                            Poll::Pending => {
+                                *healthcheck = Some(PoolConnection::new(conn, *started));
+                            },
+                        }
                     } else {
-                        // other healthcheck is in progress
-                        connection_idle(conn, queue, conns, *started);
+                        new_connection(conn, queue, conns, *started, false);
                     }
+
+                    tracew!("Released");
                 }
             }
         }
@@ -257,14 +272,19 @@ impl Future for WorkerFuture {
             match result {
                 Ok(conn) => {
                     *actives += 1;
-                    connection_idle(conn, queue, conns, Instant::now());
+                    new_connection(conn, queue, conns, Instant::now(), true);
+
                     tracew!("New");
                 },
-                Err(_err) => {
+                Err(err) => {
                     #[cfg(feature = "log")]
-                    log::error!("failed to connect: {_err}");
+                    log::error!("failed to connect: {err}");
 
-                    todo!("backpressure to try reconnect later")
+                    if let Some(send) = queue.pop_front() {
+                        let _ = send.send(Err(err));
+                    }
+
+                    // TODO: fail connect backpressure instead of immediate error
                 },
             }
         }
@@ -273,68 +293,90 @@ impl Future for WorkerFuture {
             let conn = healthcheck.take().unwrap();
             match result {
                 Ok(()) => {
-                    // health ok, store connection
-                    connection_idle(conn.conn, queue, conns, Instant::now());
-                    tracew!("Healthcheck");
+                    new_connection(conn.conn, queue, conns, Instant::now(), true);
                 },
                 Err(_err) => {
                     #[cfg(feature = "log")]
                     log::error!("healthcheck error: {_err}");
 
-                    // health not ok, close connection
                     if closing.is_some() {
                         drop(conn);
                     } else {
-                        closing.replace(conn);
+                        *closing = Some(conn);
                     }
                 },
             }
-            // there maybe delayed healthcheck
+
+            // there maybe canceled healthcheck on connection release or healthcheck interval
             reset_sleep_time(conns, sleep.as_mut());
+
+            tracew!("Healthchecked");
         }
 
         if let Some(Poll::Ready(result)) = closing.as_mut().map(|e|e.poll_shutdown(cx)) {
             let _conn = closing.take().unwrap();
-            if let Err(err) = result {
-                eprintln!("close error: {err}");
+
+            if let Err(_err) = result {
+                #[cfg(feature = "log")]
+                log::error!("close error: {_err}");
             }
+
             *actives -= 1;
 
             tracew!("Closed");
         }
 
         if let Poll::Ready(()) = sleep.as_mut().poll(cx) {
-            if let Some(i) = conns.iter().rev().position(|e|e.should_healthcheck()) {
-                let conn = conns.swap_remove_back(i).expect("iterated");
+            // healthcheck success will call this back
+            if healthcheck.is_none() {
 
-                reset_sleep_time(conns, sleep.as_mut());
+                if let Some(i) = conns.iter().rev().position(|e|e.should_healthcheck()) {
+                    let mut conn = conns.swap_remove_back(i).unwrap();
 
-                if healthcheck.is_none() {
-                    healthcheck.replace(conn);
+                    reset_sleep_time(conns, sleep.as_mut());
+
+                    // Healthcheck can possibly `Ready` in one poll
+                    match dbg!(conn.poll_healthcheck(cx)) {
+                        Poll::Ready(Ok(_)) => {
+                            new_connection(conn.conn, queue, conns, Instant::now(), true);
+                        },
+                        Poll::Ready(Err(_err)) => {
+                            #[cfg(feature = "log")]
+                            log::error!("healthcheck error: {_err}");
+
+                            if closing.is_some() {
+                                drop(conn);
+                            } else {
+                                *closing = Some(conn);
+                            }
+                        },
+                        Poll::Pending => {
+                            *healthcheck = Some(conn);
+                        },
+                    }
+
                 } else {
-                    conns.push_back(conn);
+                    reset_sleep_time(conns, sleep.as_mut());
                 }
-
-            } else {
-                reset_sleep_time(conns, sleep.as_mut());
             }
 
-            tracew!("Cycle");
+            tracew!("Cycled");
         }
 
         while let Some(send) = queue.pop_front() {
             match conns.pop_front() {
                 Some(conn) => {
+                    let hc = conn.healthc_at;
                     if let Err(Ok(conn)) = send.send(Ok(conn.conn)) {
-                        conns.push_front(PoolConnection::new(conn));
+                        conns.push_front(PoolConnection::new(conn, hc));
                     }
                 },
                 None => {
                     queue.push_front(send);
                     if connecting.is_none() && *actives < config.max_conn {
-                        connecting.replace(Box::pin(Connection::connect_with(config.conn.clone())));
+                        *connecting = Some(Box::pin(Connection::connect_with(config.conn.clone())));
                     }
-                    break
+                    break;
                 },
             }
         }

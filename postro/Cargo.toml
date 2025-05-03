@@ -11,7 +11,12 @@ log = { version = "0.4.27", optional = true }
 lru = { version = "0.13.0", default-features = false }
 pin-project-lite = "0.2.16"
 postro-macros = { version = "0.1.0", path = "../postro-macros", optional = true }
-tokio = { version = "1.44.1", optional = true, features = ["io-util","net","sync","time","rt"] }
+tokio = { version = "1.44.1", optional = true, features = [
+  # TcpStream & TcpSocket
+  "net",
+  # Worker
+  "rt", "sync", "time"
+] }
 
 [features]
 migration = []

@@ -62,15 +62,7 @@ impl Socket {
     }
 
     pub fn shutdown(&mut self) -> impl Future<Output = io::Result<()>> {
-        #[cfg(feature = "tokio")]
-        {
-            tokio::io::AsyncWriteExt::shutdown(self)
-        }
-
-        #[cfg(not(feature = "tokio"))]
-        {
-            std::future::ready(Ok(()))
-        }
+        std::future::poll_fn(|cx|self.poll_shutdown(cx))
     }
 }
 

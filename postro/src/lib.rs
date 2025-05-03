@@ -21,7 +21,7 @@
 //! # }
 //! ```
 //!
-//! Database Pooling:
+//! Database connection pooling:
 //!
 //! ```no_run
 //! use postro::Pool;
@@ -55,10 +55,34 @@
 //!     .await?;
 //!
 //! assert_eq!(foos.len(), 14);
-//!
 //! # Ok(())
 //! # }
 //! # mod tokio { pub fn spawn<F>(_: F) -> F { todo!() } }
+//! ```
+//!
+//! Begin a transaction:
+//!
+//! ```no_run
+//! use postro::Connection;
+//!
+//! # async fn app() -> postro::Result<()> {
+//! let mut conn = Connection::connect_env().await?;
+//!
+//! let mut tx = postro::begin(&mut conn).await?;
+//!
+//! let _res = postro::query::<_, _, (i32,String)>("INSERT INTO foo(id) VALUES($1)", &mut tx)
+//!     .bind(14)
+//!     .execute()
+//!     .await?;
+//!
+//! // if this failed, `tx` will be droped and transaction is rolledback
+//! fallible_operation()?;
+//!
+//! tx.commit().await?;
+//! # Ok(())
+//! # }
+//! #
+//! # fn fallible_operation() -> postro::Result<()> { todo!() }
 //! ```
 
 pub mod common;
@@ -97,9 +121,11 @@ pub use sql::SqlExt;
 
 pub use executor::Executor;
 pub use connection::{Connection, Config};
+#[doc(inline)]
 pub use pool::{Pool, PoolConfig};
 #[doc(inline)]
 pub use query::{query, execute, begin};
+#[doc(inline)]
 pub use error::{Error, Result};
 
 #[cfg(feature = "macros")]

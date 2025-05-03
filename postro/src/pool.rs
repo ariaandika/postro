@@ -1,4 +1,4 @@
-//! The [`Pool`] type.
+//! Database connection pooling.
 use crate::{Connection, Result, executor::Executor, transport::PgTransport};
 
 mod config;
@@ -8,6 +8,7 @@ mod worker;
 
 pub use config::PoolConfig;
 
+/// Database connection pool.
 #[derive(Clone, Debug)]
 pub struct Pool {
     #[cfg(feature = "tokio")]
@@ -15,18 +16,26 @@ pub struct Pool {
 }
 
 impl Pool {
+    /// Create [`Pool`] and try to create one connection.
     pub async fn connect(url: &str) -> Result<Self> {
         PoolConfig::from_env().connect(url).await
     }
 
+    /// Create [`Pool`] without trying to create connection.
     pub fn connect_lazy(url: &str) -> Result<Self> {
         PoolConfig::from_env().connect_lazy(url)
     }
 
+    /// Create [`Pool`] and try to create one connection.
+    ///
+    /// See [`Config::from_env`][1] for more details on env.
+    ///
+    /// [1]: crate::Config::from_env
     pub async fn connect_env() -> Result<Pool> {
         Self::connect_with(PoolConfig::from_env()).await
     }
 
+    /// Create [`Pool`] and try to create one connection.
     pub async fn connect_with(config: PoolConfig) -> Result<Self> {
         #[cfg(feature = "tokio")]
         {
@@ -42,6 +51,7 @@ impl Pool {
         }
     }
 
+    /// Create [`Pool`] without trying to create connection.
     pub fn connect_lazy_with(config: PoolConfig) -> Self {
         #[cfg(feature = "tokio")]
         {
@@ -101,6 +111,7 @@ impl Executor for &mut Pool {
     }
 }
 
+/// Future returned from [`Pool`] implementation of [`Executor::connection`].
 #[derive(Debug)]
 pub struct PoolConnect {
     pool: Option<Pool>,
@@ -115,7 +126,7 @@ impl Future for PoolConnect {
     }
 }
 
-/// `PoolConnection` is a `Pool` which have guaranteed connection.
+/// Instance of [`Pool`] with the checked out connection.
 #[derive(Debug)]
 pub struct PoolConnection {
     pool: Pool,
@@ -123,8 +134,15 @@ pub struct PoolConnection {
 }
 
 impl PoolConnection {
+    /// Returns the [`Pool`] handle.
     pub fn pool(&self) -> &Pool {
         &self.pool
+    }
+
+    /// Returns the underlying [`Connection`].
+    pub fn connection(&mut self) -> &mut Connection {
+        // `conn` only `None` on drop
+        self.conn.as_mut().unwrap()
     }
 }
 
@@ -137,31 +155,31 @@ impl Drop for PoolConnection {
 
 impl PgTransport for PoolConnection {
     fn poll_flush(&mut self, cx: &mut std::task::Context) -> std::task::Poll<std::io::Result<()>> {
-        self.conn.as_mut().unwrap().poll_flush(cx)
+        self.connection().poll_flush(cx)
     }
 
     fn poll_recv<B: crate::postgres::BackendProtocol>(&mut self, cx: &mut std::task::Context) -> std::task::Poll<Result<B>> {
-        self.conn.as_mut().unwrap().poll_recv(cx)
+        self.connection().poll_recv(cx)
     }
 
     fn ready_request(&mut self) {
-        self.conn.as_mut().unwrap().ready_request();
+        self.connection().ready_request();
     }
 
     fn send<F: crate::postgres::FrontendProtocol>(&mut self, message: F) {
-        self.conn.as_mut().unwrap().send(message);
+        self.connection().send(message);
     }
 
     fn send_startup(&mut self, startup: crate::postgres::frontend::Startup) {
-        self.conn.as_mut().unwrap().send_startup(startup);
+        self.connection().send_startup(startup);
     }
 
     fn get_stmt(&mut self, sql: u64) -> Option<crate::statement::StatementName> {
-        self.conn.as_mut().unwrap().get_stmt(sql)
+        self.connection().get_stmt(sql)
     }
 
     fn add_stmt(&mut self, sql: u64, id: crate::statement::StatementName) {
-        self.conn.as_mut().unwrap().add_stmt(sql, id);
+        self.connection().add_stmt(sql, id);
     }
 }
 

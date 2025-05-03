@@ -104,7 +104,7 @@ impl Connection {
     ///
     /// Panics if `tokio` feature is not enabled.
     pub async fn connect_with(config: Config) -> Result<Self> {
-        let socket = if config.host == "localhost" {
+        let socket = if cfg!(unix) && config.host == "localhost" {
             let socket = Socket::connect_socket(&(format!("/run/postgresql/.s.PGSQL.{}",config.port))).await;
             match socket {
                 Ok(ok) => ok,

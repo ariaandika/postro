@@ -260,9 +260,9 @@ impl Future for WorkerFuture {
                     connection_idle(conn, queue, conns, Instant::now());
                     tracew!("New");
                 },
-                Err(err) => {
+                Err(_err) => {
                     #[cfg(feature = "log")]
-                    log::error!("failed to connect: {err}");
+                    log::error!("failed to connect: {_err}");
 
                     todo!("backpressure to try reconnect later")
                 },
@@ -277,9 +277,9 @@ impl Future for WorkerFuture {
                     connection_idle(conn.conn, queue, conns, Instant::now());
                     tracew!("Healthcheck");
                 },
-                Err(err) => {
+                Err(_err) => {
                     #[cfg(feature = "log")]
-                    log::error!("healthcheck error: {err}");
+                    log::error!("healthcheck error: {_err}");
 
                     // health not ok, close connection
                     if closing.is_some() {

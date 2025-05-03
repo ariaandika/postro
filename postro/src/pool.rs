@@ -15,12 +15,24 @@ pub struct Pool {
 }
 
 impl Pool {
-    pub fn connect_lazy_with(config: PoolConfig) -> Self {
+    pub async fn connect(url: &str) -> Result<Self> {
+        PoolConfig::from_env().connect(url).await
+    }
+
+    pub fn connect_lazy(url: &str) -> Result<Self> {
+        PoolConfig::from_env().connect_lazy(url)
+    }
+
+    pub async fn connect_env() -> Result<Pool> {
+        Self::connect_with(PoolConfig::from_env()).await
+    }
+
+    pub async fn connect_with(config: PoolConfig) -> Result<Self> {
         #[cfg(feature = "tokio")]
         {
             let (handle,worker) = worker::WorkerHandle::new(config);
             tokio::spawn(worker);
-            Self { handle }
+            Ok(Self { handle })
         }
 
         #[cfg(not(feature = "tokio"))]
@@ -30,12 +42,12 @@ impl Pool {
         }
     }
 
-    pub fn connect_with(config: PoolConfig) -> Result<Self> {
+    pub fn connect_lazy_with(config: PoolConfig) -> Self {
         #[cfg(feature = "tokio")]
         {
             let (handle,worker) = worker::WorkerHandle::new(config);
             tokio::spawn(worker);
-            Ok(Self { handle })
+            Self { handle }
         }
 
         #[cfg(not(feature = "tokio"))]

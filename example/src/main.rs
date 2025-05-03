@@ -30,8 +30,10 @@ async fn main() -> Result<()> {
         task(&mut conn, "dedicated".into()).await?;
     }
 
-    let pool = Pool::connect_lazy(&var("DATABASE_URL").unwrap())?;
+    let mut pool = Pool::connect_lazy(&var("DATABASE_URL").unwrap())?;
     let mut handles = vec![];
+
+    doc_example(pool.clone()).await?;
 
     for i in 0..24 {
         handles.push(tokio::spawn(task(pool.clone(),format!("thread {i}").into())));
@@ -41,9 +43,50 @@ async fn main() -> Result<()> {
         handle.await.unwrap()?;
     }
 
-    let foo: Vec<Post> = postro::query("select * from post", &pool).fetch_all().await?;
+    let foo: Vec<Post> = postro::query("select * from post", &mut pool).fetch_all().await?;
 
     tracing::info!("{foo:#?}");
+
+    Ok(())
+}
+
+async fn doc_example(mut pool: Pool) -> Result<()> {
+    let res = postro::query::<_, _, (i32,String)>("SELECT 420,$1", &mut pool)
+        .bind("Foo")
+        .fetch_one()
+        .await?;
+
+    assert_eq!(res.0,420);
+    assert_eq!(res.1.as_str(),"Foo");
+
+    // ======
+
+    postro::execute("CREATE TEMP TABLE foo(id int)", &mut pool)
+        .execute()
+        .await?;
+
+    let mut handles = vec![];
+
+    for i in 0..14 {
+        let mut pool = pool.clone();
+        let t = tokio::spawn(async move {
+            postro::execute("INSERT INTO foo(id) VALUES($1)", &mut pool)
+                .bind(i)
+                .execute()
+                .await
+        });
+        handles.push(t);
+    }
+
+    for h in handles {
+        h.await.unwrap()?;
+    }
+
+    let foos = postro::query::<_, _, (i32,)>("SELECT * FROM foo", &mut pool)
+        .fetch_all()
+        .await?;
+
+    assert_eq!(foos.len(), 14);
 
     Ok(())
 }

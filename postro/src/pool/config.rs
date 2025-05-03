@@ -1,4 +1,4 @@
-use crate::{Config, Result, common::ByteStr};
+use crate::{Config, Result};
 
 use super::Pool;
 
@@ -9,16 +9,9 @@ pub struct PoolConfig {
 }
 
 impl PoolConfig {
-    pub fn new() -> PoolConfig {
+    pub fn from_env() -> PoolConfig {
         Self {
-            conn: Config {
-                user: ByteStr::default(),
-                pass: ByteStr::default(),
-                socket: None,
-                host: ByteStr::default(),
-                port: 0,
-                dbname: ByteStr::default(),
-            },
+            conn: Config::from_env(),
             max_conn: 10,
         }
     }
@@ -36,26 +29,16 @@ impl PoolConfig {
 }
 
 impl PoolConfig {
-    pub fn connect(mut self, url: &str) -> Result<Pool> {
+    pub async fn connect(mut self, url: &str) -> Result<Pool> {
         let conn = Config::parse(url)?;
         self.conn = conn;
-        Pool::connect_with(self)
+        Pool::connect_with(self).await
     }
 
     pub fn connect_lazy(mut self, url: &str) -> Result<Pool> {
         let conn = Config::parse(url)?;
         self.conn = conn;
         Ok(Pool::connect_lazy_with(self))
-    }
-}
-
-impl Pool {
-    pub fn connect(url: &str) -> Result<Self> {
-        PoolConfig::new().connect(url)
-    }
-
-    pub fn connect_lazy(url: &str) -> Result<Self> {
-        PoolConfig::new().connect_lazy(url)
     }
 }
 

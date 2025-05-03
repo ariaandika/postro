@@ -14,7 +14,7 @@ pub(crate) enum ValueRef<'a> {
 impl ValueRef<'_> {
     pub fn inline(slice: &[u8]) -> ValueRef<'static> {
         let len = slice.len();
-        assert!(len > INLINE_LEN, "inline slice is too large");
+        assert!(len < INLINE_LEN, "inline slice is too large");
         let mut value = [0u8;INLINE_LEN];
         value[INLINE_LEN - len..].copy_from_slice(slice);
         ValueRef::Inline { offset: INLINE_LEN - len, value }

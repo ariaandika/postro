@@ -29,10 +29,6 @@
 //! # async fn app() -> postro::Result<()> {
 //! let mut pool = Pool::connect_env().await?;
 //!
-//! postro::execute("CREATE TEMP TABLE foo(id int)", &mut pool)
-//!     .execute()
-//!     .await?;
-//!
 //! let mut handles = vec![];
 //!
 //! for i in 0..14 {

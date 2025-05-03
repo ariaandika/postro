@@ -61,7 +61,8 @@ async fn doc_example(mut pool: Pool) -> Result<()> {
 
     // ======
 
-    postro::execute("CREATE TEMP TABLE foo(id int)", &mut pool)
+    postro::execute("DROP TABLE IF EXISTS foo", &mut pool).execute().await?;
+    postro::execute("CREATE TABLE IF NOT EXISTS foo(id int)", &mut pool)
         .execute()
         .await?;
 

@@ -21,14 +21,14 @@ pub fn from_row(input: DeriveInput) -> Result<TokenStream> {
 
     match data.fields {
         Fields::Unnamed(FieldsUnnamed { unnamed, .. }) => {
-            uses = quote! {use DecodeError::IndexOutOfBounds as Nope;};
+            uses = quote! {use ::postro::DecodeError::IndexOutOfBounds as Nope;};
             head = quote! { let mut iter = row.into_iter(); };
             let body = (0..unnamed.len())
                 .map(|_|quote! { iter.try_next()?.decode()?, });
             Paren::default().surround(&mut output, |e|e.extend(body));
         },
         Fields::Named(FieldsNamed { named, .. }) => {
-            uses = quote! {use DecodeError::ColumnNotFound as Nope;};
+            uses = quote! {use ::postro::DecodeError::ColumnNotFound as Nope;};
             head = named
                 .iter()
                 .map(|e|e.ident.as_ref().unwrap())
@@ -62,7 +62,7 @@ pub fn from_row(input: DeriveInput) -> Result<TokenStream> {
 
     Ok(quote! {
         impl #g1 ::postro::FromRow for #ident #g2 #g3 {
-            fn from_row(row: ::postro::Row) -> Result<Self, postro::DecodeError> {
+            fn from_row(row: ::postro::Row) -> Result<Self, ::postro::DecodeError> {
                 #uses
                 #head
                 #matches

@@ -5,7 +5,9 @@ use tracing_subscriber::{
     EnvFilter, layer::SubscriberExt, util::SubscriberInitExt,
 };
 
-use postro::{DecodeError, Executor, FromRow, Pool, Result};
+use postro::{Executor, FromRow, Pool, Result};
+
+mod readme;
 
 #[derive(Debug, FromRow)]
 struct Post {
@@ -30,6 +32,8 @@ async fn main() -> Result<()> {
             .with_target(false))
         .init();
 
+    readme::main().instrument(trace_span!("readme")).await?;
+
     let url = var("DATABASE_URL").unwrap();
 
     {
@@ -41,7 +45,7 @@ async fn main() -> Result<()> {
             .await?;
     }
 
-    let mut pool = Pool::connect_lazy(&url)?;
+    let mut pool = Pool::connect_env().await?;
     let mut handles = vec![];
 
     doc_example(pool.clone()).instrument(trace_span!("doc_example")).await?;

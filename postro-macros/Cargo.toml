@@ -1,7 +1,14 @@
 [package]
 name = "postro-macros"
-version = "0.1.0"
-edition = "2024"
+description = "Postro Proc Macro"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+license.workspace = true
+keywords.workspace = true
+categories.workspace = true
 
 [lib]
 proc-macro = true

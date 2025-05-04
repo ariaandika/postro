@@ -1,4 +1,15 @@
 [workspace]
 members = ["codegen", "example", "postro", "postro-macros"]
-default-members = ["postro"]
+default-members = ["postro","postro-macros"]
 resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+authors = ["ariaandika"]
+repository = "https://github.com/ariaandika/postro"
+readme = "README.md"
+license = "MIT"
+keywords = ["postgres","sql"]
+categories = ["database"]
+

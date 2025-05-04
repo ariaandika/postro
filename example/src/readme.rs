@@ -1,29 +1,3 @@
-# Postro Postgres Driver
-
-Asynchronous Postgres Driver and Utility.
-
-Originally, this is an attempt to take out the Postgres part of [sqlx](https://github.com/launchbadge/sqlx)
-crate, but the underlying structure is very different, although the public interface api is pretty simmilar.
-
-## Installation
-
-To install `postro`, run:
-
-```bash
-cargo add postro
-```
-
-or add this line to your `Cargo.toml` in `[dependencies]` section:
-
-```toml
-postro = "0.1.0"
-```
-
-## Usage
-
-The general usage is to use database pooling via the `Pool` API:
-
-```rust
 use postro::{FromRow, Pool, Result, execute, query};
 
 // automatically extract query result
@@ -38,6 +12,10 @@ pub async fn main() -> Result<()> {
     // will read the `DATABASE_URL` environment variable
     let mut pool = Pool::connect_env().await?;
     let mut handles = vec![];
+
+    execute("DROP TABLE IF EXISTS post", &mut pool)
+        .execute()
+        .await?;
 
     // execute a statement
     execute("CREATE TABLE post(id serial, name text)", &mut pool)
@@ -70,9 +48,3 @@ pub async fn main() -> Result<()> {
 
     Ok(())
 }
-```
-
-see the documentation for [more details](https://docs.rs/postro)
-
-## License
-This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) file for details.

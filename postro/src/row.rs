@@ -215,6 +215,14 @@ impl Column {
     }
 }
 
+/// Decode and Encode postgres value.
+pub struct Json<T>(T);
+
+impl<T> PgType for Json<T> {
+    /// jsonb, Binary JSON
+    const OID: Oid = 3802;
+}
+
 // ===== Traits =====
 
 /// Type that can be constructed from a row.
@@ -292,6 +300,22 @@ impl FromColumn for String {
     }
 }
 
+#[cfg(feature = "json")]
+impl<T> FromColumn for Json<T>
+where
+    T: serde::de::DeserializeOwned,
+{
+    fn decode(column: Column) -> Result<Self, DecodeError> {
+        if column.oid() != Self::OID {
+            return Err(DecodeError::OidMissmatch);
+        }
+        match serde_json::from_slice::<T>(&column.into_value()) {
+            Ok(ok) => Ok(Json(ok)),
+            Err(err) => Err(err.into()),
+        }
+    }
+}
+
 /// Type that can be used for indexing column.
 pub trait Index: Sized + sealed::Sealed {
     /// Returns (bytes start offset, nul string index, nth column).
@@ -332,7 +356,7 @@ impl Index for usize {
     fn position(self, body: &[u8], len: u16) -> Result<(usize,usize,u16), DecodeError> {
         position! {
             self, body, len,
-            (off,i_nul,nth) => self == nth as _,
+            (off,i_nul,nth) => self == nth as usize,
             () => String::from(itoa::Buffer::new().format(self)).into()
         }
     }
@@ -364,18 +388,23 @@ pub enum DecodeError {
     IndexOutOfBounds(usize),
     /// Oid requested missmatch.
     OidMissmatch,
+    /// Failed to deserialize using `serde_json`.
+    #[cfg(feature = "json")]
+    Json(serde_json::error::Error),
 }
 
 impl std::error::Error for DecodeError { }
 
 impl fmt::Display for DecodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("Failed to decode value, ")?;
+        f.write_str("failed to decode value, ")?;
         match self {
-            DecodeError::Utf8(e) => write!(f, "{e}"),
-            DecodeError::ColumnNotFound(name) => write!(f, "column not found: {name}"),
+            Self::Utf8(e) => write!(f, "{e}"),
+            Self::ColumnNotFound(name) => write!(f, "column not found: {name}"),
             Self::IndexOutOfBounds(u) => write!(f, "index out of bounds: {u}"),
-            DecodeError::OidMissmatch => write!(f, "data type missmatch"),
+            Self::OidMissmatch => write!(f, "data type missmatch"),
+            #[cfg(feature = "json")]
+            Self::Json(error) => write!(f, "{error}"),
         }
     }
 }
@@ -398,4 +427,6 @@ macro_rules! from {
 
 from!(<Utf8Error>e => Self::Utf8(e));
 from!(<FromUtf8Error>e => Self::Utf8(e.utf8_error()));
+#[cfg(feature = "json")]
+from!(<serde_json::error::Error>e => Self::Json(e));
 

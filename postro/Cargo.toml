@@ -18,6 +18,8 @@ log = { version = "0.4.27", optional = true }
 lru = { version = "0.13.0", default-features = false }
 pin-project-lite = "0.2.16"
 postro-macros = { version = "0.1.0", path = "../postro-macros", optional = true }
+serde = { version = "1.0.219", optional = true }
+serde_json = { version = "1.0.140", optional = true }
 tokio = { version = "1.44.1", optional = true, features = [
   # TcpStream & TcpSocket
   "net",
@@ -27,8 +29,14 @@ tokio = { version = "1.44.1", optional = true, features = [
 tracing = { version = "0.1.41", optional = true }
 
 [features]
+default = ["tokio","macros"]
+
 migration = []
 tokio = ["dep:tokio"]
 macros = ["dep:postro-macros"]
+
+serde = ["dep:serde"]
+json = ["serde","dep:serde_json"]
+
 log = ["dep:log"]
 verbose = ["dep:tracing"]

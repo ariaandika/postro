@@ -1,8 +1,9 @@
 use futures::TryStreamExt;
-use std::{borrow::Cow, env::var};
-use tracing::Instrument;
+use tracing_subscriber::EnvFilter;
+use std::env::var;
+use tracing::{trace_span, Instrument};
 
-use postro::{Connection, DecodeError, Executor, FromRow, Pool, Result};
+use postro::{DecodeError, Executor, FromRow, Pool, Result};
 
 #[derive(Debug, FromRow)]
 struct Post {
@@ -16,27 +17,35 @@ struct Post {
 #[allow(unused)]
 struct PostTuple(i32, String, String);
 
+const SLEEP_MUL: i32 = 0;
+
 #[tokio::main]
 async fn main() -> Result<()> {
     dotenvy::dotenv().ok();
-    tracing_subscriber::fmt::init();
+    tracing_subscriber::fmt()
+        .with_env_filter(EnvFilter::from_default_env())
+        .with_target(false)
+        .init();
 
     let url = var("DATABASE_URL").unwrap();
 
     {
-        let mut conn = Connection::connect(&url).await?;
+        let mut conn = postro::Connection::connect(&url).await?;
         postro::execute("drop table if exists post", &mut conn).execute().await?;
         postro::execute("create table post(id serial, tag text, name text)", &mut conn).execute().await?;
-        task(&mut conn, "dedicated".into()).await?;
+        task(&mut conn, 0)
+            .instrument(trace_span!("dedicated"))
+            .await?;
     }
 
-    let mut pool = Pool::connect_lazy(&var("DATABASE_URL").unwrap())?;
+    let mut pool = Pool::connect_lazy(&url)?;
     let mut handles = vec![];
 
     doc_example(pool.clone()).await?;
 
-    for i in 0..24 {
-        handles.push(tokio::spawn(task(pool.clone(),format!("thread {i}").into())));
+    for i in 0..24i32 {
+        tokio::time::sleep(std::time::Duration::from_millis((i*100/4 * SLEEP_MUL) as _)).await;
+        handles.push(tokio::spawn(task(pool.clone(),i.into()).instrument(trace_span!("dedicated",thread=i))));
     }
 
     for handle in std::mem::take(&mut handles) {
@@ -46,6 +55,8 @@ async fn main() -> Result<()> {
     let foo: Vec<Post> = postro::query("select * from post", &mut pool).fetch_all().await?;
 
     tracing::info!("{foo:#?}");
+
+    // tokio::time::sleep(std::time::Duration::from_secs(5)).await;
 
     Ok(())
 }
@@ -92,7 +103,9 @@ async fn doc_example(mut pool: Pool) -> Result<()> {
     Ok(())
 }
 
-async fn task<E: Executor>(conn: E, id: Cow<'static,str>) -> Result<()> {
+async fn task<E: Executor>(conn: E, id: i32) -> Result<()> {
+    tracing::trace!("task");
+
     let mut conn = conn.connection().await?;
 
     postro::query::simple_query::<(), _>("select * from post", &mut conn)
@@ -109,15 +122,15 @@ async fn task<E: Executor>(conn: E, id: Cow<'static,str>) -> Result<()> {
     {
         let mut tx = postro::query::begin(&mut conn).await?;
         postro::execute("insert into post(tag,name) values($1,$2)", &mut tx)
-            .bind(id.as_ref())
-            .bind(&format!("NotExists: {id}"))
+            .bind(&format!("thead{id}"))
+            .bind(&format!("NotExists: thread{id}"))
             .execute()
             .await?;
     }
 
     let (_post_id,) = postro::query::<_, _, (i32,)>("insert into post(tag,name) values($1,$2) returning id", &mut conn)
-        .bind(id.as_ref())
-        .bind(&format!("Post from: {id}"))
+        .bind(&format!("thead{id}"))
+        .bind(&format!("Post from: thread{id}"))
         .fetch_one()
         .await?;
 
@@ -127,14 +140,14 @@ async fn task<E: Executor>(conn: E, id: Cow<'static,str>) -> Result<()> {
 
     assert!(
         post.iter()
-            .find(|e| e.tag == id)
-            .map(|e| e.name == format!("Post from: {id}"))
+            .find(|e| e.tag == format!("thead{id}"))
+            .map(|e| e.name == format!("Post from: thread{id}"))
             .unwrap()
     );
 
     postro::execute("insert into post(tag,name) values($1,$2)", &mut conn)
-        .bind(id.as_ref())
-        .bind(&format!("Exectute for: {id}"))
+        .bind(&format!("thead{id}"))
+        .bind(&format!("Exectute for: thread{id}"))
         .execute()
         .await?;
 
@@ -147,12 +160,14 @@ async fn task<E: Executor>(conn: E, id: Cow<'static,str>) -> Result<()> {
     {
         let mut tx = postro::query::begin(&mut conn).await?;
         postro::execute("insert into post(tag,name) values($1,$2)", &mut tx)
-            .bind(id.as_ref())
-            .bind(&format!("Transaction from: {id}"))
+            .bind(&format!("thead{id}"))
+            .bind(&format!("Transaction from: thread{id}"))
             .execute()
             .await?;
         tx.commit().await?;
     }
+
+    tokio::time::sleep(std::time::Duration::from_millis((id*100/2 * SLEEP_MUL) as _)).await;
 
     Ok(())
 }

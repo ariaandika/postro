@@ -336,6 +336,7 @@ dependencies = [
  "pin-project-lite",
  "postro-macros",
  "tokio",
+ "tracing",
 ]
 
 [[package]]

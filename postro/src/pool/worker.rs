@@ -1,8 +1,11 @@
 use std::{
     collections::VecDeque,
-    io,
     pin::Pin,
-    task::{Context, Poll, ready},
+    task::{
+        Context,
+        Poll::{self, *},
+        ready,
+    },
     time::Duration,
 };
 use tokio::{
@@ -14,7 +17,10 @@ use tokio::{
 };
 
 use super::PoolConfig;
-use crate::{Connection, Result, common::trace};
+use crate::{
+    Connection, Result,
+    common::{span, verbose},
+};
 
 const HALF_MINUTE: Duration = Duration::from_secs(3);
 
@@ -29,21 +35,29 @@ enum State {
 }
 
 impl WorkerHandle {
-    pub fn new(config: PoolConfig) -> (Self, WorkerFuture) {
+    pub fn new(config: PoolConfig) -> (Self, WorkerFutureV2) {
         let (send, recv) = mpsc::unbounded_channel();
         (
             Self { send, state: State::Idle },
-            WorkerFuture {
+            WorkerFutureV2 {
                 started: Instant::now(),
-                config,
+                #[cfg(feature = "verbose")]
+                iter_n: 0,
+                connect_retry: 0,
+
                 actives: 0,
                 conns: VecDeque::new(),
-                sleep: Box::pin(sleep(HALF_MINUTE)),
+                // queue: VecDeque::with_capacity(1),
+                acquires: VecDeque::with_capacity(1),
                 recv,
-                queue: VecDeque::with_capacity(1),
+
+                connect_delay: None,
                 connecting: None,
                 healthcheck: None,
                 closing: None,
+                sleep: Box::pin(sleep(config.interval)),
+
+                config,
             },
         )
     }
@@ -87,28 +101,35 @@ impl std::fmt::Debug for WorkerHandle {
 }
 
 struct PoolConnection {
-    healthc_at: Instant,
+    last_hc: Instant,
     conn: Connection,
 }
 
 impl PoolConnection {
     fn new(conn: Connection, instant: Instant) -> Self {
         Self {
-            healthc_at: instant,
+            last_hc: instant,
+            conn
+        }
+    }
+
+    fn now(conn: Connection) -> Self {
+        Self {
+            last_hc: Instant::now(),
             conn
         }
     }
 
     fn should_healthcheck(&self) -> bool {
-        self.healthc_at.elapsed() > HALF_MINUTE
+        self.last_hc.elapsed() > HALF_MINUTE
     }
 
     fn poll_healthcheck(&mut self, cx: &mut Context) -> Poll<Result<()>> {
-        self.conn.poll_ready(cx)
-    }
-
-    fn poll_shutdown(&mut self, cx: &mut Context) -> Poll<io::Result<()>> {
-        self.conn.poll_shutdown(cx)
+        let result = ready!(self.conn.poll_ready(cx));
+        if result.is_ok() {
+            self.last_hc = Instant::now();
+        }
+        Poll::Ready(result)
     }
 }
 
@@ -120,9 +141,13 @@ enum WorkerMessage {
     Release(Connection),
 }
 
-pub struct WorkerFuture {
+type ConnectFuture = Pin<Box<dyn Future<Output = Result<Connection>> + Send + Sync + 'static>>;
+
+pub struct WorkerFutureV2 {
     config: PoolConfig,
     started: Instant,
+    #[cfg(feature = "verbose")]
+    iter_n: u8,
 
     actives: usize,
     /// - new conn is pushed back
@@ -133,257 +158,264 @@ pub struct WorkerFuture {
     ///
     /// front queue is the most fresh connection
     conns: VecDeque<PoolConnection>,
-    queue: VecDeque<AcquireSend>,
-
-    sleep: Pin<Box<Sleep>>,
+    acquires: VecDeque<AcquireSend>,
     recv: UnboundedReceiver<WorkerMessage>,
 
+    connect_retry: usize,
+    connect_delay: Option<Pin<Box<Sleep>>>,
     connecting: Option<ConnectFuture>,
     healthcheck: Option<PoolConnection>,
-    closing: Option<PoolConnection>,
+    closing: Option<Connection>,
+    sleep: Pin<Box<Sleep>>,
 }
 
-type ConnectFuture = Pin<Box<dyn Future<Output = Result<Connection>> + Send + Sync + 'static>>;
-
-/// Reset `sleep` to the least time to get to the next healthcheck
-fn reset_sleep_time(conns: &VecDeque<PoolConnection>, sleep: Pin<&mut Sleep>) {
-    let least_time_hc = conns.iter().fold(HALF_MINUTE, |acc, n| {
-        (HALF_MINUTE.saturating_sub(n.healthc_at.elapsed())).min(acc)
-    });
-
-    trace!("Cycle reset to: {least_time_hc:?}");
-
-    sleep.reset(Instant::now() + least_time_hc);
-}
-
-/// Handle connection that is not yet in idle queue.
-fn new_connection(
-    mut conn: Connection,
-    queue: &mut VecDeque<AcquireSend>,
-    conns: &mut VecDeque<PoolConnection>,
-    instant: Instant,
-    is_fresh: bool,
-) {
-    while let Some(send) = queue.pop_front() {
-        if let Err(Ok(_conn)) = send.send(Ok(conn)) {
-            conn = _conn;
-            continue;
-        }
-
-        return;
-    }
-
-    if is_fresh {
-        conns.push_front(PoolConnection::new(conn, instant));
-    } else {
-        conns.push_back(PoolConnection::new(conn, instant));
-    }
-}
-
-impl Future for WorkerFuture {
+impl Future for WorkerFutureV2 {
     type Output = ();
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-        let WorkerFuture {
-            started, config, actives, sleep, conns,
-            recv, queue,
-            connecting, healthcheck, closing
-        } = self.as_mut().get_mut();
+        #[cfg(feature = "verbose")]
+        {
+            self.iter_n = self.iter_n.wrapping_add(1);
+        }
+        span!(
+            "worker",
+            n=self.iter_n,
+        );
 
-        macro_rules! tracew {
-            ($prefix:literal) => {
-                trace!(
-                    "{:11}: Active={actives}, Idle={}, Connecting={}, Healthcheck={}, Closing={}",
-                    $prefix,
-                    conns.len(),
-                    connecting.is_some() as u8,
-                    healthcheck.is_some() as u8,
-                    closing.is_some() as u8,
-                );
-            };
+        // the only branch that can exit worker
+        if self.poll_incoming_message(cx).is_ready() {
+            #[cfg(feature = "log")]
+            log::info!("worker exit");
+            return Ready(());
         }
 
-        // PERF: maybe we can have multiple slot for connecting futures ?
+        // if there is `Release` after `Acquire`
+        while !self.acquires.is_empty() {
+            span!("acquire-demand");
+            match self.poll_connecting(cx) {
+                Ready(result) => self.send_acquire_queue(result),
+                Pending => break,
+            }
+        }
 
-        // NOTE:
-        // 1. Collect all request upfront
-        // 2. Poll any connection futures
-        // With the highest chance of connection available:
-        // 3. Try to fulfill Queues
-
-        while let Poll::Ready(msg) = recv.poll_recv(cx) {
-            let Some(msg) = msg else {
-                // all Pools handle are dropped
-                return Poll::Ready(())
-            };
-
-            use WorkerMessage::*;
-            match msg {
-                Acquire(send) => {
-                    match conns.pop_front() {
-                        Some(conn) => {
-                            let hc = conn.healthc_at;
-                            if let Err(Ok(conn)) = send.send(Ok(conn.conn)) {
-                                conns.push_front(PoolConnection::new(conn, hc));
-                            }
-                        },
-                        None => {
-                            queue.push_back(send);
-                            if connecting.is_none() && *actives < config.max_conn {
-                                *connecting = Some(Box::pin(Connection::connect_with(config.conn.clone())));
-                            }
-                        },
-                    }
-
-                    tracew!("Acquired");
-                },
-                Release(mut conn) => {
-                    if healthcheck.is_none() {
-                        // `poll_ready` is most likely to resolved in one poll
-                        match conn.poll_ready(cx) {
-                            Poll::Ready(Ok(_)) => {
-                                new_connection(conn, queue, conns, Instant::now(), true);
-                            },
-                            Poll::Ready(Err(_err)) => {
-                                #[cfg(feature = "log")]
-                                log::error!("healthcheck error: {_err}");
-
-                                if closing.is_some() {
-                                    drop(conn);
-                                } else {
-                                    *closing = Some(PoolConnection::new(conn, *started));
-                                }
-                            },
-                            Poll::Pending => {
-                                *healthcheck = Some(PoolConnection::new(conn, *started));
-                            },
-                        }
-                    } else {
-                        new_connection(conn, queue, conns, *started, false);
-                    }
-
-                    tracew!("Released");
+        if let Ready(result) = self.poll_connecting(cx) {
+            span!("connect-queue");
+            self.send_acquire_queue(result);
+            while !self.acquires.is_empty() {
+                span!("acquire-demand");
+                match self.poll_connecting(cx) {
+                    Ready(result) => self.send_acquire_queue(result),
+                    Pending => break,
                 }
             }
         }
 
-        if let Some(Poll::Ready(result)) = connecting.as_mut().map(|e|e.as_mut().poll(cx)) {
-            connecting.take();
-            match result {
-                Ok(conn) => {
-                    *actives += 1;
-                    new_connection(conn, queue, conns, Instant::now(), true);
-
-                    tracew!("New");
-                },
-                Err(err) => {
-                    #[cfg(feature = "log")]
-                    log::error!("failed to connect: {err}");
-
-                    if let Some(send) = queue.pop_front() {
-                        let _ = send.send(Err(err));
+        if let Some(conn) = self.healthcheck.take() {
+            self.poll_healthcheck(conn, cx);
+            while self.healthcheck.is_none() {
+                match self.conns.iter().rev().position(PoolConnection::should_healthcheck) {
+                    Some(i) => {
+                        let conn = self.conns.swap_remove_back(i).unwrap();
+                        self.poll_healthcheck(conn, cx);
                     }
-
-                    // TODO: fail connect backpressure instead of immediate error
-                },
-            }
-        }
-
-        if let Some(Poll::Ready(result)) = healthcheck.as_mut().map(|e|e.poll_healthcheck(cx)) {
-            let conn = healthcheck.take().unwrap();
-            match result {
-                Ok(()) => {
-                    new_connection(conn.conn, queue, conns, Instant::now(), true);
-                },
-                Err(_err) => {
-                    #[cfg(feature = "log")]
-                    log::error!("healthcheck error: {_err}");
-
-                    if closing.is_some() {
-                        drop(conn);
-                    } else {
-                        *closing = Some(conn);
-                    }
-                },
-            }
-
-            // there maybe canceled healthcheck on connection release or healthcheck interval
-            reset_sleep_time(conns, sleep.as_mut());
-
-            tracew!("Healthchecked");
-        }
-
-        if let Some(Poll::Ready(result)) = closing.as_mut().map(|e|e.poll_shutdown(cx)) {
-            let _conn = closing.take().unwrap();
-
-            if let Err(_err) = result {
-                #[cfg(feature = "log")]
-                log::error!("close error: {_err}");
-            }
-
-            *actives -= 1;
-
-            tracew!("Closed");
-        }
-
-        if let Poll::Ready(()) = sleep.as_mut().poll(cx) {
-            // healthcheck success will call this back
-            if healthcheck.is_none() {
-
-                if let Some(i) = conns.iter().rev().position(|e|e.should_healthcheck()) {
-                    let mut conn = conns.swap_remove_back(i).unwrap();
-
-                    reset_sleep_time(conns, sleep.as_mut());
-
-                    // Healthcheck can possibly `Ready` in one poll
-                    match dbg!(conn.poll_healthcheck(cx)) {
-                        Poll::Ready(Ok(_)) => {
-                            new_connection(conn.conn, queue, conns, Instant::now(), true);
-                        },
-                        Poll::Ready(Err(_err)) => {
-                            #[cfg(feature = "log")]
-                            log::error!("healthcheck error: {_err}");
-
-                            if closing.is_some() {
-                                drop(conn);
-                            } else {
-                                *closing = Some(conn);
-                            }
-                        },
-                        Poll::Pending => {
-                            *healthcheck = Some(conn);
-                        },
-                    }
-
-                } else {
-                    reset_sleep_time(conns, sleep.as_mut());
+                    None => break,
                 }
             }
-
-            tracew!("Cycled");
         }
 
-        while let Some(send) = queue.pop_front() {
-            match conns.pop_front() {
-                Some(conn) => {
-                    let hc = conn.healthc_at;
-                    if let Err(Ok(conn)) = send.send(Ok(conn.conn)) {
-                        conns.push_front(PoolConnection::new(conn, hc));
-                    }
-                },
-                None => {
-                    queue.push_front(send);
-                    if connecting.is_none() && *actives < config.max_conn {
-                        *connecting = Some(Box::pin(Connection::connect_with(config.conn.clone())));
-                    }
-                    break;
-                },
-            }
+        if let Some(conn) = self.closing.take() {
+            self.poll_close(conn, cx);
         }
 
-        trace!("{:-<11}: Backpressured: {}", "", queue.len());
+        if let Poll::Ready(()) = self.sleep.as_mut().poll(cx) {
+            verbose!("Interval");
+            self.reset_interval();
+        }
+
+        verbose!(
+            actives=self.actives,
+            idle=self.conns.len(),
+            hc=self.healthcheck.is_some() as u8,
+            interval=?{self.sleep.deadline() - Instant::now()}.as_secs(),
+            backpressured=self.acquires.len(),
+            "polled"
+        );
 
         Poll::Pending
+    }
+}
+
+impl WorkerFutureV2 {
+    fn poll_incoming_message(&mut self, cx: &mut Context) -> Poll<()> {
+        while let Poll::Ready(msg) = self.recv.poll_recv(cx) {
+            let Some(msg) = msg else {
+                return Poll::Ready(());
+            };
+
+            match msg {
+                WorkerMessage::Acquire(send) => {
+                    span!("acquire");
+                    verbose!("Acquire");
+
+                    match self.pop_connection(cx) {
+                        Poll::Pending => self.acquires.push_back(send),
+                        Poll::Ready(Ok(PoolConnection { last_hc, conn })) => {
+                            if let Err(Ok(conn)) = send.send(Ok(conn)) {
+                                self.conns.push_back(PoolConnection::new(conn, last_hc));
+                            }
+                        },
+                        Poll::Ready(Err(err)) => send.send(Err(err)).unwrap_or(()),
+                    }
+                },
+                WorkerMessage::Release(conn) => {
+                    span!("release");
+                    verbose!("Release");
+
+                    self.healthcheck(conn, cx);
+                }
+            }
+        }
+
+        Poll::Pending
+    }
+
+    fn pop_connection(&mut self, cx: &mut Context) -> Poll<Result<PoolConnection>>{
+        match self.conns.pop_front() {
+            Some(ok) => Poll::Ready(Ok(ok)),
+            None => self.poll_connecting(cx),
+        }
+    }
+
+    /// `Ready` returns is always with retry polled
+    fn poll_connecting(&mut self, cx: &mut Context) -> Poll<Result<PoolConnection>> {
+        match self.connect_delay.as_mut() {
+            Some(f) => {
+                // wait for `connect_delay: Sleep`
+                ready!(f.as_mut().poll(cx));
+                self.connect_delay.take();
+            },
+            None => {},
+        }
+
+        if self.connecting.is_none() && self.actives >= self.config.max_conn {
+            // wait for `Release`
+            verbose!("new connection backpressured");
+            return Poll::Pending;
+        }
+
+        let poll = self
+            .connecting
+            .get_or_insert_with(||Box::pin(Connection::connect_with(self.config.conn.clone())))
+            .as_mut()
+            .poll(cx);
+
+        // wait for `Connection::connect`
+        let result = ready!(poll);
+        self.connecting.take();
+
+        match result {
+            Ok(conn) => {
+                self.connect_retry = 0;
+                self.actives += 1;
+                verbose!(actives=self.actives,"new-connection");
+                Poll::Ready(Ok(PoolConnection::now(conn)))
+            },
+            Err(err) => {
+                #[cfg(feature = "log")]
+                log::error!("failed to connect: {err:#}, retry={}",self.connect_retry);
+
+                if self.connect_retry < self.config.max_retry {
+                    self.connect_retry += 1;
+                    self.connect_delay = Some(Box::pin(sleep(self.config.retry_delay)));
+                    // wait for `connect_delay: Sleep`
+                    Poll::Pending
+                } else {
+                    self.connect_retry = 0;
+                    self.connecting.take();
+                    Poll::Ready(Err(err))
+                }
+            },
+        }
+    }
+
+    fn healthcheck(&mut self, conn: Connection, cx: &mut Context) {
+        if let Some(conn) = self.healthcheck.take() {
+            self.poll_healthcheck(conn, cx);
+        }
+        self.poll_healthcheck(PoolConnection::new(conn, self.started), cx);
+    }
+
+    fn poll_healthcheck(&mut self, mut conn: PoolConnection, cx: &mut Context) {
+        match conn.poll_healthcheck(cx) {
+            Pending if self.healthcheck.is_none() => self.healthcheck = Some(conn),
+            Pending => self.conns.push_back(conn),
+            Ready(Ok(())) if !self.acquires.is_empty() => self.send_acquire_queue(Ok(conn)),
+            Ready(Ok(())) => self.conns.push_front(conn),
+            Ready(Err(_err)) => {
+                #[cfg(feature = "log")]
+                log::error!("connection healthcheck failed: {_err:#}");
+                self.close(conn.conn, cx);
+            }
+        }
+    }
+
+    fn send_acquire_queue(&mut self, result: Result<PoolConnection>) {
+        match (self.acquires.pop_front(), result) {
+            (Some(send), result) => self.send_acquire(send, result),
+            (None, Ok(conn)) => self.conns.push_back(conn),
+            (None, Err(_)) => {}
+        }
+    }
+
+    fn send_acquire(&mut self, send: AcquireSend, result: Result<PoolConnection>) {
+        match result {
+            Ok(PoolConnection { last_hc, conn }) => {
+                let Err(Ok(conn)) = send.send(Ok(conn)) else {
+                    return;
+                };
+                if self.acquires.is_empty() {
+                    self.conns.push_front(PoolConnection::new(conn, last_hc));
+                } else {
+                    self.send_acquire_queue(Ok(PoolConnection::new(conn, last_hc)));
+                }
+            },
+            Err(err) => send.send(Err(err)).unwrap_or(()),
+        }
+    }
+
+    fn reset_interval(&mut self) {
+        let least_time_hc = self.conns.iter().fold(self.config.interval, |acc, n| {
+            (self.config.interval.saturating_sub(n.last_hc.elapsed())).min(acc)
+        });
+
+        self.sleep.as_mut().reset(Instant::now() + least_time_hc);
+    }
+
+    fn close(&mut self, conn: Connection, cx: &mut Context) {
+        if let Some(conn) = self.closing.take() {
+            self.poll_close(conn, cx);
+        }
+        self.poll_close(conn, cx);
+    }
+
+    fn poll_close(&mut self, mut conn: Connection, cx: &mut Context) {
+        match conn.poll_shutdown(cx) {
+            Ready(_) if {
+                self.actives -= 1;
+                verbose!("closed");
+                false
+            } => {}
+            Ready(Ok(())) => {}
+            Ready(Err(_err)) => {
+                #[cfg(feature = "log")]
+                log::error!("failed to close connection: {_err:#}");
+            }
+            Pending if self.closing.is_none() => self.closing = Some(conn),
+            Pending => {
+                self.actives -= 1;
+                verbose!("closed");
+            } // connection is not dropped cleanly
+        }
     }
 }
 

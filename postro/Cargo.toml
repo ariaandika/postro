@@ -17,10 +17,11 @@ tokio = { version = "1.44.1", optional = true, features = [
   # Worker
   "rt", "sync", "time"
 ] }
+tracing = { version = "0.1.41", optional = true }
 
 [features]
 migration = []
 tokio = ["dep:tokio"]
-log = ["dep:log"]
-log-verbose = ["log"]
 macros = ["dep:postro-macros"]
+log = ["dep:log"]
+verbose = ["dep:tracing"]

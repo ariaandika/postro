@@ -10,16 +10,9 @@ use std::{
 };
 
 use crate::{
-    Result,
-    common::trace,
-    executor::Executor,
-    net::Socket,
-    postgres::{
-        BackendProtocol, ErrorResponse, FrontendProtocol, NoticeResponse, backend, frontend,
-    },
-    query,
-    statement::StatementName,
-    transport::{PgTransport, PgTransportExt},
+    common::{span, verbose}, executor::Executor, net::Socket, postgres::{
+        backend, frontend, BackendProtocol, ErrorResponse, FrontendProtocol, NoticeResponse
+    }, query, statement::StatementName, transport::{PgTransport, PgTransportExt}, Result
 };
 
 mod config;
@@ -185,7 +178,7 @@ macro_rules! poll_message {
         let $body = $io.read_buf.split_to(len - 4).freeze();
 
         // Message fully acquired
-        trace!("(B){:?}",backend::BackendMessage::decode($msgtype, $body.clone()).unwrap());
+        verbose!("(B){:?}",backend::BackendMessage::decode($msgtype, $body.clone()).unwrap());
     };
 }
 
@@ -210,7 +203,7 @@ impl Connection {
         }
 
         while self.sync_pending != 0 {
-            trace!("healthcheck: {{sync_pending: {}}}",self.sync_pending);
+            verbose!(self.sync_pending,"healthcheck");
 
             poll_message! {
                 poll(self, cx);
@@ -285,26 +278,29 @@ impl PgTransport for Connection {
     }
 
     fn send<F: FrontendProtocol>(&mut self, message: F) {
-        trace!("(F){message:?}");
+        verbose!(?message,"(F)");
         frontend::write(message, &mut self.write_buf);
     }
 
     fn send_startup(&mut self, startup: frontend::Startup) {
-        trace!("(F){startup:?}");
+        verbose!(?startup,"(F)");
         startup.write(&mut self.write_buf);
     }
 
     fn get_stmt(&mut self, sqlid: u64) -> Option<StatementName> {
-        self.stmts.get(&sqlid).cloned().inspect(|_e|{
-            trace!("statement cache hit: {_e}")
+        self.stmts.get(&sqlid).cloned().inspect(|_name|{
+            span!("statement");
+            verbose!(name=%_name,"cache hit")
         })
     }
 
     fn add_stmt(&mut self, id: u64, name: StatementName) {
-        trace!("statement added: {name}");
+        span!("statement");
+
+        verbose!(%name,"added");
 
         if let Some((_id,name)) = self.stmts.push(id, name) {
-            trace!("statement removed: {name}");
+            verbose!(%name,"removed");
 
             self.send(frontend::Close {
                 variant: b'S',

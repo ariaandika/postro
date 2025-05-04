@@ -155,11 +155,11 @@ enum PoolCow<'a> {
     Owned(Pool),
 }
 
-impl<'a> PoolCow<'a> {
+impl PoolCow<'_> {
     fn as_ref(&self) -> &Pool {
         match self {
-            PoolCow::Borrow(pool) => *pool,
-            PoolCow::Owned(pool) => &pool,
+            PoolCow::Borrow(pool) => pool,
+            PoolCow::Owned(pool) => pool,
         }
     }
 

@@ -288,13 +288,10 @@ impl WorkerFutureV2 {
 
     /// `Ready` returns is always with retry polled
     fn poll_connecting(&mut self, cx: &mut Context) -> Poll<Result<PoolConnection>> {
-        match self.connect_delay.as_mut() {
-            Some(f) => {
-                // wait for `connect_delay: Sleep`
-                ready!(f.as_mut().poll(cx));
-                self.connect_delay.take();
-            },
-            None => {},
+        if let Some(f) = self.connect_delay.as_mut() {
+            // wait for `connect_delay: Sleep`
+            ready!(f.as_mut().poll(cx));
+            self.connect_delay.take();
         }
 
         if self.connecting.is_none() && self.actives >= self.config.max_conn {

@@ -4,12 +4,12 @@ use std::future::Ready;
 use crate::{transport::PgTransport, Result};
 
 /// A type that can returns a [`PgTransport`].
-pub trait Executor {
+pub trait Executor: Unpin {
     /// The returned transport.
     type Transport: PgTransport;
 
     /// Future that resolve to [`Executor::Transport`].
-    type Future: Future<Output = Result<Self::Transport>>;
+    type Future: Future<Output = Result<Self::Transport>> + Unpin;
 
     /// Acquire the transport.
     fn connection(self) -> Self::Future;

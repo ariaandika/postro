@@ -28,10 +28,10 @@ impl<'val, SQL, R, ExeMut, IO> FetchOne<'val, SQL, R, ExeMut, IO> {
 
 impl<SQL, R, ExeFut, IO> Future for FetchOne<'_, SQL, R, ExeFut, IO>
 where
-    SQL: Sql,
-    R: FromRow,
-    ExeFut: Future<Output = Result<IO>>,
-    IO: PgTransport,
+    SQL: Sql + Unpin,
+    R: FromRow + Unpin,
+    ExeFut: Future<Output = Result<IO>> + Unpin,
+    IO: PgTransport + Unpin,
 {
     type Output = Result<R>;
 
@@ -40,12 +40,10 @@ where
             panic!("`poll` after complete");
         }
 
-        // SAFETY: `self` never move
-        let me = unsafe { self.get_unchecked_mut() };
+        let me = self.get_mut();
 
         loop {
-            // SAFETY: `me` never move
-            let f = unsafe { Pin::new_unchecked(&mut me.fetch) };
+            let f = Pin::new(&mut me.fetch);
             let row = &mut me.row;
             let complete = &mut me.complete;
 

@@ -27,21 +27,19 @@ impl<'val, SQL, R, ExeFut, IO> FetchAll<'val, SQL, R, ExeFut, IO> {
 
 impl<SQL, R, ExeFut, IO> Future for FetchAll<'_, SQL, R, ExeFut, IO>
 where
-    SQL: Sql,
-    R: FromRow,
-    ExeFut: Future<Output = Result<IO>>,
-    IO: PgTransport,
+    SQL: Sql + Unpin,
+    R: FromRow + Unpin,
+    ExeFut: Future<Output = Result<IO>> + Unpin,
+    IO: PgTransport + Unpin,
 {
     type Output = Result<Vec<R>>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-        // SAFETY: `self` never move
-        let me = unsafe { self.get_unchecked_mut() };
+        let me = self.get_mut();
         let f = &mut me.fetch;
         let output = &mut me.output;
 
-        // SAFETY: `me` never move
-        while let Some(r) = ready!(unsafe { Pin::new_unchecked(&mut *f) }.poll_next(cx)?) {
+        while let Some(r) = ready!(Pin::new(&mut *f).poll_next(cx)?) {
             output.push(r)
         }
 

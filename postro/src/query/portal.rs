@@ -52,15 +52,14 @@ impl<'val, SQL, ExeFut, IO> Portal<'val, SQL, ExeFut, IO> {
 
 impl<SQL, ExeFut, IO> Future for Portal<'_, SQL, ExeFut, IO>
 where
-    SQL: Sql,
-    ExeFut: Future<Output = Result<IO>>,
-    IO: PgTransport,
+    SQL: Sql + Unpin,
+    ExeFut: Future<Output = Result<IO>> + Unpin,
+    IO: PgTransport + Unpin,
 {
     type Output = Result<IO>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        // SAFETY: self is pinned
-        let me = unsafe { self.get_unchecked_mut() };
+        let me = self.get_mut();
         let sql = &mut me.sql;
         let io = &mut me.io;
         let phase = &mut me.phase;
@@ -70,8 +69,7 @@ where
         loop {
             match &mut *phase {
                 Phase::Connect { f } => {
-                    // SAFETY: self is pinned
-                    let f = unsafe { Pin::new_unchecked(f) };
+                    let f = Pin::new(f);
                     let conn = ready!(f.poll(cx)?);
                     assert!(io.replace(conn).is_none());
                     *phase = Phase::Prepare;

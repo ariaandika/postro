@@ -11,7 +11,7 @@ use crate::{
 };
 
 /// A buffered stream which can send and receive postgres message.
-pub trait PgTransport {
+pub trait PgTransport: Unpin {
     /// Poll to flush the underlying io.
     fn poll_flush(&mut self, cx: &mut Context) -> Poll<io::Result<()>>;
 

@@ -52,23 +52,21 @@ impl<'val, SQL, R, ExeFut, IO> FetchStream<'val, SQL, R, ExeFut, IO> {
 
 impl<SQL, R, ExeFut, IO> Stream for FetchStream<'_, SQL, R, ExeFut, IO>
 where
-    SQL: Sql,
-    R: FromRow,
-    ExeFut: Future<Output = Result<IO>>,
-    IO: PgTransport,
+    SQL: Sql + Unpin,
+    R: FromRow + Unpin,
+    ExeFut: Future<Output = Result<IO>> + Unpin,
+    IO: PgTransport + Unpin,
 {
     type Item = Result<R>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        // SAFETY: `self` never move
-        let me = unsafe { self.get_unchecked_mut() };
+        let me = self.get_mut();
         let phase = &mut me.phase;
 
         loop {
             match &mut *phase {
                 Phase::Portal { portal } => {
-                    // SAFETY: `me` never move
-                    let portal = unsafe { Pin::new_unchecked(portal) };
+                    let portal = Pin::new(portal);
                     let io = ready!(portal.poll(cx)?);
                     *phase = Phase::BindComplete { io: Some(io) };
                 },

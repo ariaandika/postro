@@ -37,22 +37,20 @@ impl<'val, SQL, ExeFut, IO> Execute<'val, SQL, ExeFut, IO> {
 
 impl<SQL, ExeFut, IO> Future for Execute<'_, SQL, ExeFut, IO>
 where
-    SQL: Sql,
-    ExeFut: Future<Output = Result<IO>>,
-    IO: PgTransport,
+    SQL: Sql + Unpin,
+    ExeFut: Future<Output = Result<IO>> + Unpin,
+    IO: PgTransport + Unpin,
 {
     type Output = Result<u64>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        // SAFETY: `self` never move
-        let me = unsafe { self.get_unchecked_mut() };
+        let me = self.get_mut();
         let phase = &mut me.phase;
 
         loop {
             match &mut *phase {
                 Phase::Portal { portal } => {
-                    // SAFETY: `me` never move
-                    let portal = unsafe { Pin::new_unchecked(portal) };
+                    let portal = Pin::new(portal);
                     let io = ready!(portal.poll(cx)?);
                     *phase = Phase::BindComplete { io: Some(io) };
                 },

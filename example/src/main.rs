@@ -1,7 +1,9 @@
 use futures::TryStreamExt;
-use tracing_subscriber::EnvFilter;
 use std::env::var;
-use tracing::{trace_span, Instrument};
+use tracing::{Instrument, trace_span};
+use tracing_subscriber::{
+    EnvFilter, layer::SubscriberExt, util::SubscriberInitExt,
+};
 
 use postro::{DecodeError, Executor, FromRow, Pool, Result};
 
@@ -22,9 +24,10 @@ const SLEEP_MUL: i32 = 0;
 #[tokio::main]
 async fn main() -> Result<()> {
     dotenvy::dotenv().ok();
-    tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::from_default_env())
-        .with_target(false)
+    tracing_subscriber::Registry::default()
+        .with(EnvFilter::from_default_env())
+        .with(tracing_subscriber::fmt::layer()
+            .with_target(false))
         .init();
 
     let url = var("DATABASE_URL").unwrap();
@@ -41,20 +44,25 @@ async fn main() -> Result<()> {
     let mut pool = Pool::connect_lazy(&url)?;
     let mut handles = vec![];
 
-    doc_example(pool.clone()).await?;
+    doc_example(pool.clone()).instrument(trace_span!("doc_example")).await?;
 
-    for i in 0..24i32 {
-        tokio::time::sleep(std::time::Duration::from_millis((i*100/4 * SLEEP_MUL) as _)).await;
-        handles.push(tokio::spawn(task(pool.clone(),i.into()).instrument(trace_span!("dedicated",thread=i))));
+    for i in 0..24i32  {
+        tokio::time::sleep(std::time::Duration::from_millis(
+            (i * 100 / 4 * SLEEP_MUL) as _,
+        ))
+        .await;
+        handles.push(tokio::spawn(
+            task(pool.clone(), i.into()).instrument(trace_span!("thread", thread = i)),
+        ));
     }
 
     for handle in std::mem::take(&mut handles) {
         handle.await.unwrap()?;
     }
 
-    let foo: Vec<Post> = postro::query("select * from post", &mut pool).fetch_all().await?;
+    let _foo: Vec<Post> = postro::query("select * from post", &mut pool).fetch_all().await?;
 
-    tracing::info!("{foo:#?}");
+    // tracing::info!("{foo:#?}");
 
     // tokio::time::sleep(std::time::Duration::from_secs(5)).await;
 
@@ -80,13 +88,13 @@ async fn doc_example(mut pool: Pool) -> Result<()> {
     let mut handles = vec![];
 
     for i in 0..14 {
-        let mut pool = pool.clone();
+        let pool = pool.clone();
         let t = tokio::spawn(async move {
-            postro::execute("INSERT INTO foo(id) VALUES($1)", &mut pool)
+            postro::execute("INSERT INTO foo(id) VALUES($1)", &pool)
                 .bind(i)
                 .execute()
                 .await
-        });
+        }.instrument(trace_span!("doc_example")));
         handles.push(t);
     }
 

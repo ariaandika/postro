@@ -17,7 +17,7 @@ impl PoolConfig {
     pub fn from_env() -> PoolConfig {
         Self {
             conn: Config::from_env(),
-            max_conn: 2,
+            max_conn: 10,
             retry_delay: Duration::from_secs(5),
             max_retry: 3,
             interval: Duration::from_secs(60),

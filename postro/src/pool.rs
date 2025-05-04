@@ -9,10 +9,30 @@ mod worker;
 pub use config::PoolConfig;
 
 /// Database connection pool.
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct Pool {
+    conn: Option<Connection>,
     #[cfg(feature = "tokio")]
     handle: worker::WorkerHandle,
+    #[cfg(not(feature = "tokio"))]
+    handle: mock_handle::WorkerHandle,
+}
+
+impl Drop for Pool {
+    fn drop(&mut self) {
+        if let Some(conn) = self.conn.take() {
+            self.handle.release(conn);
+        }
+    }
+}
+
+impl Clone for Pool {
+    fn clone(&self) -> Self {
+        Self {
+            conn: None,
+            handle: self.handle.clone(),
+        }
+    }
 }
 
 impl Pool {
@@ -41,7 +61,7 @@ impl Pool {
         {
             let (handle,worker) = worker::WorkerHandle::new(config);
             tokio::spawn(worker);
-            Ok(Self { handle })
+            Ok(Self { conn: None, handle })
         }
 
         #[cfg(not(feature = "tokio"))]
@@ -57,7 +77,7 @@ impl Pool {
         {
             let (handle,worker) = worker::WorkerHandle::new(config);
             tokio::spawn(worker);
-            Self { handle }
+            Self { conn: None, handle }
         }
 
         #[cfg(not(feature = "tokio"))]
@@ -68,75 +88,93 @@ impl Pool {
     }
 
     fn poll_connection(&mut self, cx: &mut std::task::Context) -> std::task::Poll<Result<Connection>> {
-        #[cfg(feature = "tokio")]
-        {
-            self.handle.poll_acquire(cx)
-        }
-
-        #[cfg(not(feature = "tokio"))]
-        {
-            let _ = cx;
-            panic!("runtime disabled")
-        }
+        self.handle.poll_acquire(cx)
     }
 }
 
 impl Executor for Pool {
-    type Transport = PoolConnection;
+    type Transport = PoolConnection<'static>;
 
-    type Future = PoolConnect;
+    type Future = PoolConnect<'static>;
 
     fn connection(self) -> Self::Future {
-        PoolConnect { pool: Some(self) }
+        PoolConnect { pool: Some(PoolCow::Owned(self)) }
     }
 }
 
 impl Executor for &Pool {
-    type Transport = PoolConnection;
+    type Transport = PoolConnection<'static>;
 
-    type Future = PoolConnect;
+    type Future = PoolConnect<'static>;
 
     fn connection(self) -> Self::Future {
-        PoolConnect { pool: Some(self.clone()) }
+        PoolConnect { pool: Some(PoolCow::Owned(self.clone())) }
     }
 }
 
-impl Executor for &mut Pool {
-    type Transport = PoolConnection;
+impl<'a> Executor for &'a mut Pool {
+    type Transport = PoolConnection<'a>;
 
-    type Future = PoolConnect;
+    type Future = PoolConnect<'a>;
 
     fn connection(self) -> Self::Future {
-        PoolConnect { pool: Some(self.clone()) }
+        PoolConnect { pool: Some(PoolCow::Borrow(self)) }
     }
 }
 
 /// Future returned from [`Pool`] implementation of [`Executor::connection`].
 #[derive(Debug)]
-pub struct PoolConnect {
-    pool: Option<Pool>,
+pub struct PoolConnect<'a> {
+    pool: Option<PoolCow<'a>>,
 }
 
-impl Future for PoolConnect {
-    type Output = Result<PoolConnection>;
+impl<'a> Future for PoolConnect<'a> {
+    type Output = Result<PoolConnection<'a>>;
 
     fn poll(mut self: std::pin::Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> std::task::Poll<Self::Output> {
-        let conn = std::task::ready!(self.pool.as_mut().unwrap().poll_connection(cx)?);
-        std::task::Poll::Ready(Ok(PoolConnection { conn: Some(conn), pool: self.pool.take().unwrap() }))
+        use std::task::Poll::*;
+        if let Some(conn) = self.pool.as_mut().unwrap().as_mut().conn.take() {
+            return Ready(Ok(PoolConnection { conn: Some(conn), pool: self.pool.take().unwrap() }))
+        }
+        let conn = std::task::ready!(self.pool.as_mut().unwrap().as_mut().poll_connection(cx)?);
+        crate::common::verbose!(target: "pool_handle", "pool connection checkout");
+        Ready(Ok(PoolConnection { conn: Some(conn), pool: self.pool.take().unwrap() }))
     }
 }
 
 /// Instance of [`Pool`] with the checked out connection.
 #[derive(Debug)]
-pub struct PoolConnection {
-    pool: Pool,
+pub struct PoolConnection<'a> {
+    pool: PoolCow<'a>,
     conn: Option<Connection>,
 }
 
-impl PoolConnection {
+#[derive(Debug)]
+enum PoolCow<'a> {
+    Borrow(&'a mut Pool),
+    Owned(Pool),
+}
+
+impl<'a> PoolCow<'a> {
+    fn as_ref(&self) -> &Pool {
+        match self {
+            PoolCow::Borrow(pool) => *pool,
+            PoolCow::Owned(pool) => &pool,
+        }
+    }
+
+    fn as_mut(&mut self) -> &mut Pool {
+        match self {
+            PoolCow::Borrow(pool) => pool,
+            PoolCow::Owned(pool) => pool,
+        }
+    }
+}
+
+impl PoolConnection<'_> {
     /// Returns the [`Pool`] handle.
     pub fn pool(&self) -> &Pool {
-        &self.pool
+        self.pool.as_ref()
     }
 
     /// Returns the underlying [`Connection`].
@@ -146,14 +184,13 @@ impl PoolConnection {
     }
 }
 
-#[cfg(feature = "tokio")]
-impl Drop for PoolConnection {
+impl Drop for PoolConnection<'_> {
     fn drop(&mut self) {
-        self.pool.handle.release(self.conn.take().unwrap());
+        self.pool.as_mut().conn = self.conn.take();
     }
 }
 
-impl PgTransport for PoolConnection {
+impl PgTransport for PoolConnection<'_> {
     fn poll_flush(&mut self, cx: &mut std::task::Context) -> std::task::Poll<std::io::Result<()>> {
         self.connection().poll_flush(cx)
     }
@@ -180,6 +217,26 @@ impl PgTransport for PoolConnection {
 
     fn add_stmt(&mut self, sql: u64, id: crate::statement::StatementName) {
         self.connection().add_stmt(sql, id);
+    }
+}
+
+#[cfg(not(feature = "tokio"))]
+mod mock_handle {
+    use std::task::{Context, Poll};
+
+    use crate::{Connection, Result};
+
+    #[derive(Debug, Clone)]
+    pub struct WorkerHandle;
+
+    impl WorkerHandle {
+        pub fn poll_acquire(&mut self, _: &mut Context) -> Poll<Result<Connection>> {
+            unreachable!()
+        }
+
+        pub fn release(&self, _: Connection) {
+            unreachable!()
+        }
     }
 }
 

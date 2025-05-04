@@ -316,6 +316,53 @@ where
     }
 }
 
+#[cfg(feature = "time")]
+impl FromColumn for time::PrimitiveDateTime {
+    fn decode(column: Column) -> Result<Self, DecodeError> {
+        use time::{
+            PrimitiveDateTime,
+            format_description::{BorrowedFormatItem as I, Component as C, modifier},
+        };
+
+        const DESCRIPTION: &[I<'_>] = &[
+            I::Component {
+                0: C::Year(modifier::Year::default()),
+            },
+            I::Literal { 0: b"-" },
+            I::Component {
+                0: C::Month(modifier::Month::default()),
+            },
+            I::Literal { 0: b"-" },
+            I::Component {
+                0: C::Day(modifier::Day::default()),
+            },
+            I::Literal { 0: b" " },
+            I::Component {
+                0: C::Hour(modifier::Hour::default()),
+            },
+            I::Literal { 0: b":" },
+            I::Component {
+                0: C::Minute(modifier::Minute::default()),
+            },
+            I::Literal { 0: b":" },
+            I::Component {
+                0: C::Second(modifier::Second::default()),
+            },
+            I::Literal { 0: b"." },
+            I::Component {
+                0: C::Subsecond(modifier::Subsecond::default()),
+            },
+        ];
+
+        if column.oid() != Self::OID {
+            return Err(DecodeError::OidMissmatch);
+        }
+
+        PrimitiveDateTime::parse(&ByteStr::from_utf8(column.into_value())?, &DESCRIPTION)
+            .map_err(<_>::into)
+    }
+}
+
 /// Type that can be used for indexing column.
 pub trait Index: Sized + sealed::Sealed {
     /// Returns (bytes start offset, nul string index, nth column).
@@ -391,6 +438,9 @@ pub enum DecodeError {
     /// Failed to deserialize using `serde_json`.
     #[cfg(feature = "json")]
     Json(serde_json::error::Error),
+    /// Failed to parse timestamp.
+    #[cfg(feature = "time")]
+    Time(time::error::Parse)
 }
 
 impl std::error::Error for DecodeError { }
@@ -405,6 +455,8 @@ impl fmt::Display for DecodeError {
             Self::OidMissmatch => write!(f, "data type missmatch"),
             #[cfg(feature = "json")]
             Self::Json(error) => write!(f, "{error}"),
+            #[cfg(feature = "time")]
+            Self::Time(error) => write!(f, "{error}"),
         }
     }
 }
@@ -429,4 +481,6 @@ from!(<Utf8Error>e => Self::Utf8(e));
 from!(<FromUtf8Error>e => Self::Utf8(e.utf8_error()));
 #[cfg(feature = "json")]
 from!(<serde_json::error::Error>e => Self::Json(e));
+#[cfg(feature = "time")]
+from!(<time::error::Parse>e => Self::Time(e));
 

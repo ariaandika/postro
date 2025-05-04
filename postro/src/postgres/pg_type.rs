@@ -38,3 +38,10 @@ oid!(String, 25, "`text` variable-length string, no limit specified");
 oid!(f32, 700, "`float4` single-precision floating point number, 4-byte storage");
 oid!(f64, 701, "`float8` double-precision floating point number, 8-byte storage");
 
+
+#[cfg(feature = "time")]
+impl PgType for time::PrimitiveDateTime {
+    /// date and time
+    const OID: Oid = 1114;
+}
+

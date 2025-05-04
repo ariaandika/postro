@@ -1,5 +1,0 @@
-#!/bin/zsh
-cargo b
-cargo b -F tokio
-cargo b -F tokio,log
-cargo b -F tokio,log,verbose

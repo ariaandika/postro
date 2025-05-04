@@ -1,6 +1,6 @@
 [workspace]
-members = ["codegen", "example", "postro", "postro-macros"]
-default-members = ["postro","postro-macros"]
+members = ["postro", "postro-macros", "example"]
+default-members = ["postro"]
 resolver = "2"
 
 [workspace.package]

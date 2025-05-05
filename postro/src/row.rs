@@ -3,7 +3,7 @@
 //! - [`Row`]
 //! - [`Column`]
 //! - [`FromRow`]
-//! - [`FromColumn`]
+//! - [`Decode`]
 //!
 //! - [`Index`]
 //! - [`DecodeError`]

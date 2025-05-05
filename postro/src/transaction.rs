@@ -13,7 +13,7 @@ use crate::{
 
 /// An RAII implementation of transaction scope.
 ///
-/// To begin a transaction, use [`begin`][1] function.
+/// To begin a transaction, use [`begin`][crate::phase::begin] function.
 ///
 /// To commit transaction, use [`Transaction::commit`].
 ///
@@ -33,8 +33,6 @@ use crate::{
 /// # Ok(())
 /// # }
 /// ```
-///
-/// [1]: crate::query::begin
 pub struct Transaction<IO: PgTransport> {
     io: IO,
     commited: bool,

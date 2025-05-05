@@ -5,7 +5,7 @@
 //! Available for:
 //!
 //! - [`serde`]'s [`Deserialize`][sd] and [`Serialize`][ss] via [`Json`], requires `json` feature
-//! - [`time`]'s [`PrimitiveDateTime`][tp], [`UtcDateTime`][tu], requires `time` feature
+//! - [`time`][::time]'s [`PrimitiveDateTime`][tp], [`UtcDateTime`][tu], requires `time` feature
 //!
 //! [d]: crate::Decode
 //! [e]: crate::Encode

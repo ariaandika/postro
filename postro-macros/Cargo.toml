@@ -1,7 +1,7 @@
 [package]
 name = "postro-macros"
 description = "Postro Proc Macro"
-documentation = "https://docs.rs/postro"
+documentation = "https://docs.rs/postro-macros"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

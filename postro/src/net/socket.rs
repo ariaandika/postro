@@ -138,11 +138,13 @@ impl tokio::io::AsyncWrite for Socket {
 
 impl std::fmt::Debug for Socket {
     fn fmt(&self, _f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self.kind {
+        match &self.kind {
             #[cfg(feature = "tokio")]
-            Kind::TokioTcp(ref tcp) => std::fmt::Debug::fmt(tcp, _f),
+            Kind::TokioTcp(tcp) => std::fmt::Debug::fmt(&tcp, _f),
             #[cfg(all(feature = "tokio", unix))]
-            Kind::TokioUnixSocket(ref unix) => std::fmt::Debug::fmt(&unix, _f),
+            Kind::TokioUnixSocket(unix) => std::fmt::Debug::fmt(&unix, _f),
+            #[cfg(not(feature = "tokio"))]
+            _ => Ok(())
         }
     }
 }

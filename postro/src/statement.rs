@@ -64,7 +64,7 @@ macro_rules! delegate {
                 Self(Id::unnamed())
             }
 
-            #[allow(unused)] // Portal `next` used later
+            #[allow(unused, reason = "Portal `next` used later")]
             pub(crate) fn next() -> Self {
                 static ID: AtomicId = AtomicId::new(0);
                 Self(Id::next(&ID))

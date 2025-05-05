@@ -8,7 +8,7 @@ use crate::{common::ByteStr, phase::StartupConfig};
 pub struct Config {
     pub(crate) user: ByteStr,
     pub(crate) pass: ByteStr,
-    #[allow(unused)] // socket used later
+    #[allow(unused, reason = "socket used later")]
     pub(crate) socket: Option<ByteStr>,
     pub(crate) host: ByteStr,
     pub(crate) port: u16,

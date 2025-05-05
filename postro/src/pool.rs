@@ -10,6 +10,7 @@ pub use config::PoolConfig;
 
 /// Database connection pool.
 #[derive(Debug)]
+#[clippy::has_significant_drop]
 pub struct Pool {
     conn: Option<Connection>,
     #[cfg(feature = "tokio")]

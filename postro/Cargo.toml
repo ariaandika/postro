@@ -20,7 +20,7 @@ pin-project-lite = "0.2.16"
 postro-macros = { version = "0.1.0", path = "../postro-macros", optional = true }
 serde = { version = "1.0.219", optional = true }
 serde_json = { version = "1.0.140", optional = true }
-time = { version = "0.3.41", optional = true, features = ["parsing"] }
+time = { version = "0.3.41", optional = true, features = ["formatting", "parsing"] }
 tokio = { version = "1.44.1", optional = true, features = [
   # TcpStream & TcpSocket
   "net",

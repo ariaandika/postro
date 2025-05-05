@@ -3,23 +3,29 @@ use bytes::Bytes;
 /// A cheaply cloneable and sliceable str.
 ///
 /// Using `ByteStr` helps prevent allocating vec as it required by [`String::from_utf8`].
+#[derive(Clone)]
 pub struct ByteStr {
     bytes: Bytes,
 }
 
 impl ByteStr {
-    /// Converts a `Bytes` to a `ByteStr`.
+    /// Create new empty [`ByteStr`].
+    pub const fn new() -> ByteStr {
+        Self { bytes: Bytes::new() }
+    }
+
+    /// Converts a [`Bytes`] to a [`ByteStr`].
     pub fn from_utf8(bytes: Bytes) -> Result<Self, std::str::Utf8Error> {
         std::str::from_utf8(&bytes)?;
         Ok(Self { bytes })
     }
 
-    /// Creates `ByteStr` instance from str slice, by copying it.
+    /// Creates [`ByteStr`] instance from str slice, by copying it.
     pub fn copy_from_str(string: &str) -> Self {
         Self { bytes: Bytes::copy_from_slice(string.as_bytes()) }
     }
 
-    /// Creates a new `ByteStr` from a static str.
+    /// Creates a new [`ByteStr`] from a static str.
     ///
     /// The returned `ByteStr` will point directly to the static str. There is
     /// no allocating or copying.
@@ -76,15 +82,9 @@ impl std::ops::Deref for ByteStr {
     }
 }
 
-impl Clone for ByteStr {
-    fn clone(&self) -> Self {
-        Self { bytes: Bytes::clone(&self.bytes) }
-    }
-}
-
 impl Default for ByteStr {
     fn default() -> Self {
-        Self { bytes: Bytes::new() }
+        Self::new()
     }
 }
 
@@ -120,7 +120,7 @@ impl PartialEq<&str> for ByteStr {
 
 impl From<&'static str> for ByteStr {
     fn from(value: &'static str) -> Self {
-        Self { bytes: Bytes::from_static(value.as_bytes()) }
+        Self::from_static(value)
     }
 }
 

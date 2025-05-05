@@ -32,6 +32,7 @@ const SUFFIX: usize = size_of::<u32>()
 
 const OID_OFFSET: usize = size_of::<u32>() + size_of::<u16>();
 
+/// Postgres row.
 pub struct Row {
     field_len: u16,
     body: Bytes,
@@ -48,18 +49,31 @@ impl Row {
         }
     }
 
+    /// `DataRow` message
+    pub(crate) fn inner_clone(&self, mut bytes: Bytes) -> Row {
+        assert_eq!(
+            self.field_len, bytes.get_u16(),
+            "RowDescription len missmatch with DataRow len"
+        );
+        Self {
+            field_len: self.field_len,
+            body: self.body.clone(),
+            values: bytes,
+        }
+    }
+
     /// Returns `true` if row contains no columns.
     pub const fn is_empty(&self) -> bool {
         self.field_len == 0
     }
 
-    /// Returns the number of fields/column in the row.
+    /// Returns the number of fields/column.
     pub const fn len(&self) -> u16 {
         self.field_len
     }
 
     /// Try get and decode column.
-    pub fn try_get<I: Index, R: FromColumn>(&self, idx: I) -> Result<R, DecodeError> {
+    pub fn try_get<I: Index, R: Decode>(&self, idx: I) -> Result<R, DecodeError> {
         let (offset,nul,nth) = idx.position(&self.body, self.field_len)?;
 
         let name = ByteStr::from_utf8(self.body.slice(offset..nul))?;
@@ -78,17 +92,9 @@ impl Row {
         R::decode(Column::new(name, &self.body[nul + 1..], value))
     }
 
-    /// `DataRow` message
-    pub(crate) fn inner_clone(&self, mut bytes: Bytes) -> Row {
-        assert_eq!(
-            self.field_len, bytes.get_u16(),
-            "RowDescription len missmatch with DataRow len"
-        );
-        Self {
-            field_len: self.field_len,
-            body: self.body.clone(),
-            values: bytes,
-        }
+    /// Try decode type using [`FromRow`] implementation.
+    pub fn decode<D: FromRow>(self) -> Result<D, DecodeError> {
+        D::from_row(self)
     }
 }
 
@@ -107,6 +113,7 @@ impl IntoIterator for Row {
     }
 }
 
+/// [`IntoIterator`] implementation from [`Row`].
 #[derive(Debug)]
 pub struct IntoIter {
     field_len: u16,
@@ -117,6 +124,7 @@ pub struct IntoIter {
 }
 
 impl IntoIter {
+    /// Same as [`Iterator::next`] but returns [`Result`] instead.
     pub fn try_next(&mut self) -> Result<Column, DecodeError> {
         match self.next() {
             Some(ok) => ok,
@@ -167,7 +175,7 @@ impl fmt::Debug for Row {
 }
 
 /// Postgres column.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Column {
     oid: Oid,
     value: Bytes,
@@ -209,18 +217,10 @@ impl Column {
         self.value
     }
 
-    /// Decode value from self.
-    pub fn decode<D: FromColumn>(self) -> Result<D, DecodeError> {
+    /// Try decode type using [`Decode`] implementation.
+    pub fn decode<D: Decode>(self) -> Result<D, DecodeError> {
         D::decode(self)
     }
-}
-
-/// Decode and Encode postgres value.
-pub struct Json<T>(T);
-
-impl<T> PgType for Json<T> {
-    /// jsonb, Binary JSON
-    const OID: Oid = 3802;
 }
 
 // ===== Traits =====
@@ -247,7 +247,7 @@ macro_rules! from_row_tuple {
     ($($t:ident $i:literal),*) => {
         impl<$($t),*> FromRow for ($($t),*,)
         where
-            $($t: FromColumn),*
+            $($t: Decode),*
         {
             fn from_row(row: Row) -> Result<Self, DecodeError> {
                 Ok((
@@ -264,23 +264,24 @@ from_row_tuple!(T0 0, T1 1, T2 2);
 from_row_tuple!(T0 0, T1 1, T2 2, T3 3);
 
 /// A type that can be constructed from [`Column`].
-pub trait FromColumn: Sized {
+pub trait Decode: Sized {
+    /// Try decode self from column.
     fn decode(column: Column) -> Result<Self, DecodeError>;
 }
 
-impl FromColumn for Column {
+impl Decode for Column {
     fn decode(column: Column) -> Result<Self, DecodeError> {
         Ok(column)
     }
 }
 
-impl FromColumn for () {
+impl Decode for () {
     fn decode(_: Column) -> Result<Self, DecodeError> {
         Ok(())
     }
 }
 
-impl FromColumn for i32 {
+impl Decode for i32 {
     fn decode(col: Column) -> Result<Self, DecodeError> {
         if col.oid() != Self::OID {
             return Err(DecodeError::OidMissmatch);
@@ -291,75 +292,12 @@ impl FromColumn for i32 {
     }
 }
 
-impl FromColumn for String {
+impl Decode for String {
     fn decode(col: Column) -> Result<Self, DecodeError> {
-        if col.oid() != String::OID {
+        if col.oid() != Self::OID {
             return Err(DecodeError::OidMissmatch);
         }
         Ok(String::from_utf8(col.into_value().into())?)
-    }
-}
-
-#[cfg(feature = "json")]
-impl<T> FromColumn for Json<T>
-where
-    T: serde::de::DeserializeOwned,
-{
-    fn decode(column: Column) -> Result<Self, DecodeError> {
-        if column.oid() != Self::OID {
-            return Err(DecodeError::OidMissmatch);
-        }
-        match serde_json::from_slice::<T>(&column.into_value()) {
-            Ok(ok) => Ok(Json(ok)),
-            Err(err) => Err(err.into()),
-        }
-    }
-}
-
-#[cfg(feature = "time")]
-impl FromColumn for time::PrimitiveDateTime {
-    fn decode(column: Column) -> Result<Self, DecodeError> {
-        use time::{
-            PrimitiveDateTime,
-            format_description::{BorrowedFormatItem as I, Component as C, modifier},
-        };
-
-        const DESCRIPTION: &[I<'_>] = &[
-            I::Component {
-                0: C::Year(modifier::Year::default()),
-            },
-            I::Literal { 0: b"-" },
-            I::Component {
-                0: C::Month(modifier::Month::default()),
-            },
-            I::Literal { 0: b"-" },
-            I::Component {
-                0: C::Day(modifier::Day::default()),
-            },
-            I::Literal { 0: b" " },
-            I::Component {
-                0: C::Hour(modifier::Hour::default()),
-            },
-            I::Literal { 0: b":" },
-            I::Component {
-                0: C::Minute(modifier::Minute::default()),
-            },
-            I::Literal { 0: b":" },
-            I::Component {
-                0: C::Second(modifier::Second::default()),
-            },
-            I::Literal { 0: b"." },
-            I::Component {
-                0: C::Subsecond(modifier::Subsecond::default()),
-            },
-        ];
-
-        if column.oid() != Self::OID {
-            return Err(DecodeError::OidMissmatch);
-        }
-
-        PrimitiveDateTime::parse(&ByteStr::from_utf8(column.into_value())?, &DESCRIPTION)
-            .map_err(<_>::into)
     }
 }
 
@@ -425,6 +363,16 @@ mod sealed {
     impl Sealed for &str { }
 }
 
+macro_rules! from {
+    (<$ty:ty>$pat:pat => $body:expr) => {
+        impl From<$ty> for DecodeError {
+            fn from($pat: $ty) -> Self {
+                $body
+            }
+        }
+    };
+}
+
 /// An error when decoding row value.
 pub enum DecodeError {
     /// Postgres return non utf8 string.
@@ -443,38 +391,20 @@ pub enum DecodeError {
     Time(time::error::Parse)
 }
 
-impl std::error::Error for DecodeError { }
-
 impl fmt::Display for DecodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str("failed to decode value, ")?;
         match self {
             Self::Utf8(e) => write!(f, "{e}"),
-            Self::ColumnNotFound(name) => write!(f, "column not found: {name}"),
-            Self::IndexOutOfBounds(u) => write!(f, "index out of bounds: {u}"),
+            Self::ColumnNotFound(name) => write!(f, "column not found: {name:?}"),
+            Self::IndexOutOfBounds(u) => write!(f, "index out of bounds: {u:?}"),
             Self::OidMissmatch => write!(f, "data type missmatch"),
             #[cfg(feature = "json")]
-            Self::Json(error) => write!(f, "{error}"),
+            Self::Json(e) => write!(f, "{e}"),
             #[cfg(feature = "time")]
-            Self::Time(error) => write!(f, "{error}"),
+            Self::Time(e) => write!(f, "{e}"),
         }
     }
-}
-
-impl fmt::Debug for DecodeError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "\"{self}\"")
-    }
-}
-
-macro_rules! from {
-    (<$ty:ty>$pat:pat => $body:expr) => {
-        impl From<$ty> for DecodeError {
-            fn from($pat: $ty) -> Self {
-                $body
-            }
-        }
-    };
 }
 
 from!(<Utf8Error>e => Self::Utf8(e));
@@ -483,4 +413,12 @@ from!(<FromUtf8Error>e => Self::Utf8(e.utf8_error()));
 from!(<serde_json::error::Error>e => Self::Json(e));
 #[cfg(feature = "time")]
 from!(<time::error::Parse>e => Self::Time(e));
+
+impl std::error::Error for DecodeError { }
+
+impl fmt::Debug for DecodeError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "\"{self}\"")
+    }
+}
 

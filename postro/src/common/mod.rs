@@ -2,6 +2,7 @@
 mod bytestr;
 pub use bytestr::ByteStr;
 
+/// Trace when `verbose` feature enabled.
 macro_rules! verbose {
     ($($tt:tt)*) => {
         #[cfg(feature = "verbose")]
@@ -9,6 +10,7 @@ macro_rules! verbose {
     };
 }
 
+/// Create and enter `Span` when `verbose` feature enabled.
 macro_rules! span {
     ($($tt:tt)*) => {
         #[cfg(feature = "verbose")]

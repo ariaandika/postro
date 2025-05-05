@@ -30,10 +30,19 @@ impl<'q> Encoded<'q> {
         }
     }
 
-    /// Create heap allocated [`Encoded`] by copying given slice.
+    /// Create [`Encoded`] by copying given slice.
     pub fn copy_from_slice(slice: &[u8], oid: Oid) -> Encoded<'static> {
         Encoded {
             value: ValueRef::Bytes(Bytes::copy_from_slice(slice)),
+            is_null: false,
+            oid,
+        }
+    }
+
+    /// Create [`Encoded`] from owned bytes.
+    pub fn owned(value: impl Into<Bytes>, oid: Oid) -> Encoded<'static> {
+        Encoded {
+            value: ValueRef::Bytes(value.into()),
             is_null: false,
             oid,
         }
@@ -48,7 +57,7 @@ impl<'q> Encoded<'q> {
         }
     }
 
-    /// Returns this type `oid`, or `0` for `NULL`.
+    /// Returns [`Oid`], or `0` if its `NULL`.
     pub fn oid(&self) -> Oid {
         match self.is_null {
             true => 0,

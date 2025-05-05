@@ -108,14 +108,20 @@ pub mod transaction;
 pub mod connection;
 pub mod pool;
 
+pub mod types;
+
 mod error;
 
 
+#[doc(inline)]
 pub use encode::Encode;
-pub use row::{Row, FromRow, FromColumn, DecodeError};
+#[doc(inline)]
+pub use row::{Row, FromRow, Decode, DecodeError};
 pub use sql::SqlExt;
 
+#[doc(inline)]
 pub use executor::Executor;
+#[doc(inline)]
 pub use connection::{Connection, Config};
 #[doc(inline)]
 pub use pool::{Pool, PoolConfig};

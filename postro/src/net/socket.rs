@@ -1,9 +1,9 @@
 use std::io;
 
-/// an either `TcpStream` or `Socket`, which implement
-/// `AsyncRead` and `AsyncWrite` transparently
+/// An either `TcpStream` or `Socket`, which implement
+/// `AsyncRead` and `AsyncWrite` transparently.
 ///
-/// require `tokio` feature, otherwise panic at runtime
+/// Require `tokio` feature, otherwise panic at runtime.
 pub struct Socket {
     kind: Kind,
 }

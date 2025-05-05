@@ -1,6 +1,7 @@
 [package]
 name = "postro"
 description = "Asynchronous Postgres Driver and Utility"
+documentation = "https://docs.rs/postro"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

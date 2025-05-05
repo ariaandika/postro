@@ -16,7 +16,7 @@ cargo add postro
 or add this line to your `Cargo.toml` in `[dependencies]` section:
 
 ```toml
-postro = "0.1.0"
+postro = "0.1.1"
 ```
 
 ## Usage
@@ -29,7 +29,6 @@ use postro::{FromRow, Pool, Result, execute, query};
 // automatically extract query result
 #[derive(Debug, FromRow)]
 struct Post {
-    #[allow(unused)]
     id: i32,
     name: String,
 }
@@ -41,9 +40,7 @@ async fn main() -> Result<()> {
     let mut handles = vec![];
 
     // execute a statement
-    execute("CREATE TABLE post(id serial, name text)", &mut pool)
-        .execute()
-        .await?;
+    execute("CREATE TABLE post(id serial, name text)", &mut pool).await?;
 
     for i in 0..24 {
         // cloning pool is cheap and share the same connection pool
@@ -52,7 +49,6 @@ async fn main() -> Result<()> {
         handles.push(tokio::spawn(async move {
             execute("INSERT INTO post(name) VALUES($1)", &mut pool)
                 .bind(&format!("thread{i}"))
-                .execute()
                 .await
         }));
     }

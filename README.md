@@ -34,7 +34,8 @@ struct Post {
     name: String,
 }
 
-pub async fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     // will read the `DATABASE_URL` environment variable
     let mut pool = Pool::connect_env().await?;
     let mut handles = vec![];

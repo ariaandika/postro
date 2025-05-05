@@ -1,4 +1,5 @@
 use postro::{FromRow, Pool, Result, execute, query};
+use tracing::{Instrument, trace_span};
 
 // automatically extract query result
 #[derive(Debug, FromRow)]
@@ -18,15 +19,15 @@ pub async fn main() -> Result<()> {
     // execute a statement
     execute("CREATE TABLE post(id serial, name text)", &mut pool).await?;
 
-    for i in 0..24 {
+    for id in 0..24 {
         // cloning pool is cheap and share the same connection pool
         let mut pool = pool.clone();
 
         handles.push(tokio::spawn(async move {
             execute("INSERT INTO post(name) VALUES($1)", &mut pool)
-                .bind(&format!("thread{i}"))
+                .bind(&format!("thread{id}"))
                 .await
-        }));
+        }.instrument(trace_span!("thread",id))));
     }
 
     for h in handles {

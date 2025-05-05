@@ -113,7 +113,7 @@ pub mod pool;
 // Integration
 pub mod types;
 
-mod error;
+pub mod error;
 
 
 #[doc(inline)]

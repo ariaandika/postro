@@ -23,7 +23,7 @@ use crate::{
 ///
 /// ```no_run
 /// # async fn test(mut conn: postro::Connection) -> postro::Result<()> {
-/// let mut tx = postro::query::begin(&mut conn).await?;
+/// let mut tx = postro::begin(&mut conn).await?;
 ///
 /// postro::execute("insert into post(name) values('foo')", &mut tx)
 ///     .execute()

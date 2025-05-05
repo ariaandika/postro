@@ -1,3 +1,4 @@
+//! `postro` error types.
 use std::{backtrace::Backtrace, fmt, io, str::Utf8Error};
 
 use crate::{
@@ -9,6 +10,7 @@ use crate::{
 /// A specialized [`Result`] type for `postro` operation.
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
+/// All possible error from `postro` library.
 pub struct Error {
     context: String,
     backtrace: Backtrace,
@@ -33,7 +35,7 @@ impl Error {
     }
 }
 
-/// All possible error from `postro` library.
+/// All possible error kind from `postro` library.
 pub enum ErrorKind {
     Config(ParseError),
     Protocol(ProtocolError),

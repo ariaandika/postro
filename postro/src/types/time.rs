@@ -62,32 +62,18 @@ impl Encode<'static> for UtcDateTime {
 }
 
 const DESCRIPTION: &[I<'_>] = &[
-    I::Component {
-        0: C::Year(modifier::Year::default()),
-    },
-    I::Literal { 0: b"-" },
-    I::Component {
-        0: C::Month(modifier::Month::default()),
-    },
-    I::Literal { 0: b"-" },
-    I::Component {
-        0: C::Day(modifier::Day::default()),
-    },
-    I::Literal { 0: b" " },
-    I::Component {
-        0: C::Hour(modifier::Hour::default()),
-    },
-    I::Literal { 0: b":" },
-    I::Component {
-        0: C::Minute(modifier::Minute::default()),
-    },
-    I::Literal { 0: b":" },
-    I::Component {
-        0: C::Second(modifier::Second::default()),
-    },
-    I::Literal { 0: b"." },
-    I::Component {
-        0: C::Subsecond(modifier::Subsecond::default()),
-    },
+    I::Component(C::Year(modifier::Year::default())),
+    I::Literal(b"-"),
+    I::Component(C::Month(modifier::Month::default())),
+    I::Literal(b"-"),
+    I::Component(C::Day(modifier::Day::default())),
+    I::Literal(b" "),
+    I::Component(C::Hour(modifier::Hour::default())),
+    I::Literal(b":"),
+    I::Component(C::Minute(modifier::Minute::default())),
+    I::Literal(b":"),
+    I::Component(C::Second(modifier::Second::default())),
+    I::Literal(b"."),
+    I::Component(C::Subsecond(modifier::Subsecond::default())),
 ];
 

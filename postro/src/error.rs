@@ -1,4 +1,4 @@
-use std::{fmt, io, str::Utf8Error};
+use std::{backtrace::Backtrace, fmt, io, str::Utf8Error};
 
 use crate::{
     connection::ParseError,
@@ -11,11 +11,19 @@ pub type Result<T, E = Error> = std::result::Result<T, E>;
 
 pub struct Error {
     context: String,
-    backtrace: std::backtrace::Backtrace,
+    backtrace: Backtrace,
     kind: ErrorKind,
 }
 
 impl Error {
+    pub fn kind(&self) -> &ErrorKind {
+        &self.kind
+    }
+
+    pub fn backtrace(&self) -> &Backtrace {
+        &self.backtrace
+    }
+
     pub(crate) fn row_not_found() -> Error {
         Error::from(ErrorKind::RowNotFound)
     }

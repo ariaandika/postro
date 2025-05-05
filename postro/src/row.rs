@@ -223,6 +223,12 @@ impl Column {
     }
 }
 
+/// Query result with its rows affected.
+#[derive(Debug)]
+pub struct RowResult {
+    pub rows_affected: u64,
+}
+
 // ===== Traits =====
 
 /// Type that can be constructed from a row.

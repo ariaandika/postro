@@ -2,36 +2,34 @@
 use std::marker::PhantomData;
 
 use crate::{
+    Result, Row,
     encode::{Encode, Encoded},
     executor::Executor,
+    fetch::{self, Execute},
+    row::RowResult,
+    sql::Sql,
 };
 
-mod ops;
-
-mod portal;
-mod fetch_stream;
-mod fetch_one;
-mod fetch_all;
-mod execute;
-mod helpers;
-
-pub use fetch_stream::FetchStream;
-pub use fetch_one::FetchOne;
-pub use fetch_all::FetchAll;
-pub use execute::Execute;
-pub use helpers::{StartupConfig, StartupResponse, begin, simple_query, startup};
+// pub use helpers::{StartupConfig, StartupResponse, begin, simple_query, startup};
 
 /// Entrypoint of the query API.
 pub fn query<'val, SQL, Exe, R>(sql: SQL, exe: Exe) -> Query<'val, SQL, Exe, R> {
     Query { sql, exe, params: Vec::new(), _p: PhantomData }
 }
 
-/// Same as [`query`] but ignore the output.
-pub fn execute<'val, SQL, Exe>(sql: SQL, exe: Exe) -> Query<'val, SQL, Exe, ()> {
+/// Same as [`query`] with [`Row`] as the output.
+pub fn query_row<'val, SQL, Exe>(sql: SQL, exe: Exe) -> Query<'val, SQL, Exe, Row> {
+    Query { sql, exe, params: Vec::new(), _p: PhantomData }
+}
+
+/// Same as [`query`] with [`Row`] as the output.
+pub fn execute<'val, SQL, Exe>(sql: SQL, exe: Exe) -> Query<'val, SQL, Exe, Row> {
     Query { sql, exe, params: Vec::new(), _p: PhantomData }
 }
 
 /// The query API.
+#[derive(Debug)]
+#[must_use = "futures do nothing unless you `.await` or poll them"]
 pub struct Query<'val, SQL, Exe, R> {
     sql: SQL,
     exe: Exe,
@@ -55,23 +53,42 @@ where
     ///
     /// The returned `Stream` must be polled/awaited until completion,
     /// otherwise it will disturb subsequent query.
-    pub fn fetch(self) -> FetchStream<'val, SQL, R, Exe::Future, Exe::Transport> {
-        FetchStream::new(self.sql, self.exe.connection(), self.params, 0)
+    pub fn fetch(self) -> fetch::FetchStream<'val, SQL, Exe::Future, Exe::Transport, R> {
+        fetch::FetchStream::new(self.sql, self.exe.connection(), self.params, 0)
     }
 
     /// Fetch all rows into [`Vec`].
-    pub fn fetch_all(self) -> FetchAll<'val, SQL, R, Exe::Future, Exe::Transport> {
-        FetchAll::new(self.sql, self.exe.connection(), self.params)
+    pub fn fetch_all(self) -> fetch::FetchAll<'val, SQL, Exe::Future, Exe::Transport, R> {
+        fetch::FetchAll::new(self.sql, self.exe.connection(), self.params)
     }
 
     /// Fetch one row.
-    pub fn fetch_one(self) -> FetchOne<'val, SQL, R, Exe::Future, Exe::Transport> {
-        FetchOne::new(self.sql, self.exe.connection(), self.params)
+    pub fn fetch_one(self) -> fetch::FetchOne<'val, SQL, Exe::Future, Exe::Transport, R> {
+        fetch::FetchOne::new(self.sql, self.exe.connection(), self.params)
+    }
+
+    /// Optionally fetch one row.
+    pub fn fetch_optional(self) -> fetch::FetchOptional<'val, SQL, Exe::Future, Exe::Transport, R> {
+        fetch::FetchOptional::new(self.sql, self.exe.connection(), self.params)
     }
 
     /// Execute statement and return number of rows affected.
     pub fn execute(self) -> Execute<'val, SQL, Exe::Future, Exe::Transport> {
         Execute::new(self.sql, self.exe.connection(), self.params)
+    }
+}
+
+impl<'val, SQL, Exe, R> IntoFuture for Query<'val, SQL, Exe, R>
+where
+    SQL: Sql + Unpin,
+    Exe: Executor + Unpin,
+{
+    type Output = Result<RowResult>;
+
+    type IntoFuture = Execute<'val, SQL, Exe::Future, Exe::Transport>;
+
+    fn into_future(self) -> Self::IntoFuture {
+        self.execute()
     }
 }
 

@@ -10,9 +10,16 @@ use std::{
 };
 
 use crate::{
-    common::{span, verbose}, executor::Executor, net::Socket, postgres::{
-        backend, frontend, BackendProtocol, ErrorResponse, FrontendProtocol, NoticeResponse
-    }, query, statement::StatementName, transport::{PgTransport, PgTransportExt}, Result
+    Result,
+    common::{span, verbose},
+    executor::Executor,
+    net::Socket,
+    phase,
+    postgres::{
+        BackendProtocol, ErrorResponse, FrontendProtocol, NoticeResponse, backend, frontend,
+    },
+    statement::StatementName,
+    transport::{PgTransport, PgTransportExt},
 };
 
 mod config;
@@ -117,7 +124,7 @@ impl Connection {
             sync_pending: 0,
         };
 
-        let res = query::startup(&config, &mut me).await?;
+        let res = phase::startup(&config, &mut me).await?;
         me.backend_key = res.backend_key_data;
 
         Ok(me)

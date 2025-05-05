@@ -103,11 +103,14 @@ pub mod transport;
 pub mod executor;
 pub mod query;
 pub mod transaction;
+mod phase;
+mod fetch;
 
 // Connection
 pub mod connection;
 pub mod pool;
 
+// Integration
 pub mod types;
 
 mod error;
@@ -126,7 +129,9 @@ pub use connection::{Connection, Config};
 #[doc(inline)]
 pub use pool::{Pool, PoolConfig};
 #[doc(inline)]
-pub use query::{query, execute, begin};
+pub use query::{query, query_row, execute};
+#[doc(inline)]
+pub use phase::{startup, simple_query, begin};
 #[doc(inline)]
 pub use error::{Error, Result};
 

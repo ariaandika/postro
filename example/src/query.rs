@@ -1,56 +1,57 @@
 use futures::StreamExt;
-use postro::{execute, query, Connection, Result};
-
+use postro::{Connection, Result, execute, query, query_row};
 
 pub async fn main() -> Result<()> {
     let mut conn = Connection::connect_env().await?;
 
-    execute("CREATE TEMP TABLE postro(id serial, name text)", &mut conn)
-        .execute()
-        .await?;
-
-    // TODO:
-    // execute("CREATE TEMP TABLE postro(id serial, name text)", &mut conn).await?;
-    // query("CREATE TEMP TABLE postro(id serial, name text)", &mut conn).await?;
+    execute("CREATE TEMP TABLE postro(id serial, name text)", &mut conn).await?;
 
     let row = execute("INSERT INTO postro(name) VALUES($1)", &mut conn)
         .bind("Deez")
-        .execute()
         .await?;
 
-    assert_eq!(row,1);
+    assert_eq!(row.rows_affected, 1);
 
-
-
-    let datas = query::<_, _, (i32,String)>("SELECT * FROM postro", &mut conn)
+    let datas = query::<_, _, (i32, String)>("SELECT * FROM postro", &mut conn)
         .fetch_all()
         .await?;
 
     assert_eq!(datas.len(), 1);
 
-    let (_id,name) = query::<_, _, (i32,String)>("SELECT * FROM postro LIMIT 1", &mut conn)
+    let (_id, name) = query::<_, _, (i32, String)>("SELECT * FROM postro LIMIT 1", &mut conn)
         .fetch_one()
         .await?;
 
     assert_eq!(name.as_str(), "Deez");
 
-    // TODO:
-    // let data = query::<_, _, (i32,String)>("SELECT * FROM postro", &mut conn)
-    //     .fetch_optional()
-    //     .await?;
+    let _err = query::<_, _, (i32, String)>("SELECT * FROM postro LIMIT 0", &mut conn)
+        .fetch_one()
+        .await
+        .unwrap_err();
 
+    let data = query::<_, _, (i32, String)>("SELECT * FROM postro", &mut conn)
+        .fetch_optional()
+        .await?;
 
+    assert!(data.is_some());
 
-    let mut stream = query::<_, _, (i32,String)>("SELECT * FROM postro", &mut conn).fetch();
+    let data = query::<_, _, (i32, String)>("SELECT * FROM postro LIMIT 0", &mut conn)
+        .fetch_optional()
+        .await?;
+
+    assert!(data.is_none());
+
+    let mut stream = query::<_, _, (i32, String)>("SELECT * FROM postro", &mut conn).fetch();
 
     while let Some(row) = stream.next().await {
-        let (_id,_name) = row?;
+        let (_id, _name) = row?;
     }
 
-    // TODO:
-    // let datas = query_row("SELECT * FROM postro", &mut conn)
-    //     .fetch_all()
-    //     .await?;
+    let datas = query_row("SELECT * FROM postro", &mut conn)
+        .fetch_all()
+        .await?;
+
+    assert_eq!(datas.len(), 1);
 
     Ok(())
 }

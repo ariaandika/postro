@@ -13,14 +13,10 @@ pub async fn main() -> Result<()> {
     let mut pool = Pool::connect_env().await?;
     let mut handles = vec![];
 
-    execute("DROP TABLE IF EXISTS post", &mut pool)
-        .execute()
-        .await?;
+    execute("DROP TABLE IF EXISTS post", &mut pool).await?;
 
     // execute a statement
-    execute("CREATE TABLE post(id serial, name text)", &mut pool)
-        .execute()
-        .await?;
+    execute("CREATE TABLE post(id serial, name text)", &mut pool).await?;
 
     for i in 0..24 {
         // cloning pool is cheap and share the same connection pool
@@ -29,7 +25,6 @@ pub async fn main() -> Result<()> {
         handles.push(tokio::spawn(async move {
             execute("INSERT INTO post(name) VALUES($1)", &mut pool)
                 .bind(&format!("thread{i}"))
-                .execute()
                 .await
         }));
     }

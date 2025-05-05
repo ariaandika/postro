@@ -15,6 +15,16 @@ pub struct Error {
     kind: ErrorKind,
 }
 
+impl Error {
+    pub(crate) fn row_not_found() -> Error {
+        Error::from(ErrorKind::RowNotFound)
+    }
+
+    pub(crate) fn empty_query() -> Error {
+        Error::from(ErrorKind::EmptyQuery)
+    }
+}
+
 /// All possible error from `postro` library.
 pub enum ErrorKind {
     Config(ParseError),
@@ -22,7 +32,8 @@ pub enum ErrorKind {
     Io(io::Error),
     Database(ErrorResponse),
     Utf8(std::str::Utf8Error),
-
+    RowNotFound,
+    EmptyQuery,
     UnsupportedAuth,
     Decode(DecodeError),
 }
@@ -85,6 +96,8 @@ impl fmt::Display for ErrorKind {
             Self::Io(e) => write!(f, "{e}"),
             Self::Database(e) => write!(f, "{e}"),
             Self::UnsupportedAuth => write!(f, "Auth not supported"),
+            Self::RowNotFound => write!(f, "row not found"),
+            Self::EmptyQuery => write!(f, "empty query string"),
             Self::Decode(e) => write!(f, "{e}"),
             Self::Utf8(e) => write!(f, "{e}"),
         }

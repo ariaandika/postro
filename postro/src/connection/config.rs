@@ -1,7 +1,7 @@
 //! Postgres configuration.
 use std::{borrow::Cow, env::var, fmt};
 
-use crate::{common::ByteStr, query::StartupConfig};
+use crate::{common::ByteStr, phase::StartupConfig};
 
 /// Postgres connection config.
 #[derive(Clone, Debug)]

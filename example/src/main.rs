@@ -8,6 +8,7 @@ use postro::Result;
 mod readme;
 mod connection;
 mod query;
+mod from_row;
 
 #[tokio::main]
 async fn main() -> Result<()> {

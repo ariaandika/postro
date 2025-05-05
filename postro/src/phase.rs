@@ -4,12 +4,7 @@ use crate::{
     Error, Result,
     error::ErrorKind,
     executor::Executor,
-    postgres::{
-        BackendMessage,
-        backend::{self, RowDescription},
-        frontend,
-    },
-    row::{FromRow, Row},
+    postgres::{BackendMessage, backend, frontend},
     transaction::Transaction,
     transport::{PgTransport, PgTransportExt},
 };
@@ -99,37 +94,6 @@ pub async fn startup<'a, IO: PgTransport>(
     Ok(StartupResponse {
         backend_key_data: key_data.expect("postgres never send backend key data"),
     })
-}
-
-/// perform a simple query
-///
-/// <https://www.postgresql.org/docs/current/protocol-flow.html#PROTOCOL-FLOW-SIMPLE-QUERY>
-pub async fn simple_query<R: FromRow, Exec: Executor>(sql: &str, exec: Exec) -> Result<Vec<R>> {
-    let mut io = exec.connection().await?;
-
-    io.send(frontend::Query { sql });
-    io.flush().await?;
-
-    // Indicates that rows are about to be returned in response to a SELECT, FETCH, etc. query.
-    // The contents of this message describe the column layout of the rows.
-    // This will be followed by a DataRow message for each row being returned to the frontend.
-    let row_data = Row::new(io.recv::<RowDescription>().await?.body);
-
-    let mut rows = vec![];
-
-    loop {
-        use BackendMessage::*;
-        match io.recv().await? {
-            ReadyForQuery(_) => break,
-            // One of the set of rows returned by a SELECT, FETCH, etc. query.
-            DataRow(dr) => rows.push(R::from_row(row_data.inner_clone(dr.body))?),
-            // An SQL command completed normally
-            CommandComplete(_tag) => { }
-            f => Err(f.unexpected("simple query"))?,
-        }
-    }
-
-    Ok(rows)
 }
 
 /// Begin transaction with given executor.

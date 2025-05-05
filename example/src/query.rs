@@ -1,5 +1,5 @@
 use futures::StreamExt;
-use postro::{execute, query, query_row, Connection, Result};
+use postro::{Connection, Result, begin, execute, query, query_row};
 
 pub async fn main() -> Result<()> {
     let mut conn = Connection::connect_env().await?;
@@ -57,6 +57,10 @@ pub async fn main() -> Result<()> {
         datas[0].try_get::<_, String>("name").unwrap().as_str(),
         "Deez"
     );
+
+    let mut tx = begin(&mut conn).await?;
+    execute("INSERT INTO postro(name) VALUES('Foo')", &mut tx).await?;
+    tx.commit().await?;
 
     // Error case
 

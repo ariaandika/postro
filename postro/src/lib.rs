@@ -131,7 +131,7 @@ pub use pool::{Pool, PoolConfig};
 #[doc(inline)]
 pub use query::{query, query_row, execute};
 #[doc(inline)]
-pub use phase::{startup, simple_query, begin};
+pub use phase::{startup, begin};
 #[doc(inline)]
 pub use error::{Error, Result};
 

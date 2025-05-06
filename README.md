@@ -1,9 +1,7 @@
 # Postro Postgres Driver
 
-Asynchronous Postgres Driver and Utility.
-
-Originally, this is an attempt to take out the Postgres part of [sqlx](https://github.com/launchbadge/sqlx)
-crate, but the underlying structure is very different, although the public interface api is pretty simmilar.
+An Async PostgreSQL Driver and Tools, designed with an API similar to
+[sqlx](https://github.com/launchbadge/sqlx), and smaller dependency tree.
 
 ## Installation
 

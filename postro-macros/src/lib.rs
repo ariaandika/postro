@@ -14,7 +14,7 @@ pub fn from_row(input: TokenStream) -> TokenStream {
 }
 
 /// Automatically derive [`Table`].
-#[proc_macro_derive(Table)]
+#[proc_macro_derive(Table,attributes(sql))]
 pub fn table(input: TokenStream) -> TokenStream {
     match table::table(syn::parse_macro_input!(input as DeriveInput)) {
         Ok(ok) => ok,

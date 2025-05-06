@@ -4,12 +4,16 @@ use syn::*;
 use crate::error;
 
 pub fn table(input: DeriveInput) -> Result<TokenStream> {
-    let DeriveInput { attrs: _, vis: _, ident, generics, data } = input;
+    let DeriveInput { attrs, vis: _, ident, generics, data } = input;
     let Data::Struct(data) = data else {
         error!("only struct are supported")
     };
 
-    let table = to_snake_case(&ident.to_string());
+    let table = attrs
+        .iter()
+        .find(|e| e.path().is_ident("sql"))
+        .map(|e| Ok::<_, Error>(e.parse_args::<LitStr>()?.value()))
+        .unwrap_or_else(|| Ok(to_snake_case(&ident.to_string())))?;
 
     let insert = match data.fields {
         Fields::Named(FieldsNamed { named, .. }) => {
@@ -21,14 +25,14 @@ pub fn table(input: DeriveInput) -> Result<TokenStream> {
             let fields = named
                 .iter()
                 .zip(opts.iter())
-                .filter(|(_,attr)|matches!(attr,AttributeType::Id))
+                .filter(|(_,attr)|!matches!(attr,AttributeType::Id))
                 .map(|(id,_)|id.ident.as_ref().map(<_>::to_string).unwrap_or_default())
                 .collect::<Vec<_>>()
                 .join(",");
 
             let params = opts
                 .into_iter()
-                .filter(|attr|matches!(attr,AttributeType::Id))
+                .filter(|attr|!matches!(attr,AttributeType::Id))
                 .scan(1, |state,attr|{
                     match attr {
                         AttributeType::Id => unreachable!(),
@@ -87,6 +91,7 @@ pub fn to_snake_case(string: &str) -> String {
     output
 }
 
+#[derive(Debug)]
 enum AttributeType {
     /// no attribute
     None,
@@ -106,10 +111,10 @@ impl AttributeType {
                 attr.parse_args_with(|e: parse::ParseStream| {
                     let look = e.lookahead1();
                     if look.peek(Ident) {
-                        if e.parse::<Ident>()? == "id" {
+                        if matches!(e.parse::<Ident>()?.to_string().as_str(), "id" | "skip") {
                             Ok(Self::Id)
                         } else {
-                            error!("possible value are: `id` or `\"sql statement\"`")
+                            error!("possible value are: `id`, `skip` or `\"sql statement\"`")
                         }
                     } else if look.peek(LitStr) {
                         Ok(Self::Sql(e.parse::<LitStr>()?.value()))

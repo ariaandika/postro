@@ -5,10 +5,12 @@ use tracing_subscriber::{
 
 use postro::Result;
 
-mod readme;
 mod connection;
 mod query;
 mod from_row;
+mod table;
+
+mod readme;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -20,6 +22,8 @@ async fn main() -> Result<()> {
 
     connection::main().instrument(trace_span!("connection")).await?;
     query::main().instrument(trace_span!("query")).await?;
+    from_row::main().await?;
+    table::main().await?;
 
     readme::main().instrument(trace_span!("readme")).await?;
 

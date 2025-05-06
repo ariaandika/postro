@@ -1,12 +1,7 @@
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::*;
-
-macro_rules! error {
-    ($($tt:tt)*) => {
-        return Err(syn::Error::new(proc_macro::Span::call_site().into(), format!($($tt)*)))
-    };
-}
+use crate::error;
 
 pub fn from_row(input: DeriveInput) -> Result<TokenStream> {
     let DeriveInput { attrs: _, vis: _, ident, mut generics, data } = input;

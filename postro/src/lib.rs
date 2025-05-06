@@ -119,6 +119,8 @@ pub mod error;
 #[doc(inline)]
 pub use encode::Encode;
 #[doc(inline)]
+pub use statement::Table;
+#[doc(inline)]
 pub use row::{Row, FromRow, Decode, DecodeError};
 pub use sql::SqlExt;
 
@@ -136,5 +138,5 @@ pub use phase::{startup, begin};
 pub use error::{Error, Result};
 
 #[cfg(feature = "macros")]
-pub use postro_macros::FromRow;
+pub use postro_macros::{FromRow, Table};
 

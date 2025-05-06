@@ -96,3 +96,10 @@ macro_rules! delegate {
 delegate!(StatementName);
 delegate!(PortalName);
 
+/// Table information of a struct.
+pub trait Table {
+    const TABLE: &str;
+
+    const INSERT: &str;
+}
+

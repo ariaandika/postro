@@ -108,7 +108,7 @@ impl<'a> From<&'a Config> for StartupConfig<'a> {
     fn from(me: &'a Config) -> StartupConfig<'a> {
         StartupConfig {
             user: me.user.as_str().into(),
-            database: Some(me.user.as_str().into()),
+            database: Some(me.dbname.as_str().into()),
             password: Some(me.pass.as_str().into()),
             replication: None,
         }

@@ -11,3 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Add `Table` trait and derive macro
 
+### Fix
+
+- fix Into impl from Config that fill database with username
+- fix to suspend FetchStream on decode error
+

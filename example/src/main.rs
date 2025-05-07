@@ -9,6 +9,7 @@ mod connection;
 mod query;
 mod from_row;
 mod table;
+mod error;
 
 mod readme;
 
@@ -24,6 +25,7 @@ async fn main() -> Result<()> {
     query::main().instrument(trace_span!("query")).await?;
     from_row::main().await?;
     table::main().await?;
+    error::main().await?;
 
     readme::main().instrument(trace_span!("readme")).await?;
 

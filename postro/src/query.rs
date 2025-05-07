@@ -5,7 +5,7 @@ use crate::{
     Result, Row,
     encode::{Encode, Encoded},
     executor::Executor,
-    fetch::{self, Execute},
+    fetch::{self, Execute, FetchStream},
     row::RowResult,
     sql::Sql,
 };
@@ -53,8 +53,11 @@ where
     ///
     /// The returned `Stream` must be polled/awaited until completion,
     /// otherwise it will disturb subsequent query.
-    pub fn fetch(self) -> fetch::FetchStream<'val, SQL, Exe::Future, Exe::Transport, R> {
-        fetch::FetchStream::new(self.sql, self.exe.connection(), self.params, 0)
+    ///
+    /// Also if [`FromRow`][crate::FromRow] implementation returns error,
+    /// stream is suspended.
+    pub fn fetch(self) -> FetchStream<'val, SQL, Exe::Future, Exe::Transport, R> {
+        FetchStream::new(self.sql, self.exe.connection(), self.params, 0)
     }
 
     /// Fetch all rows into [`Vec`].

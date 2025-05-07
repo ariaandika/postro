@@ -260,7 +260,12 @@ where
                     match ready!(me.io.as_mut().unwrap().poll_recv(cx)?) {
                         DataRow(dr) => {
                             let row = row.inner_clone(dr.body);
-                            return Poll::Ready(Some(row.decode().map_err(Into::into)));
+                            let result = row.decode();
+                            if result.is_err() {
+                                me.io.as_mut().unwrap().ready_request();
+                                me.phase = Phase::Complete;
+                            }
+                            return Poll::Ready(Some(result.map_err(Into::into)));
                         },
 
                         // `Execute` phase terminations:

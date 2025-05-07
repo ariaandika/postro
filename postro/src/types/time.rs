@@ -1,11 +1,10 @@
 use time::{
-    PrimitiveDateTime, UtcDateTime,
+    Duration, PrimitiveDateTime, UtcDateTime,
     format_description::{BorrowedFormatItem as I, Component as C, modifier},
 };
 
 use crate::{
     Decode, DecodeError, Encode,
-    common::ByteStr,
     encode::Encoded,
     postgres::{Oid, PgType},
     row::Column,
@@ -17,17 +16,44 @@ impl PgType for PrimitiveDateTime {
 }
 
 impl PgType for UtcDateTime {
-    /// date and time
-    const OID: Oid = 1114;
+    /// date and time with timezone
+    const OID: Oid = 1184;
 }
+
+const PRIMITIVE_PG_EPOCH: PrimitiveDateTime = {
+    // source: `from_julian_day` docs
+    let date = match time::Date::from_julian_day(2_451_545) {
+        Ok(ok) => ok,
+        Err(_) => panic!("for fuck sake"),
+    };
+    PrimitiveDateTime::new(date, time::Time::MIDNIGHT)
+};
+
+const UTC_PG_EPOCH: UtcDateTime = {
+    // source: `from_julian_day` docs
+    let date = match time::Date::from_julian_day(2_451_545) {
+        Ok(ok) => ok,
+        Err(_) => panic!("for fuck sake"),
+    };
+    UtcDateTime::new(date, time::Time::MIDNIGHT)
+};
 
 impl Decode for PrimitiveDateTime {
     fn decode(column: Column) -> Result<Self, DecodeError> {
         if column.oid() != Self::OID {
             return Err(DecodeError::OidMissmatch);
         }
-        PrimitiveDateTime::parse(&ByteStr::from_utf8(column.into_value())?, &DESCRIPTION)
-            .map_err(<_>::into)
+        let value = column.into_value();
+        assert_eq!(
+            value.len(),
+            size_of::<i64>(),
+            "postgres did not return `i64`"
+        );
+        Ok(
+            PRIMITIVE_PG_EPOCH.saturating_add(Duration::microseconds(i64::from_be_bytes(
+                value[..].try_into().unwrap(),
+            ))),
+        )
     }
 }
 
@@ -36,8 +62,17 @@ impl Decode for UtcDateTime {
         if column.oid() != Self::OID {
             return Err(DecodeError::OidMissmatch);
         }
-        UtcDateTime::parse(&ByteStr::from_utf8(column.into_value())?, &DESCRIPTION)
-            .map_err(<_>::into)
+        let value = column.into_value();
+        assert_eq!(
+            value.len(),
+            size_of::<i64>(),
+            "postgres did not return `i64`"
+        );
+        Ok(
+            UTC_PG_EPOCH.saturating_add(Duration::microseconds(i64::from_be_bytes(
+                value[..].try_into().unwrap(),
+            ))),
+        )
     }
 }
 

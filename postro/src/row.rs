@@ -392,9 +392,6 @@ pub enum DecodeError {
     /// Failed to deserialize using `serde_json`.
     #[cfg(feature = "json")]
     Json(serde_json::error::Error),
-    /// Failed to parse timestamp.
-    #[cfg(feature = "time")]
-    Time(time::error::Parse)
 }
 
 impl fmt::Display for DecodeError {
@@ -407,8 +404,6 @@ impl fmt::Display for DecodeError {
             Self::OidMissmatch => write!(f, "data type missmatch"),
             #[cfg(feature = "json")]
             Self::Json(e) => write!(f, "{e}"),
-            #[cfg(feature = "time")]
-            Self::Time(e) => write!(f, "{e}"),
         }
     }
 }
@@ -417,8 +412,6 @@ from!(<Utf8Error>e => Self::Utf8(e));
 from!(<FromUtf8Error>e => Self::Utf8(e.utf8_error()));
 #[cfg(feature = "json")]
 from!(<serde_json::error::Error>e => Self::Json(e));
-#[cfg(feature = "time")]
-from!(<time::error::Parse>e => Self::Time(e));
 
 impl std::error::Error for DecodeError { }
 

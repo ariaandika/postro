@@ -7,6 +7,7 @@ use postro::Result;
 
 mod connection;
 mod query;
+mod decode;
 mod from_row;
 mod table;
 mod error;
@@ -23,6 +24,7 @@ async fn main() -> Result<()> {
 
     connection::main().instrument(trace_span!("connection")).await?;
     query::main().instrument(trace_span!("query")).await?;
+    decode::main().await?;
     from_row::main().await?;
     table::main().await?;
     error::main().await?;

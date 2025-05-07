@@ -81,6 +81,8 @@ dependencies = [
  "dotenvy",
  "futures",
  "postro",
+ "serde",
+ "serde_json",
  "time",
  "tokio",
  "tracing",

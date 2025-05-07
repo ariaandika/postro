@@ -1,3 +1,4 @@
+use bytes::Buf;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 use crate::{
@@ -13,7 +14,8 @@ use crate::{
 ///
 /// Note that when performing [`Encode`], if [`Serialize`] implementation decide
 /// to fail, it will will panics.
-pub struct Json<T>(T);
+#[derive(Debug)]
+pub struct Json<T>(pub T);
 
 impl<T> PgType for Json<T> {
     /// jsonb, Binary JSON
@@ -28,7 +30,9 @@ where
         if column.oid() != Self::OID {
             return Err(DecodeError::OidMissmatch);
         }
-        serde_json::from_slice(&column.into_value()).map_err(Into::into)
+        let mut value = column.into_value();
+        assert_eq!(value.get_u8(), b'\x01', "jsonb version");
+        serde_json::from_slice(&value).map_err(Into::into)
     }
 }
 

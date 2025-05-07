@@ -5,12 +5,10 @@ use crate::{
     Result, Row,
     encode::{Encode, Encoded},
     executor::Executor,
-    fetch::{self, Execute, FetchStream},
+    fetch::{Execute, FetchAll, FetchOne, FetchOptional, FetchStream},
     row::RowResult,
     sql::Sql,
 };
-
-// pub use helpers::{StartupConfig, StartupResponse, begin, simple_query, startup};
 
 /// Entrypoint of the query API.
 pub fn query<'val, SQL, Exe, R>(sql: SQL, exe: Exe) -> Query<'val, SQL, Exe, R> {
@@ -45,10 +43,7 @@ impl<'val, SQL, Exe, R> Query<'val, SQL, Exe, R> {
     }
 }
 
-impl<'val, SQL, Exe, R> Query<'val, SQL, Exe, R>
-where
-    Exe: Executor,
-{
+impl<'val, SQL, Exe, R> Query<'val, SQL, Exe, R> {
     /// Fetch rows using [`Stream`][futures_core::Stream] api.
     ///
     /// The returned `Stream` must be polled/awaited until completion,
@@ -56,27 +51,42 @@ where
     ///
     /// Also if [`FromRow`][crate::FromRow] implementation returns error,
     /// stream is suspended.
-    pub fn fetch(self) -> FetchStream<'val, SQL, Exe::Future, Exe::Transport, R> {
+    pub fn fetch(self) -> FetchStream<'val, SQL, Exe::Future, Exe::Transport, R>
+    where
+        Exe: Executor,
+    {
         FetchStream::new(self.sql, self.exe.connection(), self.params, 0)
     }
 
     /// Fetch all rows into [`Vec`].
-    pub fn fetch_all(self) -> fetch::FetchAll<'val, SQL, Exe::Future, Exe::Transport, R> {
-        fetch::FetchAll::new(self.sql, self.exe.connection(), self.params)
+    pub fn fetch_all(self) -> FetchAll<'val, SQL, Exe::Future, Exe::Transport, R>
+    where
+        Exe: Executor,
+    {
+        FetchAll::new(self.sql, self.exe.connection(), self.params)
     }
 
     /// Fetch one row.
-    pub fn fetch_one(self) -> fetch::FetchOne<'val, SQL, Exe::Future, Exe::Transport, R> {
-        fetch::FetchOne::new(self.sql, self.exe.connection(), self.params)
+    pub fn fetch_one(self) -> FetchOne<'val, SQL, Exe::Future, Exe::Transport, R>
+    where
+        Exe: Executor,
+    {
+        FetchOne::new(self.sql, self.exe.connection(), self.params)
     }
 
     /// Optionally fetch one row.
-    pub fn fetch_optional(self) -> fetch::FetchOptional<'val, SQL, Exe::Future, Exe::Transport, R> {
-        fetch::FetchOptional::new(self.sql, self.exe.connection(), self.params)
+    pub fn fetch_optional(self) -> FetchOptional<'val, SQL, Exe::Future, Exe::Transport, R>
+    where
+        Exe: Executor,
+    {
+        FetchOptional::new(self.sql, self.exe.connection(), self.params)
     }
 
     /// Execute statement and return number of rows affected.
-    pub fn execute(self) -> Execute<'val, SQL, Exe::Future, Exe::Transport> {
+    pub fn execute(self) -> Execute<'val, SQL, Exe::Future, Exe::Transport>
+    where
+        Exe: Executor,
+    {
         Execute::new(self.sql, self.exe.connection(), self.params)
     }
 }

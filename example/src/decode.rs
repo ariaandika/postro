@@ -10,30 +10,31 @@ struct Foo {
 pub async fn main() -> Result<()> {
     let mut conn = Connection::connect_env().await?;
 
+    let (null,): (Option<String>,) = query("SELECT NULL::TEXT", &mut conn).fetch_one().await?;
+
+    assert!(null.is_none());
+
+    // `time`
+
     let now_utc = UtcDateTime::now().replace_millisecond(0).unwrap();
-    let (local, utc) = query::<_, _, (PrimitiveDateTime, UtcDateTime)>(
-        "SELECT now()::TIMESTAMP,now()::TIMESTAMPTZ",
-        &mut conn,
-    )
-    .fetch_all()
-    .await?[0];
+    let (local, utc): (PrimitiveDateTime, UtcDateTime) =
+        query("SELECT now()::TIMESTAMP,now()::TIMESTAMPTZ", &mut conn)
+            .fetch_one()
+            .await?;
 
     assert_eq!(
-        (local.month(), local.day(), local.minute(), local.second()),
-        (
-            now_utc.month(),
-            now_utc.day(),
-            now_utc.minute(),
-            now_utc.second()
-        ),
+        (local.month(), local.minute(), local.second()),
+        (now_utc.month(), now_utc.minute(), now_utc.second()),
     );
     assert_eq!(utc.replace_millisecond(0).unwrap(), now_utc);
 
-    let app = query::<_, _, (Json<Foo>,)>("SELECT '{\"id\":420}'::jsonb", &mut conn)
-        .fetch_all()
+    // `time`
+
+    let (Json(json),): (Json<Foo>,) = query("SELECT '{\"id\":420}'::jsonb", &mut conn)
+        .fetch_one()
         .await?;
 
-    assert_eq!(app[0].0.0, Foo { id: 420 });
+    assert_eq!(json, Foo { id: 420 });
 
     Ok(())
 }

@@ -12,7 +12,8 @@ use std::{
 };
 
 use crate::{
-    Error, FromRow, Result, Row,
+    FromRow, Result, Row,
+    common::unit_error,
     encode::Encoded,
     ext::UsizeExt,
     postgres::{
@@ -20,7 +21,7 @@ use crate::{
         backend::{self, CommandComplete},
         frontend,
     },
-    row::RowResult,
+    row::{RowNotFound, RowResult},
     sql::Sql,
     statement::{PortalName, StatementName},
     transport::PgTransport,
@@ -275,7 +276,7 @@ where
                         PortalSuspended(_) => { },
                         EmptyQueryResponse(_) => {
                             me.phase = Phase::Complete;
-                            return Poll::Ready(Some(Err(Error::empty_query())));
+                            return Poll::Ready(Some(Err(EmptyQueryError.into())));
                         },
                         f => {
                             let err = f.unexpected("fetching data rows");
@@ -370,7 +371,7 @@ where
 
         match me.output.take() {
             Some(row) => Poll::Ready(Ok(row)),
-            None => Ready(Err(Error::row_not_found())),
+            None => Ready(Err(RowNotFound.into())),
         }
     }
 }
@@ -454,5 +455,10 @@ where
             None => todo!(),
         }
     }
+}
+
+unit_error! {
+    /// An error when try to query with empty string.
+    pub struct EmptyQueryError("empty query string");
 }
 

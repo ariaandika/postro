@@ -3,8 +3,10 @@ use std::{backtrace::Backtrace, fmt, io, str::Utf8Error};
 
 use crate::{
     connection::ParseError,
+    fetch::EmptyQueryError,
+    phase::UnsupportedAuth,
     postgres::{ErrorResponse, ProtocolError},
-    row::DecodeError,
+    row::{DecodeError, RowNotFound},
 };
 
 /// A specialized [`Result`] type for `postro` operation.
@@ -25,14 +27,6 @@ impl Error {
     pub fn backtrace(&self) -> &Backtrace {
         &self.backtrace
     }
-
-    pub(crate) fn row_not_found() -> Error {
-        Error::from(ErrorKind::RowNotFound)
-    }
-
-    pub(crate) fn empty_query() -> Error {
-        Error::from(ErrorKind::EmptyQuery)
-    }
 }
 
 /// All possible error kind from `postro` library.
@@ -42,9 +36,9 @@ pub enum ErrorKind {
     Io(io::Error),
     Database(ErrorResponse),
     Utf8(std::str::Utf8Error),
-    RowNotFound,
-    EmptyQuery,
-    UnsupportedAuth,
+    RowNotFound(RowNotFound),
+    EmptyQuery(EmptyQueryError),
+    UnsupportedAuth(UnsupportedAuth),
     Decode(DecodeError),
 }
 
@@ -65,6 +59,9 @@ from!(<ProtocolError>e => ErrorKind::Protocol(e));
 from!(<std::io::Error>e => ErrorKind::Io(e));
 from!(<ErrorResponse>e => ErrorKind::Database(e));
 from!(<Utf8Error>e => ErrorKind::Utf8(e));
+from!(<RowNotFound>e => ErrorKind::RowNotFound(e));
+from!(<EmptyQueryError>e => ErrorKind::EmptyQuery(e));
+from!(<UnsupportedAuth>e => ErrorKind::UnsupportedAuth(e));
 
 from!(<DecodeError>e => ErrorKind::Decode(e));
 
@@ -101,15 +98,15 @@ impl std::error::Error for ErrorKind { }
 impl fmt::Display for ErrorKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Config(e) => write!(f, "{e}"),
-            Self::Protocol(e) => write!(f, "{e}"),
-            Self::Io(e) => write!(f, "{e}"),
-            Self::Database(e) => write!(f, "{e}"),
-            Self::UnsupportedAuth => write!(f, "Auth not supported"),
-            Self::RowNotFound => write!(f, "row not found"),
-            Self::EmptyQuery => write!(f, "empty query string"),
-            Self::Decode(e) => write!(f, "{e}"),
-            Self::Utf8(e) => write!(f, "{e}"),
+            Self::Config(e) => e.fmt(f),
+            Self::Protocol(e) => e.fmt(f),
+            Self::Io(e) => e.fmt(f),
+            Self::Database(e) => e.fmt(f),
+            Self::UnsupportedAuth(e) => e.fmt(f),
+            Self::RowNotFound(e) => e.fmt(f),
+            Self::EmptyQuery(e) => e.fmt(f),
+            Self::Decode(e) => e.fmt(f),
+            Self::Utf8(e) => e.fmt(f)
         }
     }
 }

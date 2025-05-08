@@ -2,6 +2,36 @@
 mod bytestr;
 pub use bytestr::ByteStr;
 
+/// Create unit type `Error`.
+///
+/// # Example
+///
+/// ```
+/// unit_error! {
+///     pub struct NotFound("not found");
+/// }
+/// ```
+macro_rules! unit_error {
+    ($(#[$meta:meta])* $vis:vis struct $name:ident($msg:literal);) => {
+        $(#[$meta])*
+        $vis struct $name;
+
+        impl std::error::Error for $name { }
+
+        impl std::fmt::Display for $name {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.write_str($msg)
+            }
+        }
+
+        impl std::fmt::Debug for $name {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(f, "\"{self}\"")
+            }
+        }
+    };
+}
+
 /// Trace when `verbose` feature enabled.
 macro_rules! verbose {
     ($($tt:tt)*) => {
@@ -20,6 +50,7 @@ macro_rules! span {
     };
 }
 
+pub(crate) use unit_error;
 pub(crate) use verbose;
 pub(crate) use span;
 

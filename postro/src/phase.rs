@@ -1,8 +1,8 @@
 use std::borrow::Cow;
 
 use crate::{
-    Error, Result,
-    error::ErrorKind,
+    Result,
+    common::unit_error,
     executor::Executor,
     postgres::{BackendMessage, backend, frontend},
     transaction::Transaction,
@@ -24,6 +24,12 @@ pub struct StartupResponse {
     /// This message provides secret-key data that the frontend must
     /// save if it wants to be able to issue cancel requests later.
     pub backend_key_data: backend::BackendKeyData,
+}
+
+unit_error! {
+    /// An error when postgres request an authentication
+    /// method that not yet unsupported by `postro`.
+    pub struct UnsupportedAuth("auth method is not yet supported");
 }
 
 /// Perform a startup message.
@@ -65,7 +71,7 @@ pub async fn startup<'a, IO: PgTransport>(
                 io.flush().await?;
             },
             // TODO: support more authentication method
-            _ => Err(Error::from(ErrorKind::UnsupportedAuth))?
+            _ => return Err(UnsupportedAuth.into())
         }
     }
 

@@ -11,7 +11,7 @@ use bytes::{Buf, Bytes};
 use std::{borrow::Cow, fmt, str::Utf8Error, string::FromUtf8Error};
 
 use crate::{
-    common::ByteStr,
+    common::{ByteStr, unit_error},
     ext::{BytesExt, FmtExt},
     postgres::{Oid, PgType},
 };
@@ -402,6 +402,11 @@ mod sealed {
     pub trait Sealed { }
     impl Sealed for usize { }
     impl Sealed for &str { }
+}
+
+unit_error! {
+    /// An error when try to [`fetch_one`][crate::query::Query::fetch_one] and not returns any row.
+    pub struct RowNotFound("row not found");
 }
 
 macro_rules! from {

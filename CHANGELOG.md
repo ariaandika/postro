@@ -13,8 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fix
 
-- fix Into impl from Config that fill database with username
+- fix Into impl from Config
 - fix to suspend FetchStream on decode error
 - fix time Decoding logic
 - fix json Decoding logic
+- fix handle NULL value
 

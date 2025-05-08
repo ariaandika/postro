@@ -43,7 +43,7 @@ impl Decode for PrimitiveDateTime {
         if column.oid() != Self::OID {
             return Err(DecodeError::OidMissmatch);
         }
-        let value = column.into_value();
+        let value = column.try_into_value()?;
         assert_eq!(
             value.len(),
             size_of::<i64>(),
@@ -62,7 +62,7 @@ impl Decode for UtcDateTime {
         if column.oid() != Self::OID {
             return Err(DecodeError::OidMissmatch);
         }
-        let value = column.into_value();
+        let value = column.try_into_value()?;
         assert_eq!(
             value.len(),
             size_of::<i64>(),

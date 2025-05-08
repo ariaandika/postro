@@ -81,8 +81,11 @@ impl Row {
         let mut i = 0;
         let mut values = self.values.clone();
         let value = loop {
-            let len = values.get_u32();
-            let value = values.split_to(len as _);
+            let len = values.get_i32();
+            let value = match len {
+                -1 => None,
+                _ => Some(values.split_to(len as _)),
+            };
             if i == nth {
                 break value;
             }
@@ -149,8 +152,11 @@ impl Iterator for IntoIter {
             },
         };
         let column = self.body.split_to(SUFFIX);
-        let len = self.values.get_u32();
-        let value = self.values.split_to(len as _);
+        let len = self.values.get_i32();
+        let value = match len {
+            -1 => None,
+            _ => Some(self.values.split_to(len as _)),
+        };
         self.iter_n += 1;
 
         Some(Ok(Column::new(field_name, &column, value)))
@@ -165,10 +171,12 @@ impl fmt::Debug for Row {
         for _ in 0..self.field_len {
             let Ok(key) = b.get_nul_bytestr() else { break };
             b.advance(SUFFIX);
-            let len = v.get_u32();
-            let value = v.split_to(len as _);
+            let len = v.get_i32();
             dbg.key(&key);
-            dbg.value(&value.lossy());
+            match len {
+                -1 => dbg.value(&format_args!("NULL")),
+                len => dbg.value(&v.split_to(len as _).lossy()),
+            };
         }
         dbg.finish()
     }
@@ -178,13 +186,13 @@ impl fmt::Debug for Row {
 #[derive(Debug, Clone)]
 pub struct Column {
     oid: Oid,
-    value: Bytes,
+    value: Option<Bytes>,
     name: ByteStr,
 }
 
 impl Column {
     /// `body` is start of data **after** field name
-    fn new(name: ByteStr, body: &[u8], value: Bytes) -> Self {
+    fn new(name: ByteStr, body: &[u8], value: Option<Bytes>) -> Self {
         Self {
             name,
             oid: (&mut &body[OID_OFFSET..]).get_u32(),
@@ -202,19 +210,37 @@ impl Column {
         &self.name
     }
 
+    /// Return `true` if value is NULL.
+    pub const fn is_null(&self) -> bool {
+        self.value.is_none()
+    }
+
     /// Extract the inner bytes as slice.
-    pub fn as_slice(&self) -> &[u8] {
-        &self.value
+    ///
+    /// Returns [`None`] if value is `NULL`.
+    pub fn as_slice(&self) -> Option<&[u8]> {
+        self.value.as_deref()
     }
 
     /// Clone the inner [`Bytes`].
-    pub fn value(&self) -> Bytes {
-        self.value.clone()
+    ///
+    /// Returns [`None`] if value is `NULL`.
+    pub fn value(&self) -> Option<Bytes> {
+        self.value.as_ref().cloned()
     }
 
     /// Consume self into the inner [`Bytes`].
-    pub fn into_value(self) -> Bytes {
+    ///
+    /// Returns empty [`Bytes`] if value is `NULL`.
+    pub fn into_value(self) -> Option<Bytes> {
         self.value
+    }
+
+    /// Try consume self into the inner [`Bytes`].
+    ///
+    /// Return [`DecodeError::Null`] if value is `NULL`.
+    pub fn try_into_value(self) -> Result<Bytes, DecodeError> {
+        self.value.ok_or(DecodeError::Null)
     }
 
     /// Try decode type using [`Decode`] implementation.
@@ -281,6 +307,15 @@ impl Decode for Column {
     }
 }
 
+impl<T: Decode> Decode for Option<T> {
+    fn decode(column: Column) -> Result<Self, DecodeError> {
+        match column.is_null() {
+            true => Ok(None),
+            false => column.decode().map(Some),
+        }
+    }
+}
+
 impl Decode for () {
     fn decode(_: Column) -> Result<Self, DecodeError> {
         Ok(())
@@ -293,7 +328,7 @@ impl Decode for i32 {
             return Err(DecodeError::OidMissmatch);
         }
         let mut be = [0u8;size_of::<Self>()];
-        be.copy_from_slice(&col.as_slice()[..size_of::<Self>()]);
+        be.copy_from_slice(&col.try_into_value()?[..size_of::<Self>()]);
         Ok(i32::from_be_bytes(be))
     }
 }
@@ -303,7 +338,7 @@ impl Decode for String {
         if col.oid() != Self::OID {
             return Err(DecodeError::OidMissmatch);
         }
-        Ok(String::from_utf8(col.into_value().into())?)
+        Ok(String::from_utf8(col.try_into_value().map(Into::into)?)?)
     }
 }
 
@@ -389,6 +424,8 @@ pub enum DecodeError {
     IndexOutOfBounds(usize),
     /// Oid requested missmatch.
     OidMissmatch,
+    /// Row is null.
+    Null,
     /// Failed to deserialize using `serde_json`.
     #[cfg(feature = "json")]
     Json(serde_json::error::Error),
@@ -402,6 +439,7 @@ impl fmt::Display for DecodeError {
             Self::ColumnNotFound(name) => write!(f, "column not found: {name:?}"),
             Self::IndexOutOfBounds(u) => write!(f, "index out of bounds: {u:?}"),
             Self::OidMissmatch => write!(f, "data type missmatch"),
+            Self::Null => write!(f, "unexpected NULL value"),
             #[cfg(feature = "json")]
             Self::Json(e) => write!(f, "{e}"),
         }

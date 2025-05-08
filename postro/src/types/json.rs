@@ -30,7 +30,7 @@ where
         if column.oid() != Self::OID {
             return Err(DecodeError::OidMissmatch);
         }
-        let mut value = column.into_value();
+        let mut value = column.try_into_value()?;
         assert_eq!(value.get_u8(), b'\x01', "jsonb version");
         serde_json::from_slice(&value).map_err(Into::into)
     }

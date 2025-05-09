@@ -147,6 +147,37 @@ fn command_complete(cmd: backend::CommandComplete) -> u64 {
     .unwrap_or_default()
 }
 
+pub trait FetchStreamMap {
+    type Output;
+
+    fn map(row: Row) -> Result<Self::Output>;
+}
+
+#[derive(Debug)]
+pub struct StreamFromRow<D>(PhantomData<D>);
+
+#[derive(Debug)]
+pub struct StreamNoop;
+
+impl<R> FetchStreamMap for StreamFromRow<R>
+where
+    R: FromRow,
+{
+    type Output = R;
+
+    fn map(row: Row) -> Result<Self::Output> {
+        row.decode().map_err(Into::into)
+    }
+}
+
+impl FetchStreamMap for StreamNoop {
+    type Output = ();
+
+    fn map(_: Row) -> Result<Self::Output> {
+        Ok(())
+    }
+}
+
 #[derive(Debug)]
 #[must_use = "futures do nothing unless you `.await` or poll them"]
 pub struct FetchStream<'val, SQL, ExeFut, IO, R> {
@@ -193,14 +224,14 @@ impl<'val, SQL, ExeFut, IO, R> FetchStream<'val, SQL, ExeFut, IO, R> {
     }
 }
 
-impl<SQL, ExeFut, IO, R> Stream for FetchStream<'_, SQL, ExeFut, IO, R>
+impl<SQL, ExeFut, IO, M> Stream for FetchStream<'_, SQL, ExeFut, IO, M>
 where
     SQL: Sql + Unpin,
     ExeFut: Future<Output = Result<IO>> + Unpin,
     IO: PgTransport + Unpin,
-    R: FromRow + Unpin,
+    M: FetchStreamMap + Unpin,
 {
-    type Item = Result<R>;
+    type Item = Result<M::Output>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let me = self.get_mut();
@@ -261,7 +292,7 @@ where
                     match ready!(me.io.as_mut().unwrap().poll_recv(cx)?) {
                         DataRow(dr) => {
                             let row = row.inner_clone(dr.body);
-                            let result = row.decode();
+                            let result = M::map(row);
                             if result.is_err() {
                                 me.io.as_mut().unwrap().ready_request();
                                 me.phase = Phase::Complete;
@@ -300,7 +331,7 @@ where
 #[derive(Debug)]
 #[must_use = "futures do nothing unless you `.await` or poll them"]
 pub struct FetchAll<'val, SQL, ExeFut, IO, R> {
-    fetch: FetchStream<'val, SQL, ExeFut, IO, R>,
+    fetch: FetchStream<'val, SQL, ExeFut, IO, StreamFromRow<R>>,
     output: Vec<R>,
 }
 
@@ -336,7 +367,7 @@ where
 #[derive(Debug)]
 #[must_use = "futures do nothing unless you `.await` or poll them"]
 pub struct FetchOne<'val, SQL, ExeFut, IO, R> {
-    fetch: FetchStream<'val, SQL, ExeFut, IO, R>,
+    fetch: FetchStream<'val, SQL, ExeFut, IO, StreamFromRow<R>>,
     output: Option<R>,
 }
 
@@ -379,7 +410,7 @@ where
 #[derive(Debug)]
 #[must_use = "futures do nothing unless you `.await` or poll them"]
 pub struct FetchOptional<'val, SQL, ExeFut, IO, R> {
-    fetch: FetchStream<'val, SQL, ExeFut, IO, R>,
+    fetch: FetchStream<'val, SQL, ExeFut, IO, StreamFromRow<R>>,
     output: Option<R>,
 }
 
@@ -422,7 +453,7 @@ where
 #[derive(Debug)]
 #[must_use = "futures do nothing unless you `.await` or poll them"]
 pub struct Execute<'val, SQL, ExeFut, IO> {
-    fetch: FetchStream<'val, SQL, ExeFut, IO, ()>,
+    fetch: FetchStream<'val, SQL, ExeFut, IO, StreamNoop>,
 }
 
 impl<'val, SQL, ExeFut, IO> Execute<'val, SQL, ExeFut, IO> {

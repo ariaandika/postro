@@ -3,7 +3,9 @@
 ### Added
 - `Table` trait and derive macro.
 - `query_scalar` function.
-- `Decode` and `Encode` derive macro (#1).
+- `Decode` and `Encode` derive macro ([#1]).
+
+[#1]: https://github.com/ariaandika/postro/issues/1
 
 ### Changed
 - renamed `query` function to `query_as`.
@@ -14,9 +16,9 @@
 
 ### Fixed
 
-- fix Into impl from Config
-- fix to suspend FetchStream on decode error
-- fix time Decoding logic
-- fix json Decoding logic
-- fix handle NULL value
+- `Into` impl from Config
+- suspend `FetchStream` on decode error
+- time `Decoding` logic
+- json `Decoding` logic
+- handle `NULL` value
 

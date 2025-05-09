@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - add `Table` trait and derive macro
 - add `query_scalar` function
+- rename all `query*` functions
 
 ### Fix
 

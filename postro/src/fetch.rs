@@ -12,16 +12,11 @@ use std::{
 };
 
 use crate::{
-    FromRow, Result, Row,
+    Result, Row,
     common::unit_error,
     encode::Encoded,
     ext::UsizeExt,
-    postgres::{
-        PgFormat,
-        backend::{self, CommandComplete},
-        frontend,
-    },
-    row::{RowNotFound, RowResult},
+    postgres::{PgFormat, backend, frontend},
     sql::Sql,
     statement::{PortalName, StatementName},
     transport::PgTransport,
@@ -124,7 +119,7 @@ fn portal(data: &PrepareData, params: &mut Vec<Encoded>, mut io: impl PgTranspor
 /// Decode information from [`CommandComplete`][1] message.
 ///
 /// [1]: backend::CommandComplete
-fn command_complete(cmd: backend::CommandComplete) -> u64 {
+pub(crate) fn command_complete(cmd: backend::CommandComplete) -> u64 {
     let mut whs = cmd.tag.split_whitespace();
     let Some(tag) = whs.next() else {
         return 0;
@@ -147,48 +142,19 @@ fn command_complete(cmd: backend::CommandComplete) -> u64 {
     .unwrap_or_default()
 }
 
-pub trait FetchStreamMap {
-    type Output;
-
-    fn map(row: Row) -> Result<Self::Output>;
-}
-
-#[derive(Debug)]
-pub struct StreamFromRow<D>(PhantomData<D>);
-
-#[derive(Debug)]
-pub struct StreamNoop;
-
-impl<R> FetchStreamMap for StreamFromRow<R>
-where
-    R: FromRow,
-{
-    type Output = R;
-
-    fn map(row: Row) -> Result<Self::Output> {
-        row.decode().map_err(Into::into)
-    }
-}
-
-impl FetchStreamMap for StreamNoop {
-    type Output = ();
-
-    fn map(_: Row) -> Result<Self::Output> {
-        Ok(())
-    }
-}
+// ===== Fetch Stream and Future =====
 
 #[derive(Debug)]
 #[must_use = "futures do nothing unless you `.await` or poll them"]
-pub struct FetchStream<'val, SQL, ExeFut, IO, R> {
+pub struct FetchStream<'val, SQL, ExeFut, IO, M> {
     sql: SQL,
     io: Option<IO>,
     data: Option<PrepareData>,
     phase: Phase<ExeFut>,
     params: Vec<Encoded<'val>>,
     max_row: u32,
-    cmd: Option<CommandComplete>,
-    _p: PhantomData<R>,
+    cmd: Option<backend::CommandComplete>,
+    _p: PhantomData<M>,
 }
 
 #[derive(Debug)]
@@ -204,8 +170,8 @@ enum Phase<ExeFut> {
     ReadyForQuery,
 }
 
-impl<'val, SQL, ExeFut, IO, R> FetchStream<'val, SQL, ExeFut, IO, R> {
-    pub fn new(
+impl<'val, SQL, ExeFut, IO, M> FetchStream<'val, SQL, ExeFut, IO, M> {
+    pub(crate) fn new(
         sql: SQL,
         exe: ExeFut,
         params: Vec<Encoded<'val>>,
@@ -229,7 +195,7 @@ where
     SQL: Sql + Unpin,
     ExeFut: Future<Output = Result<IO>> + Unpin,
     IO: PgTransport + Unpin,
-    M: FetchStreamMap + Unpin,
+    M: StreamMap + Unpin,
 {
     type Item = Result<M::Output>;
 
@@ -283,7 +249,7 @@ where
                         f => {
                             let err = f.unexpected("description recv");
                             me.phase = Phase::Complete;
-                            return Poll::Ready(Some(Err(err.into())));
+                            return Ready(Some(Err(err.into())));
                         },
                     }
                 },
@@ -297,7 +263,7 @@ where
                                 me.io.as_mut().unwrap().ready_request();
                                 me.phase = Phase::Complete;
                             }
-                            return Poll::Ready(Some(result.map_err(Into::into)));
+                            return Ready(Some(result));
                         },
 
                         // `Execute` phase terminations:
@@ -307,12 +273,12 @@ where
                         PortalSuspended(_) => { },
                         EmptyQueryResponse(_) => {
                             me.phase = Phase::Complete;
-                            return Poll::Ready(Some(Err(EmptyQueryError.into())));
+                            return Ready(Some(Err(EmptyQueryError.into())));
                         },
                         f => {
                             let err = f.unexpected("fetching data rows");
                             me.phase = Phase::Complete;
-                            return Poll::Ready(Some(Err(err.into())));
+                            return Ready(Some(Err(err.into())));
                         },
                     }
 
@@ -322,7 +288,7 @@ where
                     ready!(me.io.as_mut().unwrap().poll_recv::<backend::ReadyForQuery>(cx)?);
                     me.phase = Phase::Complete;
                 },
-                Phase::Complete => return Poll::Ready(None),
+                Phase::Complete => return Ready(None),
             }
         }
     }
@@ -330,162 +296,66 @@ where
 
 #[derive(Debug)]
 #[must_use = "futures do nothing unless you `.await` or poll them"]
-pub struct FetchAll<'val, SQL, ExeFut, IO, R> {
-    fetch: FetchStream<'val, SQL, ExeFut, IO, StreamFromRow<R>>,
-    output: Vec<R>,
+pub struct Fetch<'val, SQL, ExeFut, IO, M, C> {
+    fetch: FetchStream<'val, SQL, ExeFut, IO, M>,
+    collect: C,
 }
 
-impl<'val, SQL, ExeFut, IO, R> FetchAll<'val, SQL, ExeFut, IO, R> {
-    pub fn new(sql: SQL, exe: ExeFut, params: Vec<Encoded<'val>>) -> Self {
+impl<'val, SQL, ExeFut, IO, M, C> Fetch<'val, SQL, ExeFut, IO, M, C> {
+    pub(crate) fn new(
+        sql: SQL,
+        exe: ExeFut,
+        params: Vec<Encoded<'val>>,
+        collect: C,
+        max_row: u32,
+    ) -> Self {
         Self {
-            fetch: FetchStream::new(sql, exe, params, 0),
-            output: vec![],
+            fetch: FetchStream::new(sql, exe, params, max_row),
+            collect,
         }
     }
 }
 
-impl<SQL, ExeFut, IO, R> Future for FetchAll<'_, SQL, ExeFut, IO, R>
+impl<SQL, ExeFut, IO, M, C> Future for Fetch<'_, SQL, ExeFut, IO, M, C>
 where
     SQL: Sql + Unpin,
     ExeFut: Future<Output = Result<IO>> + Unpin,
     IO: PgTransport + Unpin,
-    R: FromRow + Unpin,
+    M: StreamMap + Unpin,
+    C: FetchCollect<M::Output> + Unpin,
 {
-    type Output = Result<Vec<R>>;
+    type Output = Result<C::Output>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
         let me = self.get_mut();
 
         while let Some(r) = ready!(Pin::new(&mut me.fetch).poll_next(cx)?) {
-            me.output.push(r);
+            me.collect.value(r);
         }
 
-        Poll::Ready(Ok(std::mem::take(&mut me.output)))
+        Ready(me.collect.finish(me.fetch.cmd.take()))
     }
 }
 
-#[derive(Debug)]
-#[must_use = "futures do nothing unless you `.await` or poll them"]
-pub struct FetchOne<'val, SQL, ExeFut, IO, R> {
-    fetch: FetchStream<'val, SQL, ExeFut, IO, StreamFromRow<R>>,
-    output: Option<R>,
+/// Adapter to process a [`Row`].
+pub trait StreamMap {
+    /// Processed row.
+    type Output;
+
+    /// Process row.
+    fn map(row: Row) -> Result<Self::Output>;
 }
 
-impl<'val, SQL, ExeFut, IO, R> FetchOne<'val, SQL, ExeFut, IO, R> {
-    pub fn new(
-        sql: SQL,
-        exe: ExeFut,
-        params: Vec<Encoded<'val>>,
-    ) -> Self {
-        Self {
-            fetch: FetchStream::new(sql, exe, params, 1),
-            output: None,
-        }
-    }
-}
+/// Adapter to collect rows returned from [`FetchStream`] via [`Fetch`].
+pub trait FetchCollect<Input> {
+    /// Finished output item.
+    type Output;
 
-impl<SQL, ExeFut, IO, R> Future for FetchOne<'_, SQL, ExeFut, IO, R>
-where
-    SQL: Sql + Unpin,
-    ExeFut: Future<Output = Result<IO>> + Unpin,
-    IO: PgTransport + Unpin,
-    R: FromRow + Unpin,
-{
-    type Output = Result<R>;
+    /// Process found row.
+    fn value(&mut self, input: Input);
 
-    fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-        let me = self.get_mut();
-
-        while let Some(r) = ready!(Pin::new(&mut me.fetch).poll_next(cx)?) {
-            me.output = Some(r);
-        }
-
-        match me.output.take() {
-            Some(row) => Poll::Ready(Ok(row)),
-            None => Ready(Err(RowNotFound.into())),
-        }
-    }
-}
-
-#[derive(Debug)]
-#[must_use = "futures do nothing unless you `.await` or poll them"]
-pub struct FetchOptional<'val, SQL, ExeFut, IO, R> {
-    fetch: FetchStream<'val, SQL, ExeFut, IO, StreamFromRow<R>>,
-    output: Option<R>,
-}
-
-impl<'val, SQL, ExeFut, IO, R> FetchOptional<'val, SQL, ExeFut, IO, R> {
-    pub fn new(
-        sql: SQL,
-        exe: ExeFut,
-        params: Vec<Encoded<'val>>,
-    ) -> Self {
-        Self {
-            fetch: FetchStream::new(sql, exe, params, 1),
-            output: None,
-        }
-    }
-}
-
-impl<SQL, ExeFut, IO, R> Future for FetchOptional<'_, SQL, ExeFut, IO, R>
-where
-    SQL: Sql + Unpin,
-    ExeFut: Future<Output = Result<IO>> + Unpin,
-    IO: PgTransport + Unpin,
-    R: FromRow + Unpin,
-{
-    type Output = Result<Option<R>>;
-
-    fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-        let me = self.get_mut();
-
-        while let Some(r) = ready!(Pin::new(&mut me.fetch).poll_next(cx)?) {
-            me.output = Some(r);
-        }
-
-        match me.output.take() {
-            Some(row) => Ready(Ok(Some(row))),
-            None => Ready(Ok(None)),
-        }
-    }
-}
-
-#[derive(Debug)]
-#[must_use = "futures do nothing unless you `.await` or poll them"]
-pub struct Execute<'val, SQL, ExeFut, IO> {
-    fetch: FetchStream<'val, SQL, ExeFut, IO, StreamNoop>,
-}
-
-impl<'val, SQL, ExeFut, IO> Execute<'val, SQL, ExeFut, IO> {
-    pub fn new(
-        sql: SQL,
-        exe: ExeFut,
-        params: Vec<Encoded<'val>>,
-    ) -> Self {
-        Self {
-            fetch: FetchStream::new(sql, exe, params, 0),
-        }
-    }
-}
-
-impl<SQL, ExeFut, IO> Future for Execute<'_, SQL, ExeFut, IO>
-where
-    SQL: Sql + Unpin,
-    ExeFut: Future<Output = Result<IO>> + Unpin,
-    IO: PgTransport + Unpin,
-{
-    type Output = Result<RowResult>;
-
-    fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-        let me = self.get_mut();
-
-        while ready!(Pin::new(&mut me.fetch).poll_next(cx)?).is_some() { }
-
-        match me.fetch.cmd.take() {
-            Some(cmd) => Poll::Ready(Ok(RowResult { rows_affected: command_complete(cmd) })),
-            None => todo!(),
-        }
-    }
+    /// All rows collected, returns the result.
+    fn finish(&mut self, cmd: Option<backend::CommandComplete>) -> Result<Self::Output>;
 }
 
 unit_error! {

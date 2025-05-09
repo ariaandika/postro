@@ -6,14 +6,14 @@ pub async fn main() -> Result<()> {
 
     let handles = (0..48).map(|i| {
         let pool = pool.clone();
-        tokio::spawn(
+        tokio::spawn(async move {
             if i % 6 == 0 {
-                execute("SELECT foo", pool).into_future()
+                execute("SELECT foo", pool).await?;
             } else {
-                query::<_, _, FailRow>("SELECT 1", pool).into_future()
+                query::<_, _, FailRow>("SELECT 1", pool).fetch_all().await?;
             }
-            .instrument(trace_span!("error")),
-        )
+            Ok::<_, postro::Error>(())
+        }.instrument(trace_span!("error")))
     });
 
     for h in handles {

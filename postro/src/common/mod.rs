@@ -6,8 +6,9 @@ pub use bytestr::ByteStr;
 ///
 /// # Example
 ///
-/// ```
+/// ```ignore
 /// unit_error! {
+///     /// Resource not found.
 ///     pub struct NotFound("not found");
 /// }
 /// ```

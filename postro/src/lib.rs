@@ -53,7 +53,7 @@
 //! assert_eq!(foos.len(), 14);
 //! # Ok(())
 //! # }
-//! # mod tokio { pub fn spawn<F>(_: F) -> F { todo!() } }
+//! # mod tokio { pub fn spawn<F>(_: F) -> F { unimplemented!() } }
 //! ```
 //!
 //! Begin a transaction:
@@ -78,7 +78,7 @@
 //! # Ok(())
 //! # }
 //! #
-//! # fn fallible_operation() -> postro::Result<()> { todo!() }
+//! # fn fallible_operation() -> postro::Result<()> { unimplemented!() }
 //! ```
 
 pub mod common;

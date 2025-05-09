@@ -9,7 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Add `Table` trait and derive macro
+- add `Table` trait and derive macro
+- add `query_scalar` function
 
 ### Fix
 

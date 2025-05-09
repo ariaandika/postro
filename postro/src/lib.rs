@@ -131,7 +131,7 @@ pub use connection::{Connection, Config};
 #[doc(inline)]
 pub use pool::{Pool, PoolConfig};
 #[doc(inline)]
-pub use query::{query, query_row, execute};
+pub use query::{query, query_as, query_scalar};
 #[doc(inline)]
 pub use phase::{startup, begin};
 #[doc(inline)]

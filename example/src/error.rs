@@ -1,4 +1,4 @@
-use postro::{DecodeError, FromRow, Pool, Result, Row, execute, query};
+use postro::{DecodeError, FromRow, Pool, Result, Row, query, query_as};
 use tracing::{Instrument, trace_span};
 
 pub async fn main() -> Result<()> {
@@ -8,9 +8,9 @@ pub async fn main() -> Result<()> {
         let pool = pool.clone();
         tokio::spawn(async move {
             if i % 6 == 0 {
-                execute("SELECT foo", pool).await?;
+                query("SELECT foo", pool).await?;
             } else {
-                query::<_, _, FailRow>("SELECT 1", pool).fetch_all().await?;
+                query_as::<_, _, FailRow>("SELECT 1", pool).fetch_all().await?;
             }
             Ok::<_, postro::Error>(())
         }.instrument(trace_span!("error")))

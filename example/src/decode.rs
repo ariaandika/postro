@@ -1,4 +1,4 @@
-use postro::{query, types::Json, Connection, Result};
+use postro::{query_as, types::Json, Connection, Result};
 use serde::Deserialize;
 use time::{PrimitiveDateTime, UtcDateTime};
 
@@ -10,7 +10,7 @@ struct Foo {
 pub async fn main() -> Result<()> {
     let mut conn = Connection::connect_env().await?;
 
-    let (null,): (Option<String>,) = query("SELECT NULL::TEXT", &mut conn).fetch_one().await?;
+    let (null,): (Option<String>,) = query_as("SELECT NULL::TEXT", &mut conn).fetch_one().await?;
 
     assert!(null.is_none());
 
@@ -18,7 +18,7 @@ pub async fn main() -> Result<()> {
 
     let now_utc = UtcDateTime::now().replace_millisecond(0).unwrap();
     let (local, utc): (PrimitiveDateTime, UtcDateTime) =
-        query("SELECT now()::TIMESTAMP,now()::TIMESTAMPTZ", &mut conn)
+        query_as("SELECT now()::TIMESTAMP,now()::TIMESTAMPTZ", &mut conn)
             .fetch_one()
             .await?;
 
@@ -30,7 +30,7 @@ pub async fn main() -> Result<()> {
 
     // `time`
 
-    let (Json(json),): (Json<Foo>,) = query("SELECT '{\"id\":420}'::jsonb", &mut conn)
+    let (Json(json),): (Json<Foo>,) = query_as("SELECT '{\"id\":420}'::jsonb", &mut conn)
         .fetch_one()
         .await?;
 

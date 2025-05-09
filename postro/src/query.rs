@@ -13,7 +13,7 @@ use crate::{
 
 /// Entrypoint of the query API.
 #[inline]
-pub fn query<'val, SQL, Exe, R>(sql: SQL, exe: Exe) -> Query<'val, SQL, Exe, StreamRow<R>> {
+pub fn query<'val, SQL, Exe>(sql: SQL, exe: Exe) -> Query<'val, SQL, Exe, StreamRow<Row>> {
     Query { sql, exe, params: Vec::new(), _p: PhantomData }
 }
 
@@ -26,18 +26,6 @@ pub fn query_as<'val, SQL, Exe, R>(sql: SQL, exe: Exe) -> Query<'val, SQL, Exe, 
 /// Entrypoint of the query API.
 #[inline]
 pub fn query_scalar<'val, SQL, Exe, D>(sql: SQL, exe: Exe) -> Query<'val, SQL, Exe, StreamScalar<D>> {
-    Query { sql, exe, params: Vec::new(), _p: PhantomData }
-}
-
-/// Same as [`query`] with [`Row`] as the output.
-#[inline]
-pub fn query_row<'val, SQL, Exe>(sql: SQL, exe: Exe) -> Query<'val, SQL, Exe, StreamRow<Row>> {
-    Query { sql, exe, params: Vec::new(), _p: PhantomData }
-}
-
-/// Same as [`query`] with [`Row`] as the output.
-#[inline]
-pub fn execute<'val, SQL, Exe>(sql: SQL, exe: Exe) -> Query<'val, SQL, Exe, StreamRow<Row>> {
     Query { sql, exe, params: Vec::new(), _p: PhantomData }
 }
 

@@ -28,18 +28,18 @@ impl<T: PgTransport> Executor for &mut T {
 #[cfg(test)]
 mod test {
     use super::Executor;
-    use crate::query::query;
+    use crate::query;
 
     #[allow(unused, reason = "type assertion")]
     async fn assert_type<E: Executor>(e: E) {
-        let _ = query::<_, _, ()>("", e).fetch_all().await;
+        let _ = query("", e).fetch_all().await;
     }
 
     #[allow(unused, reason = "type assertion")]
     async fn assert_type2<E: Executor>(e: E) {
         let mut e = e.connection().await.unwrap();
-        let _ = query::<_, _, ()>("", &mut e).fetch_all().await;
-        let _ = query::<_, _, ()>("", &mut e).fetch_all().await;
+        let _ = query("", &mut e).fetch_all().await;
+        let _ = query("", &mut e).fetch_all().await;
     }
 }
 

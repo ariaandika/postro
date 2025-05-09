@@ -1,19 +1,17 @@
-# Changelog
-
-All notable changes to this project will be documented in this file.
-
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-
-## Unreleased
+# Unreleased
 
 ### Added
-
 - add `Table` trait and derive macro
 - add `query_scalar` function
-- rename all `query*` functions
 
-### Fix
+### Changed
+- rename `query` function to `query_as`
+- removed `query_row` function to `query`
+
+### Removed
+- renamed `execute` function to `query`
+
+### Fixed
 
 - fix Into impl from Config
 - fix to suspend FetchStream on decode error

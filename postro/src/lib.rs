@@ -138,5 +138,5 @@ pub use phase::{startup, begin};
 pub use error::{Error, Result};
 
 #[cfg(feature = "macros")]
-pub use postro_macros::{FromRow, Table};
+pub use postro_macros::{FromRow, Table, Decode};
 

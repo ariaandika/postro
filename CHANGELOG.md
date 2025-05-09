@@ -1,15 +1,16 @@
-# Unreleased
+# [Unreleased]
 
 ### Added
-- add `Table` trait and derive macro
-- add `query_scalar` function
+- `Table` trait and derive macro.
+- `query_scalar` function.
+- `Decode` and `Encode` derive macro (#1).
 
 ### Changed
-- rename `query` function to `query_as`
-- removed `query_row` function to `query`
+- renamed `query` function to `query_as`.
+- renamed `query_row` function to `query`.
 
 ### Removed
-- renamed `execute` function to `query`
+- `execute` function.
 
 ### Fixed
 

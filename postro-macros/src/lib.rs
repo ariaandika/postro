@@ -32,6 +32,15 @@ pub fn decode(input: TokenStream) -> TokenStream {
     }
 }
 
+/// Automatically derive [`Encode`].
+#[proc_macro_derive(Encode)]
+pub fn encode(input: TokenStream) -> TokenStream {
+    match decode::encode(syn::parse_macro_input!(input as DeriveInput)) {
+        Ok(ok) => ok,
+        Err(err) => err.into_compile_error().into(),
+    }
+}
+
 macro_rules! error {
     ($($tt:tt)*) => {
         return Err(syn::Error::new(proc_macro::Span::call_site().into(), format!($($tt)*)))
